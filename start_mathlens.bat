@@ -10,6 +10,12 @@ if not exist "server.py" (
   exit /b 1
 )
 
+curl --silent --fail http://127.0.0.1:4173/api/health >nul 2>&1
+if %errorlevel%==0 (
+  echo [MathLens] Server is already running. Opening the browser...
+  goto open_browser
+)
+
 where py >nul 2>&1
 if %errorlevel%==0 goto use_py
 

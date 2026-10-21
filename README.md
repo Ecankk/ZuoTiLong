@@ -30,6 +30,8 @@ python server.py
 - 用证据更新个人画像：未验证、不稳定、基本掌握、迁移通过
 - 导入自有题库 JSON
 
+在“本地题库”页可以直接导入 `questions.json`；兼容 `stem`、`content`、`question`、`tags`、`keywords`、`chapter` 等常见字段。
+
 ## 题库 JSON 示例
 
 ```json

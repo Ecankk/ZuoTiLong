@@ -10,7 +10,9 @@
 
 ## 启动
 
-需要 Python 3.11+，第一版只使用 Python 标准库：
+需要 Python 3.11+。运行时由 Python 本地服务提供 API 和静态文件；前端源码位于 `web/`，使用 React + TypeScript + Vite 构建。
+
+普通使用不需要安装 Node.js：
 
 ```bash
 python server.py
@@ -24,9 +26,22 @@ Windows 用户可以直接双击项目根目录的 `start_mathlens.bat`，脚本
 
 首次启动会在 `.mathlens/` 中创建 SQLite 数据库和示例数据。真实资料放在 `.mathlens/`，不会进入 Git。
 
+## 前端开发
+
+需要修改前端时，在另一个终端运行：
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Vite 开发服务器默认使用 `http://127.0.0.1:5173/`，并将 `/api` 请求代理到本地 Python 服务 `http://127.0.0.1:4173/`。提交或交付前运行 `npm run build`，构建结果会写入根目录 `dist/`，双击 `start_mathlens.bat` 仍然直接启动生产构建。
+
 ## 当前能力
 
 - 导入已完成试卷 PDF，并保存原始文件到本地待确认队列
+- 当前题目确认保留了手工兜底入口；OCR、版面切题和题目截图关联是下一阶段的接入点，尚未伪装成已完成能力
 - 试卷、题目、错因、解题环节和复测记录
 - 本地题库检索和筛选
 - 针对单题建立 3～5 题的检验小测

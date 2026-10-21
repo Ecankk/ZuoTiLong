@@ -1,49 +1,14 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="MathLens：基于已完成试卷的数学一题目诊断与针对性复测工具" />
-  <title>MathLens · 试卷诊断工作台</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">M</div><div><strong>MathLens</strong><span>数学一 · 试卷诊断</span></div></div>
-      <div class="workspace"><span class="workspace-dot"></span><div><strong>我的数学项目</strong><small id="data-mode">本地数据</small></div></div>
-      <nav class="nav" aria-label="主导航">
-        <button class="nav-item active" data-view="home"><span>⌂</span>今日工作</button>
-        <button class="nav-item" data-view="papers"><span>▤</span>试卷</button>
-        <button class="nav-item" data-view="queue"><span>◌</span>题目队列<em id="queue-count">0</em></button>
-        <button class="nav-item" data-view="bank"><span>⌘</span>本地题库</button>
-        <button class="nav-item" data-view="profile"><span>◒</span>个人画像</button>
-      </nav>
-      <div class="side-note"><div class="side-note-icon">↻</div><div><strong>证据持续累积</strong><small>每次复测都会更新画像</small></div></div>
-      <div class="side-foot">v0.1 · 单用户本地模式</div>
-    </aside>
-
-    <main class="main">
-      <header class="topbar"><div><div class="crumb" id="crumb">今日工作 / 待处理</div><h1 id="page-title">今天只处理最值得回收的分</h1></div><div class="top-actions"><span class="connection"><i></i><span id="connection-text">正在连接本地数据</span></span><button class="btn primary" id="import-open">＋ 导入试卷</button></div></header>
-
-      <section class="view active" id="view-home">
-        <div class="hero"><div><span class="eyebrow">最小用户循环</span><h2>从一张已完成的试卷，找到下一步该练什么</h2><p>先处理重复失分，再用本地题库做针对性验证。系统只保留与提分有关的证据。</p></div><div class="hero-step"><span>当前队列</span><strong id="hero-queue">0</strong><small>道题待诊断</small></div></div>
-        <div class="stats" id="stats"></div>
-        <div class="home-grid"><section class="panel"><div class="panel-head"><div><span class="eyebrow">题目队列</span><h3>优先处理</h3></div><button class="link-btn" data-view="queue">查看全部 →</button></div><div id="priority-list" class="question-list"></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">最近证据</span><h3>最近一张试卷</h3></div><button class="link-btn" data-view="papers">试卷记录 →</button></div><div id="latest-paper" class="latest-paper"></div></section></div>
-        <section class="panel loop-panel"><div class="panel-head"><div><span class="eyebrow">工作方法</span><h3>一次复测只回答三个问题</h3></div><span class="tag green">保持简洁</span></div><div class="loop"><div><b>01</b><strong>哪里错？</strong><span>入手、建模、计算、收尾或策略</span></div><div><b>02</b><strong>练哪几道？</strong><span>从题库找同结构和同环节题</span></div><div><b>03</b><strong>是否稳定？</strong><span>看独立作答、用时和迁移结果</span></div></div></section>
-      </section>
-
-      <section class="view" id="view-papers"><div class="page-intro"><span class="eyebrow">试卷</span><h2>已完成试卷是全部诊断的入口</h2><p>上传原始 PDF 后进入人工确认队列。第一版优先保留原始材料和用户判断，不让 OCR 错误污染分析。</p></div><section class="panel import-panel"><div class="drop-zone" id="drop-zone"><div class="drop-icon">↑</div><strong>拖入已完成的试卷 PDF</strong><span>或点击选择文件 · 文件只保存在本机 .mathlens/papers</span><input id="paper-file" type="file" accept="application/pdf" /></div><div class="import-fields"><label>试卷名称<input id="paper-title" placeholder="例如：真题 2022" /></label><label>考试日期<input id="paper-date" type="date" /></label><button class="btn primary" id="import-submit">保存到待确认队列</button></div><div class="import-feedback" id="import-feedback"></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">全部记录</span><h3 id="paper-count">0 张试卷</h3></div><span class="muted">导入后再确认题目切分与得分</span></div><div class="table-wrap"><table><thead><tr><th>试卷</th><th>日期</th><th>得分</th><th>状态</th><th>来源</th></tr></thead><tbody id="papers-table"></tbody></table></div></section></section>
-
-      <section class="view" id="view-queue"><div class="page-intro"><span class="eyebrow">题目队列</span><h2>只处理有证据的问题</h2><p>错题优先，答对但慢、低置信度或重复出现的题目会进入高风险队列。</p></div><div class="queue-toolbar"><div class="filter-tabs"><button class="filter active" data-filter="all">全部</button><button class="filter" data-filter="待诊断">待诊断</button><button class="filter" data-filter="高风险正确">高风险正确</button><button class="filter" data-filter="不稳定">不稳定</button></div><span class="muted" id="queue-hint"></span></div><div id="queue-list" class="queue-grid"></div></section>
-
-      <section class="view" id="view-bank"><div class="page-intro"><span class="eyebrow">本地题库</span><h2>用已有题目做验证</h2><p>优先检索同结构、同环节和条件对比题。题目来源、标签和指纹会保留在本地。</p></div><section class="panel bank-search"><div class="search-row"><input id="bank-search" placeholder="搜索：换元、正定性、边缘分布……" /><select id="bank-stage"><option value="">全部环节</option><option value="切入">题目切入</option><option value="建模">建模与路径</option><option value="计算">中间计算</option><option value="最终处理">最终处理</option></select><button class="btn secondary" id="bank-search-btn">检索</button></div></section><div id="bank-list" class="bank-grid"></div></section>
-
-      <section class="view" id="view-profile"><div class="page-intro"><span class="eyebrow">个人画像</span><h2>画像只保存被题目验证过的结论</h2><p>状态来自试卷、针对性小测和复测结果，证据不足时保持未知，不制造虚假的精确分数。</p></div><div class="profile-grid"><section class="panel"><div class="panel-head"><div><span class="eyebrow">解题环节</span><h3>当前状态</h3></div><span class="tag blue">持续更新</span></div><div id="stage-list" class="stage-list"></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">重复失分</span><h3>最需要处理的主因</h3></div></div><div id="error-list" class="error-list"></div></section></div><section class="panel evidence-panel"><div class="panel-head"><div><span class="eyebrow">画像原则</span><h3>每个结论都能回到题目</h3></div></div><div class="evidence-points"><span>✓ 一次做对不会立即变成“已掌握”</span><span>✓ 两次独立成功并通过迁移题，才进入“迁移通过”</span><span>✓ 错误环节与知识点分开记录</span><span>✓ 用户自评和系统证据分开保存</span></div></section></section>
-    </main>
-  </div>
-
-  <div class="drawer-backdrop" id="drawer-backdrop"><aside class="drawer"><div class="drawer-head"><div><span class="eyebrow">单题诊断</span><h2 id="drawer-title">题目</h2></div><button class="icon-btn" id="drawer-close">×</button></div><div id="drawer-body"></div></aside></div>
-  <script src="./app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#103d34" />
+    <title>MathLens · 试卷诊断工作台</title>
+    <script type="module" crossorigin src="/assets/index-CiE-Tm0m.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CKsXcDeF.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

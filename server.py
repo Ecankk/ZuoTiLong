@@ -301,6 +301,29 @@ class Handler(BaseHTTPRequestHandler):
                              (paper_id, body.get("title") or "未命名试卷", body.get("exam_date"), float(body.get("score") or 0), float(body.get("total_score") or 150), int(body.get("duration") or 0), body.get("source_name"), "needs_review", now_iso()))
                 conn.commit()
                 self.send_json({"paper": as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())}, HTTPStatus.CREATED)
+            elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/confirm"):
+                paper_id = parsed.path.split("/")[3]
+                body = self.read_json()
+                numbers = [str(x).strip() for x in body.get("numbers", []) if str(x).strip()]
+                scores = body.get("scores", [])
+                if not numbers:
+                    self.send_json({"error": "至少需要一个题号"}, HTTPStatus.BAD_REQUEST)
+                    return
+                existing = conn.execute("SELECT COUNT(*) FROM questions WHERE paper_id=?", (paper_id,)).fetchone()[0]
+                if existing:
+                    self.send_json({"error": "这张试卷已经有题目记录"}, HTTPStatus.CONFLICT)
+                    return
+                created = now_iso()
+                for idx, number in enumerate(numbers):
+                    raw_score = scores[idx] if idx < len(scores) else (scores[0] if scores else 0)
+                    try: max_score = float(raw_score or 0)
+                    except (TypeError, ValueError): max_score = 0
+                    qid = f"{paper_id}-q-{idx+1:02d}"
+                    conn.execute("INSERT INTO questions(id,paper_id,number,subject,stem,max_score,correctness,review_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                                 (qid, paper_id, number, body.get("subject") or "数学一", f"第 {number} 题（待补充题干）", max_score, "unknown", "待诊断", created))
+                conn.execute("UPDATE papers SET import_status='analyzed' WHERE id=?", (paper_id,))
+                conn.commit()
+                self.send_json({"paper_id": paper_id, "created_questions": len(numbers), "status": "analyzed"}, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/questions/") and parsed.path.endswith("/diagnose"):
                 question_id = parsed.path.split("/")[3]
                 body = self.read_json()

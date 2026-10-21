@@ -13,6 +13,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from pdf_pipeline import extract_pdf, match_bank_questions
+
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
@@ -108,6 +110,29 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_bank_source ON bank_questions(source);
         """
     )
+    # Keep the first version's SQLite database usable while adding source
+    # evidence incrementally. SQLite has no IF NOT EXISTS for columns.
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(papers)")}
+    for name, definition in {
+        "page_count": "INTEGER DEFAULT 0",
+        "analysis_engine": "TEXT",
+        "analysis_message": "TEXT",
+        "analyzed_at": "TEXT",
+    }.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE papers ADD COLUMN {name} {definition}")
+    question_columns = {row["name"] for row in conn.execute("PRAGMA table_info(questions)")}
+    for name, definition in {
+        "page_start": "INTEGER",
+        "page_end": "INTEGER",
+        "bbox_json": "TEXT",
+        "ocr_confidence": "REAL",
+        "match_bank_id": "TEXT",
+        "match_score": "REAL",
+        "source_text": "TEXT",
+    }.items():
+        if name not in question_columns:
+            conn.execute(f"ALTER TABLE questions ADD COLUMN {name} {definition}")
     if conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0:
         seed(conn)
     conn.commit()
@@ -202,6 +227,75 @@ def build_profile(conn: sqlite3.Connection) -> dict:
     return {"stages": stage, "repeated_errors": repeated}
 
 
+def analyze_paper_record(conn: sqlite3.Connection, paper_id: str) -> dict:
+    paper = as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())
+    if not paper:
+        raise ValueError("试卷不存在")
+    source_path = paper.get("source_path")
+    if not source_path:
+        raise ValueError("这张试卷没有本地 PDF 文件")
+    pdf_path = (ROOT / source_path).resolve()
+    if PAPERS_DIR not in pdf_path.parents or not pdf_path.is_file():
+        raise ValueError("试卷文件不在本地资料目录中")
+
+    bank_rows = []
+    for item in rows(conn, "SELECT * FROM bank_questions"):
+        item["tags"] = json_load(item.pop("tags_json", None), [])
+        item["fingerprint"] = json_load(item.pop("fingerprint_json", None), {})
+        bank_rows.append(item)
+    result = extract_pdf(pdf_path)
+    extracted = match_bank_questions(result["questions"], bank_rows)
+    existing = rows(conn, "SELECT * FROM questions WHERE paper_id=? ORDER BY created_at", (paper_id,))
+    created = now_iso()
+    for index, item in enumerate(extracted):
+        old = next((row for row in existing if str(row.get("number")) == str(item["number"])), None)
+        if old is None and index < len(existing) and "待补充题干" in (existing[index].get("stem") or ""):
+            old = existing[index]
+        qid = old["id"] if old else f"{paper_id}-q-{index + 1:02d}"
+        values = (
+            item["number"],
+            item["stem"],
+            json.dumps(item.get("fingerprint") or {}, ensure_ascii=False),
+            item.get("knowledge") or (old.get("knowledge") if old else None),
+            item.get("page_start"),
+            item.get("page_end"),
+            json.dumps(item.get("bbox"), ensure_ascii=False) if item.get("bbox") else None,
+            item.get("ocr_confidence", 0),
+            item.get("match_bank_id"),
+            item.get("match_score", 0),
+            item["stem"],
+        )
+        if old and old["id"] == qid:
+            conn.execute(
+                """UPDATE questions SET number=?, stem=?, fingerprint_json=?, knowledge=?, page_start=?, page_end=?,
+                   bbox_json=?, ocr_confidence=?, match_bank_id=?, match_score=?, source_text=? WHERE id=?""",
+                values + (qid,),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO questions(id,paper_id,number,subject,stem,score_earned,max_score,correctness,review_status,
+                   knowledge,fingerprint_json,page_start,page_end,bbox_json,ocr_confidence,match_bank_id,match_score,source_text,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (qid, paper_id, item["number"], "数学一", item["stem"], 0, 0, "unknown", "待诊断",
+                 item.get("knowledge"), values[2], item.get("page_start"), item.get("page_end"), values[6],
+                 item.get("ocr_confidence", 0), item.get("match_bank_id"), item.get("match_score", 0), item["stem"], created),
+            )
+    status = "analyzed" if extracted else "needs_review"
+    conn.execute(
+        "UPDATE papers SET import_status=?, page_count=?, analysis_engine=?, analysis_message=?, analyzed_at=? WHERE id=?",
+        (status, len(result["pages"]), result["engine"], result["message"], created, paper_id),
+    )
+    conn.commit()
+    return {
+        "paper": as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone()),
+        "questions": rows(conn, "SELECT * FROM questions WHERE paper_id=? ORDER BY number", (paper_id,)),
+        "engine": result["engine"],
+        "message": result["message"],
+        "warnings": result["warnings"],
+        "created_questions": len(extracted),
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "MathLens/0.1"
 
@@ -216,6 +310,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(raw)
+
+    def send_file(self, path: Path, content_type: str):
+        data = path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def read_json(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -255,6 +358,22 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def api_get(self, parsed):
+        if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/file"):
+            paper_id = parsed.path.split("/")[3]
+            conn = connect()
+            try:
+                paper = as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())
+            finally:
+                conn.close()
+            if not paper or not paper.get("source_path"):
+                self.send_json({"error": "paper file not found"}, HTTPStatus.NOT_FOUND)
+                return
+            pdf_path = (ROOT / paper["source_path"]).resolve()
+            if PAPERS_DIR not in pdf_path.parents or not pdf_path.is_file():
+                self.send_json({"error": "paper file not found"}, HTTPStatus.NOT_FOUND)
+                return
+            self.send_file(pdf_path, "application/pdf")
+            return
         conn = connect()
         try:
             if parsed.path == "/api/health":
@@ -301,6 +420,9 @@ class Handler(BaseHTTPRequestHandler):
                              (paper_id, body.get("title") or "未命名试卷", body.get("exam_date"), float(body.get("score") or 0), float(body.get("total_score") or 150), int(body.get("duration") or 0), body.get("source_name"), "needs_review", now_iso()))
                 conn.commit()
                 self.send_json({"paper": as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())}, HTTPStatus.CREATED)
+            elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/analyze"):
+                paper_id = parsed.path.split("/")[3]
+                self.send_json(analyze_paper_record(conn, paper_id), HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/confirm"):
                 paper_id = parsed.path.split("/")[3]
                 body = self.read_json()

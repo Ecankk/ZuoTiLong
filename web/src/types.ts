@@ -9,6 +9,10 @@ export type Paper = {
   duration?: number
   source_name?: string
   import_status?: string
+  page_count?: number
+  analysis_engine?: string
+  analysis_message?: string
+  analyzed_at?: string
 }
 
 export type Question = {
@@ -26,6 +30,13 @@ export type Question = {
   knowledge?: string
   notes?: string
   fingerprint?: { objects?: string[]; method?: string[]; stages?: string[] }
+  page_start?: number
+  page_end?: number
+  bbox_json?: string
+  ocr_confidence?: number
+  match_bank_id?: string
+  match_score?: number
+  source_text?: string
 }
 
 export type BankQuestion = {

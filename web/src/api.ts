@@ -26,6 +26,14 @@ export async function uploadPaper(file: File, title: string, examDate: string) {
   return response.json()
 }
 
+export async function analyzePaper(id: string) {
+  return postJson<{ created_questions: number; engine: string; message: string; warnings: string[] }>(`/api/papers/${id}/analyze`, {})
+}
+
+export function paperFileUrl(id: string, page?: number) {
+  return `/api/papers/${id}/file${page ? `#page=${page}` : ''}`
+}
+
 export async function saveDiagnosis(id: string, body: Record<string, unknown>) {
   return postJson<{ profile: Profile }>(`/api/questions/${id}/diagnose`, body)
 }

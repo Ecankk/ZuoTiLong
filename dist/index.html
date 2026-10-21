@@ -1,143 +1,49 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="MathLens 数学一试卷诊断与提分系统" />
-  <title>MathLens · 数一提分系统</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="MathLens：基于已完成试卷的数学一题目诊断与针对性复测工具" />
+  <title>MathLens · 试卷诊断工作台</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">M</div>
-        <div>
-          <div class="brand-name">MathLens</div>
-          <div class="brand-sub">数学一 · 提分系统</div>
-        </div>
-      </div>
-      <div class="profile-card">
-        <div class="avatar">考</div>
-        <div>
-          <div class="profile-name">考研冲刺档案</div>
-          <div class="profile-meta">目标院校 · 120+ 分</div>
-        </div>
-        <span class="status-dot"></span>
-      </div>
-      <nav class="nav-list" aria-label="主导航">
-        <button class="nav-item active" data-view="overview"><span class="nav-icon">⌂</span><span>总览</span></button>
-        <button class="nav-item" data-view="papers"><span class="nav-icon">▤</span><span>试卷记录</span><span class="nav-badge">6</span></button>
-        <button class="nav-item" data-view="diagnosis"><span class="nav-icon">◌</span><span>知识诊断</span></button>
-        <button class="nav-item" data-view="practice"><span class="nav-icon">✦</span><span>错题训练</span><span class="nav-badge warm">8</span></button>
-        <button class="nav-item" data-view="plan"><span class="nav-icon">◫</span><span>学习计划</span></button>
+      <div class="brand"><div class="brand-mark">M</div><div><strong>MathLens</strong><span>数学一 · 试卷诊断</span></div></div>
+      <div class="workspace"><span class="workspace-dot"></span><div><strong>我的数学项目</strong><small id="data-mode">本地数据</small></div></div>
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-item active" data-view="home"><span>⌂</span>今日工作</button>
+        <button class="nav-item" data-view="papers"><span>▤</span>试卷</button>
+        <button class="nav-item" data-view="queue"><span>◌</span>题目队列<em id="queue-count">0</em></button>
+        <button class="nav-item" data-view="bank"><span>⌘</span>本地题库</button>
+        <button class="nav-item" data-view="profile"><span>◒</span>个人画像</button>
       </nav>
-      <div class="sidebar-bottom">
-        <div class="sync-box">
-          <div class="sync-icon">↻</div>
-          <div>
-            <div class="sync-title">增量分析已开启</div>
-            <div class="sync-text">录入新卷后自动更新</div>
-          </div>
-        </div>
-        <div class="sidebar-foot">v0.1 · 本地数据模式</div>
-      </div>
+      <div class="side-note"><div class="side-note-icon">↻</div><div><strong>证据持续累积</strong><small>每次复测都会更新画像</small></div></div>
+      <div class="side-foot">v0.1 · 单用户本地模式</div>
     </aside>
 
-    <main class="main-content">
-      <header class="topbar">
-        <div>
-          <div class="eyebrow" id="breadcrumb">总览 / 最近状态</div>
-          <h1 id="page-title">把每次做卷，都变成下一次提分的证据</h1>
-        </div>
-        <div class="top-actions">
-          <div class="last-updated"><span class="pulse"></span> 最近更新 <strong id="last-updated">今天 21:40</strong></div>
-          <button class="btn primary" id="open-modal">＋ 录入新试卷</button>
-        </div>
-      </header>
+    <main class="main">
+      <header class="topbar"><div><div class="crumb" id="crumb">今日工作 / 待处理</div><h1 id="page-title">今天只处理最值得回收的分</h1></div><div class="top-actions"><span class="connection"><i></i><span id="connection-text">正在连接本地数据</span></span><button class="btn primary" id="import-open">＋ 导入试卷</button></div></header>
 
-      <section class="view active" id="view-overview">
-        <div class="hero-note">
-          <div>
-            <span class="note-kicker">本周诊断结论</span>
-            <p>你的分数底盘已经站稳，当前最值得回收的是「变式不会」与「计算失误」两类分。先收口高频薄弱点，再做整卷速度训练。</p>
-          </div>
-          <div class="note-action">优先级 <strong>3</strong><span>个知识簇</span></div>
-        </div>
-
-        <div class="metric-grid" id="metric-grid"></div>
-
-        <div class="content-grid two-thirds">
-          <section class="panel trend-panel">
-            <div class="panel-head">
-              <div><span class="section-label">成绩走势</span><h2>稳定性比单次峰值更重要</h2></div>
-              <div class="legend"><span class="legend-line"></span>实际得分 <span class="legend-dash"></span>目标线</div>
-            </div>
-            <div class="chart-wrap" id="trend-chart"></div>
-            <div class="chart-footer"><span>近 6 次套卷</span><span class="trend-up">↗ +9 分 <small>较首卷</small></span></div>
-          </section>
-          <section class="panel score-panel">
-            <div class="panel-head"><div><span class="section-label">分数结构</span><h2>三大模块贡献</h2></div><button class="text-btn" data-view="diagnosis">查看诊断 →</button></div>
-            <div class="score-total"><strong id="score-total">101</strong><span>/ 150</span><em>最近一次</em></div>
-            <div class="module-bars" id="module-bars"></div>
-            <div class="small-callout"><span class="callout-dot"></span>高数是当前最稳的得分底盘，线代变式是短板。</div>
-          </section>
-        </div>
-
-        <div class="content-grid equal">
-          <section class="panel error-panel">
-            <div class="panel-head"><div><span class="section-label">失分归因</span><h2>错误不是一类问题</h2></div><button class="text-btn" data-view="diagnosis">展开分类 →</button></div>
-            <div class="error-bars" id="error-bars"></div>
-            <div class="error-foot"><span>本次可直接回收 <strong>12.5</strong> 分</span><span class="tag danger">计算 + 变式</span></div>
-          </section>
-          <section class="panel priority-panel">
-            <div class="panel-head"><div><span class="section-label">下一步动作</span><h2>本周必须收口</h2></div><span class="count-pill">3 项</span></div>
-            <div class="priority-list" id="priority-list"></div>
-          </section>
-        </div>
-
-        <section class="panel table-panel">
-          <div class="panel-head"><div><span class="section-label">最近试卷</span><h2>每一份卷子都留下可追踪证据</h2></div><button class="text-btn" data-view="papers">查看全部 →</button></div>
-          <div class="table-scroll"><table><thead><tr><th>日期</th><th>试卷</th><th>得分</th><th>用时</th><th>主要问题</th><th>复盘状态</th></tr></thead><tbody id="recent-table"></tbody></table></div>
-        </section>
+      <section class="view active" id="view-home">
+        <div class="hero"><div><span class="eyebrow">最小用户循环</span><h2>从一张已完成的试卷，找到下一步该练什么</h2><p>先处理重复失分，再用本地题库做针对性验证。系统只保留与提分有关的证据。</p></div><div class="hero-step"><span>当前队列</span><strong id="hero-queue">0</strong><small>道题待诊断</small></div></div>
+        <div class="stats" id="stats"></div>
+        <div class="home-grid"><section class="panel"><div class="panel-head"><div><span class="eyebrow">题目队列</span><h3>优先处理</h3></div><button class="link-btn" data-view="queue">查看全部 →</button></div><div id="priority-list" class="question-list"></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">最近证据</span><h3>最近一张试卷</h3></div><button class="link-btn" data-view="papers">试卷记录 →</button></div><div id="latest-paper" class="latest-paper"></div></section></div>
+        <section class="panel loop-panel"><div class="panel-head"><div><span class="eyebrow">工作方法</span><h3>一次复测只回答三个问题</h3></div><span class="tag green">保持简洁</span></div><div class="loop"><div><b>01</b><strong>哪里错？</strong><span>入手、建模、计算、收尾或策略</span></div><div><b>02</b><strong>练哪几道？</strong><span>从题库找同结构和同环节题</span></div><div><b>03</b><strong>是否稳定？</strong><span>看独立作答、用时和迁移结果</span></div></div></section>
       </section>
 
-      <section class="view" id="view-papers">
-        <div class="page-intro"><span class="section-label">试卷记录</span><h2>把“做过”变成“复盘过”</h2><p>每次新增试卷后，系统会更新趋势、错误归因与训练优先级。建议在批改当天完成录入。</p></div>
-        <section class="panel table-panel"><div class="panel-head"><div><span class="section-label">全部记录</span><h2 id="paper-count-title">6 份试卷</h2></div><button class="btn secondary" id="open-modal-2">＋ 录入新试卷</button></div><div class="table-scroll"><table><thead><tr><th>日期</th><th>试卷</th><th>得分</th><th>用时</th><th>错误构成</th><th>复盘状态</th></tr></thead><tbody id="all-table"></tbody></table></div></section>
-        <div class="info-grid"><div class="info-card accent"><span class="info-number" id="reviewed-count">4</span><span>已完成复盘</span><small>建议 24 小时内完成</small></div><div class="info-card"><span class="info-number" id="avg-time">138</span><span>平均用时（分钟）</span><small>目标：135 分钟内</small></div><div class="info-card"><span class="info-number" id="variance">8.4</span><span>分数稳定度</span><small>越高越稳定</small></div></div>
-      </section>
+      <section class="view" id="view-papers"><div class="page-intro"><span class="eyebrow">试卷</span><h2>已完成试卷是全部诊断的入口</h2><p>上传原始 PDF 后进入人工确认队列。第一版优先保留原始材料和用户判断，不让 OCR 错误污染分析。</p></div><section class="panel import-panel"><div class="drop-zone" id="drop-zone"><div class="drop-icon">↑</div><strong>拖入已完成的试卷 PDF</strong><span>或点击选择文件 · 文件只保存在本机 .mathlens/papers</span><input id="paper-file" type="file" accept="application/pdf" /></div><div class="import-fields"><label>试卷名称<input id="paper-title" placeholder="例如：真题 2022" /></label><label>考试日期<input id="paper-date" type="date" /></label><button class="btn primary" id="import-submit">保存到待确认队列</button></div><div class="import-feedback" id="import-feedback"></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">全部记录</span><h3 id="paper-count">0 张试卷</h3></div><span class="muted">导入后再确认题目切分与得分</span></div><div class="table-wrap"><table><thead><tr><th>试卷</th><th>日期</th><th>得分</th><th>状态</th><th>来源</th></tr></thead><tbody id="papers-table"></tbody></table></div></section></section>
 
-      <section class="view" id="view-diagnosis">
-        <div class="page-intro"><span class="section-label">知识诊断</span><h2>先判断“为什么错”，再决定“练什么”</h2><p>系统把每个失分标注成概念、方法、变式、计算、审题五类，避免把所有错误都归结为“粗心”。</p></div>
-        <div class="diagnosis-layout"><section class="panel radar-panel"><div class="panel-head"><div><span class="section-label">能力画像</span><h2>五类能力雷达</h2></div><span class="tag info">最近 3 卷</span></div><div class="radar-wrap" id="radar-chart"></div><div class="radar-legend"><span><i class="dot teal"></i>当前表现</span><span><i class="dot gray"></i>目标水平</span></div></section><section class="panel gap-panel"><div class="panel-head"><div><span class="section-label">知识簇缺口</span><h2>按回收分排序</h2></div><span class="tag danger">优先处理</span></div><div class="gap-list" id="gap-list"></div></section></div>
-        <section class="panel taxonomy-panel"><div class="panel-head"><div><span class="section-label">诊断规则</span><h2>一条错题只允许有一个主因</h2></div><button class="text-btn" id="show-rule">查看标注示例 →</button></div><div class="rule-grid"><div class="rule-item"><b>01</b><strong>概念不清</strong><span>定义、定理、适用条件说不完整</span></div><div class="rule-item"><b>02</b><strong>方法不会</strong><span>知道考点，但没有可执行的解题路径</span></div><div class="rule-item"><b>03</b><strong>变式不会</strong><span>题型换皮或条件变化就无法迁移</span></div><div class="rule-item"><b>04</b><strong>计算失误</strong><span>思路正确，算错、漏项、符号错误</span></div><div class="rule-item"><b>05</b><strong>审题表达</strong><span>条件漏读、步骤缺失、过程分流失</span></div></div></section>
-      </section>
+      <section class="view" id="view-queue"><div class="page-intro"><span class="eyebrow">题目队列</span><h2>只处理有证据的问题</h2><p>错题优先，答对但慢、低置信度或重复出现的题目会进入高风险队列。</p></div><div class="queue-toolbar"><div class="filter-tabs"><button class="filter active" data-filter="all">全部</button><button class="filter" data-filter="待诊断">待诊断</button><button class="filter" data-filter="高风险正确">高风险正确</button><button class="filter" data-filter="不稳定">不稳定</button></div><span class="muted" id="queue-hint"></span></div><div id="queue-list" class="queue-grid"></div></section>
 
-      <section class="view" id="view-practice">
-        <div class="page-intro"><span class="section-label">错题训练</span><h2>每道错题，都要有一次“相似但不相同”</h2><p>训练包按知识簇和错误主因生成，先做 3 题同构题，再做 1 题变式题，避免只记住原题答案。</p></div>
-        <div class="practice-grid" id="practice-grid"></div>
-        <section class="panel protocol-panel"><div class="panel-head"><div><span class="section-label">推荐训练协议</span><h2>25 分钟一轮，立即验证迁移</h2></div><span class="tag success">今日可完成</span></div><div class="protocol-steps"><div><b>1</b><span>回看错因</span><small>2 分钟</small></div><div><b>2</b><span>同构题 × 3</span><small>12 分钟</small></div><div><b>3</b><span>变式题 × 1</span><small>8 分钟</small></div><div><b>4</b><span>口述条件</span><small>3 分钟</small></div></div></section>
-      </section>
+      <section class="view" id="view-bank"><div class="page-intro"><span class="eyebrow">本地题库</span><h2>用已有题目做验证</h2><p>优先检索同结构、同环节和条件对比题。题目来源、标签和指纹会保留在本地。</p></div><section class="panel bank-search"><div class="search-row"><input id="bank-search" placeholder="搜索：换元、正定性、边缘分布……" /><select id="bank-stage"><option value="">全部环节</option><option value="切入">题目切入</option><option value="建模">建模与路径</option><option value="计算">中间计算</option><option value="最终处理">最终处理</option></select><button class="btn secondary" id="bank-search-btn">检索</button></div></section><div id="bank-list" class="bank-grid"></div></section>
 
-      <section class="view" id="view-plan">
-        <div class="page-intro"><span class="section-label">学习计划</span><h2>把短期提分拆成每天能完成的动作</h2><p>计划由“可回收分”驱动，不追求平均用力。优先消灭高频、低难度、可重复的问题。</p></div>
-        <div class="plan-layout"><section class="panel calendar-panel"><div class="panel-head"><div><span class="section-label">本周节奏</span><h2>10 月 21 日 · 周三</h2></div><span class="streak">连续 6 天</span></div><div class="week-grid" id="week-grid"></div><div class="today-plan"><div class="plan-check checked">✓</div><div><strong>线代：二次型变式训练</strong><span>3 道同构题 + 1 道变式题 · 25 分钟</span></div><span class="done-label">已完成</span></div><div class="today-plan"><div class="plan-check">○</div><div><strong>高数：积分计算易错点</strong><span>错题重做 4 题 · 20 分钟</span></div><button class="mini-btn">开始</button></div><div class="today-plan"><div class="plan-check">○</div><div><strong>整卷：选择填空限时</strong><span>第 3 套卷 · 45 分钟</span></div><button class="mini-btn">开始</button></div></section><section class="panel target-panel"><div class="panel-head"><div><span class="section-label">目标拆解</span><h2>从 101 到 120</h2></div><span class="tag info">剩余 19 分</span></div><div class="target-bar"><span style="width:68%"></span></div><div class="target-labels"><span>当前 101</span><span>目标 120</span></div><div class="target-items"><div><b>+6</b><span>计算失误</span><small>本周可回收</small></div><div><b>+5</b><span>线代变式</span><small>本周可回收</small></div><div><b>+4</b><span>概率基础</span><small>本周可回收</small></div><div><b>+4</b><span>速度管理</span><small>需要坚持</small></div></div></section></div>
-      </section>
+      <section class="view" id="view-profile"><div class="page-intro"><span class="eyebrow">个人画像</span><h2>画像只保存被题目验证过的结论</h2><p>状态来自试卷、针对性小测和复测结果，证据不足时保持未知，不制造虚假的精确分数。</p></div><div class="profile-grid"><section class="panel"><div class="panel-head"><div><span class="eyebrow">解题环节</span><h3>当前状态</h3></div><span class="tag blue">持续更新</span></div><div id="stage-list" class="stage-list"></div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">重复失分</span><h3>最需要处理的主因</h3></div></div><div id="error-list" class="error-list"></div></section></div><section class="panel evidence-panel"><div class="panel-head"><div><span class="eyebrow">画像原则</span><h3>每个结论都能回到题目</h3></div></div><div class="evidence-points"><span>✓ 一次做对不会立即变成“已掌握”</span><span>✓ 两次独立成功并通过迁移题，才进入“迁移通过”</span><span>✓ 错误环节与知识点分开记录</span><span>✓ 用户自评和系统证据分开保存</span></div></section></section>
     </main>
   </div>
 
-  <div class="modal-backdrop" id="modal-backdrop" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <div class="modal-head"><div><span class="section-label">增量更新</span><h2 id="modal-title">录入一份新试卷</h2></div><button class="icon-btn" id="close-modal" aria-label="关闭">×</button></div>
-      <form id="paper-form">
-        <div class="form-grid"><label>日期<input type="date" name="date" required /></label><label>试卷名称<input type="text" name="name" placeholder="例：真题 2021" required /></label><label>总分<input type="number" name="score" min="0" max="150" placeholder="101" required /></label><label>用时（分钟）<input type="number" name="time" min="1" max="240" placeholder="135" required /></label></div>
-        <div class="form-section"><div class="form-label">本次主要错误（可多选）</div><div class="check-grid"><label class="check-chip"><input type="checkbox" name="errors" value="概念不清" />概念不清</label><label class="check-chip"><input type="checkbox" name="errors" value="方法不会" />方法不会</label><label class="check-chip"><input type="checkbox" name="errors" value="变式不会" />变式不会</label><label class="check-chip"><input type="checkbox" name="errors" value="计算失误" />计算失误</label><label class="check-chip"><input type="checkbox" name="errors" value="审题表达" />审题表达</label></div></div>
-        <div class="form-section"><div class="form-label">复盘状态</div><div class="status-options"><label><input type="radio" name="status" value="待复盘" checked />待复盘</label><label><input type="radio" name="status" value="已复盘" />已复盘</label><label><input type="radio" name="status" value="训练中" />训练中</label></div></div>
-        <div class="modal-foot"><span>录入后会自动刷新趋势与训练优先级</span><button class="btn primary" type="submit">保存并更新分析</button></div>
-      </form>
-    </div>
-  </div>
+  <div class="drawer-backdrop" id="drawer-backdrop"><aside class="drawer"><div class="drawer-head"><div><span class="eyebrow">单题诊断</span><h2 id="drawer-title">题目</h2></div><button class="icon-btn" id="drawer-close">×</button></div><div id="drawer-body"></div></aside></div>
   <script src="./app.js"></script>
 </body>
 </html>

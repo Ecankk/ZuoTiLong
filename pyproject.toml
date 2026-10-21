@@ -1,0 +1,8 @@
+[project]
+name = "mathlens"
+version = "0.1.0"
+description = "Local-first paper diagnosis and targeted review for Chinese postgraduate mathematics"
+requires-python = ">=3.11"
+
+[project.scripts]
+mathlens = "server:main"

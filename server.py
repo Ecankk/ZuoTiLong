@@ -327,8 +327,10 @@ class Handler(BaseHTTPRequestHandler):
                 count = 0
                 for item in incoming:
                     qid = item.get("id") or "bank-" + uuid.uuid4().hex[:10]
+                    stem = item.get("stem") or item.get("content") or item.get("question") or ""
+                    tags = item.get("tags") or item.get("keywords") or ([item.get("chapter")] if item.get("chapter") else [])
                     conn.execute("INSERT OR REPLACE INTO bank_questions(id,source,source_ref,stem,answer,explanation,tags_json,fingerprint_json,difficulty,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                                 (qid, item.get("source") or "本地题库", item.get("source_ref"), item.get("stem") or "", item.get("answer"), item.get("explanation"), json.dumps(item.get("tags", []), ensure_ascii=False), json.dumps(item.get("fingerprint", {}), ensure_ascii=False), int(item.get("difficulty") or 3), now_iso()))
+                                 (qid, item.get("source") or "本地题库", item.get("source_ref") or item.get("uid") or item.get("id"), stem, item.get("answer") or item.get("solution"), item.get("explanation") or item.get("analysis"), json.dumps(tags, ensure_ascii=False), json.dumps(item.get("fingerprint", {}), ensure_ascii=False), int(item.get("difficulty") or 3), now_iso()))
                     count += 1
                 conn.commit()
                 self.send_json({"imported": count}, HTTPStatus.CREATED)

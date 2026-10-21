@@ -20,6 +20,8 @@ python server.py
 
 Windows 用户可以直接双击项目根目录的 `start_mathlens.bat`，脚本会启动服务并自动打开浏览器。关闭名为 `MathLens Server` 的命令行窗口即可停止服务。
 
+如果浏览器没有自动打开，请手动访问 `http://127.0.0.1:4173/`，并保持 `MathLens Server` 窗口不要关闭。
+
 首次启动会在 `.mathlens/` 中创建 SQLite 数据库和示例数据。真实资料放在 `.mathlens/`，不会进入 Git。
 
 ## 当前能力

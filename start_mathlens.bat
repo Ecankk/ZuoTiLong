@@ -37,7 +37,17 @@ echo [MathLens] Starting local server with Python...
 start "MathLens Server" /D "%~dp0" cmd /k python server.py --host 127.0.0.1 --port 4173
 
 :open_browser
-timeout /t 2 /nobreak >nul
+for /l %%i in (1,1,20) do (
+  curl --silent --fail http://127.0.0.1:4173/api/health >nul 2>&1
+  if not errorlevel 1 goto browser_ready
+  timeout /t 1 /nobreak >nul
+)
+echo [MathLens] The local server did not become ready in 20 seconds.
+echo Try opening http://127.0.0.1:4173/ manually.
+pause
+exit /b 1
+
+:browser_ready
 start "" "http://127.0.0.1:4173/"
 echo [MathLens] Browser opened. Keep the MathLens Server window running.
 endlocal

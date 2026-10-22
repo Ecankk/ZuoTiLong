@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import uuid
 from datetime import datetime, timezone
+from answer_images import init_answer_images, image_records
 
 
 def stamp():
@@ -24,6 +25,7 @@ def dump(value):
 
 
 def init_loop(conn):
+    init_answer_images(conn)
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS bank_resources(
       bank_id TEXT PRIMARY KEY REFERENCES bank_questions(id), metadata_json TEXT NOT NULL,
@@ -55,6 +57,9 @@ def init_loop(conn):
     pcols = {r[1] for r in conn.execute("PRAGMA table_info(papers)")}
     if "source_sha256" not in pcols:
         conn.execute("ALTER TABLE papers ADD COLUMN source_sha256 TEXT")
+    acols = {r[1] for r in conn.execute("PRAGMA table_info(probe_attempts)")}
+    if "images_json" not in acols:
+        conn.execute("ALTER TABLE probe_attempts ADD COLUMN images_json TEXT NOT NULL DEFAULT '[]'")
 
 
 def import_image_bank(conn, source: Path, data_root: Path):
@@ -194,6 +199,7 @@ def probe_payload(conn, row):
     attempts = [dict(r) for r in conn.execute("SELECT * FROM probe_attempts WHERE probe_id=? ORDER BY created_at", (row["id"],))]
     for attempt in attempts:
         attempt["assessment"] = json.loads(attempt["assessment_json"]) if attempt["assessment_json"] else None
+        attempt["image_ids"] = json.loads(attempt.pop("images_json", "[]"))
     item["attempts"] = attempts
     item["bank_exposed"] = bool(conn.execute("SELECT bank_id FROM bank_exposures WHERE bank_id=?", (row["bank_id"],)).fetchone())
     item["question_image"] = f"/api/bank/{row['bank_id']}/question"
@@ -233,8 +239,9 @@ def submit_probe(conn, probe_id, body):
     if not row:
         raise ValueError("检验任务不存在")
     response = str(body.get("response", "")).strip()
-    if not response:
-        raise ValueError("请填写作答或明确写“不知道”")
+    image_ids = [r['id'] for r in image_records(conn, body.get('image_ids', []))]
+    if not response and not image_ids:
+        raise ValueError("请填写作答、上传照片，或明确写“不知道”")
     if len(response) > 16000:
         raise ValueError("作答过长")
     payload = json.loads(row["payload_json"])
@@ -243,7 +250,7 @@ def submit_probe(conn, probe_id, body):
     if elapsed is not None and (not isinstance(elapsed, (int, float)) or not 0 <= elapsed <= 86400):
         raise ValueError("用时不合法")
     accepted = payload.get("accepted", [])
-    matched = bool(accepted) and normalize_answer(response) in {normalize_answer(a) for a in accepted}
+    matched = not image_ids and bool(accepted) and normalize_answer(response) in {normalize_answer(a) for a in accepted}
     # Unrecognised free-text answers are not automatically classified as wrong.
     assessment = {"correct": True, "method": "explicit_answer_match", "feedback": "与该环节的参考回答一致；仅增加一次成功证据。"} if matched else None
     request_id = body.get("request_id")
@@ -252,11 +259,11 @@ def submit_probe(conn, probe_id, body):
     aid = "attempt-" + (request_id if request_id else uuid.uuid4().hex)
     previous = conn.execute("SELECT * FROM probe_attempts WHERE id=?", (aid,)).fetchone()
     if previous:
-        if previous["probe_id"] != probe_id or previous["response"] != response:
+        if previous["probe_id"] != probe_id or previous["response"] != response or json.loads(previous["images_json"]) != image_ids:
             raise ValueError("同一请求标识不能用于不同作答")
         return {"attempt_id":aid,"reused":True,"assessment":json.loads(previous["assessment_json"]) if previous["assessment_json"] else None}
-    conn.execute("INSERT INTO probe_attempts VALUES(?,?,?,?,?,?,?)",
-                 (aid, probe_id, response, int(exposed), int(elapsed) if elapsed is not None else None, dump(assessment) if assessment else None, stamp()))
+    conn.execute("INSERT INTO probe_attempts(id,probe_id,response,answer_exposed,elapsed_seconds,assessment_json,created_at,images_json) VALUES(?,?,?,?,?,?,?,?)",
+                 (aid, probe_id, response, int(exposed), int(elapsed) if elapsed is not None else None, dump(assessment) if assessment else None, stamp(),dump(image_ids)))
     conn.execute("UPDATE diagnostic_probes SET status=? WHERE id=?", ("assessed" if matched else "awaiting_assessment", probe_id))
     if matched:
         conn.execute("INSERT INTO learning_events VALUES(?,?,?,?,?,?,?,?,?)",

@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 from pdf_pipeline import extract_pdf, match_bank_questions
 from learning_loop import init_loop, loop_snapshot, submit_probe, apply_report
 from codex_bridge import CodexBridge, BridgeConflict
+from answer_images import save_answer_image, image_records, image_path
 
 
 ROOT = Path(__file__).resolve().parent
@@ -413,6 +414,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def api_get(self, parsed):
+        if parsed.path.startswith('/api/answer-images/'):
+            try:
+                with closing(connect()) as conn:
+                    record = image_records(conn, [parsed.path.rsplit('/',1)[-1]])[0]
+                self.send_file(image_path(record, DATA), 'image/jpeg')
+            except ValueError as exc:
+                self.send_json({'error':str(exc)}, HTTPStatus.NOT_FOUND)
+            return
         if parsed.path == "/api/agent/state":
             self.send_json(BRIDGE.snapshot() if BRIDGE else {"connected": False, "status": "disconnected", "input_locked": False, "can_submit": False, "turns": [], "requests": []})
             return
@@ -468,7 +477,7 @@ class Handler(BaseHTTPRequestHandler):
         conn = connect()
         try:
             if parsed.path == "/api/health":
-                self.send_json({"ok": True, "version": "0.4.1"})
+                self.send_json({"ok": True, "version": "0.4.2"})
             elif parsed.path == "/api/bootstrap":
                 self.send_json(bootstrap())
             elif parsed.path == "/api/profile":
@@ -512,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
         if action == "connect":
             result = BRIDGE.connect()
         elif action == "send":
-            result = BRIDGE.submit(body.get("text", ""), body.get("request_id"), body.get("context"))
+            result = BRIDGE.submit(body.get("text", ""), body.get("request_id"), body.get("context"), body.get('image_ids', []))
         elif action == "respond":
             result = BRIDGE.respond(str(body.get("request_id")), body)
         elif action == "retry":
@@ -525,6 +534,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(result)
 
     def api_post(self, parsed):
+        if parsed.path == '/api/answer-images':
+            self.upload_answer_images()
+            return
         if parsed.path == "/api/papers/import":
             self.import_paper()
             return
@@ -551,12 +563,16 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path.startswith("/api/probes/") and parsed.path.endswith("/submit"):
                 if BRIDGE and not BRIDGE.connected:
                     raise ValueError("请先连接 Codex，以便提交后获得 Agent 反馈")
-                result = submit_probe(conn, parsed.path.split("/")[3], self.read_json())
+                body = self.read_json()
+                result = submit_probe(conn, parsed.path.split("/")[3], body)
                 conn.commit()
                 if BRIDGE:
-                    probe = conn.execute("SELECT paper_id,question_id FROM diagnostic_probes WHERE id=?", (parsed.path.split("/")[3],)).fetchone()
-                    BRIDGE.submit(f"检验作答已保存，attempt_id={result['attempt_id']}。请读取实际回答、核对并评价，再反馈下一步。已有评价时不要重复写入。", str(uuid.uuid5(uuid.NAMESPACE_URL, "mathlens:attempt:" + result['attempt_id'])), dict(probe))
+                    self.request_probe_feedback(conn, parsed.path.split('/')[3],result['attempt_id'])
                 self.send_json(result, HTTPStatus.CREATED)
+            elif parsed.path.startswith('/api/probes/') and parsed.path.endswith('/feedback'):
+                body = self.read_json()
+                result = self.request_probe_feedback(conn, parsed.path.split('/')[3],body.get('attempt_id'))
+                self.send_json(result)
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/confirm"):
                 paper_id = parsed.path.split("/")[3]
                 body = self.read_json()
@@ -620,6 +636,30 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         finally:
             conn.close()
+
+    def request_probe_feedback(self, conn, probe_id, attempt_id):
+        if not BRIDGE or not BRIDGE.connected:
+            raise ValueError('请先连接 Codex，作答已保留，可连接后重发核对')
+        attempt = conn.execute('''SELECT a.images_json,p.paper_id,p.question_id,p.bank_id FROM probe_attempts a
+          JOIN diagnostic_probes p ON a.probe_id=p.id WHERE a.id=? AND p.id=?''',(attempt_id,probe_id)).fetchone()
+        if not attempt:
+            raise ValueError('作答与检验题不一致')
+        probe = {k:attempt[k] for k in ('paper_id','question_id','bank_id')}
+        context = {"paper_id":probe['paper_id'],"question_id":probe['question_id'],"screen":{**probe,"probe_id":probe_id,"view":"针对性检验","label":"已提交的真实作答"}}
+        return BRIDGE.submit(f"检验作答已保存，attempt_id={attempt_id}。请读取实际回答、核对并评价，再反馈下一步。已有评价时不要重复写入。",str(uuid.uuid5(uuid.NAMESPACE_URL,'mathlens:attempt:'+attempt_id)),context,json.loads(attempt['images_json']))
+
+    def upload_answer_images(self):
+        content_type = self.headers.get('Content-Type','')
+        length = int(self.headers.get('Content-Length','0'))
+        if 'multipart/form-data' not in content_type or not 0 < length <= 33 * 1024 * 1024:
+            raise ValueError('请上传最多 4 张照片，每张不超过 8 MB')
+        message = BytesParser(policy=email_policy).parsebytes(('Content-Type: '+content_type+'\r\nMIME-Version: 1.0\r\n\r\n').encode()+self.rfile.read(length))
+        files = [p.get_payload(decode=True) for p in message.iter_parts() if p.get_param('name',header='content-disposition') == 'files'] if message.is_multipart() else []
+        if not 1 <= len(files) <= 4:
+            raise ValueError('请上传 1–4 张照片')
+        with closing(connect()) as conn, conn:
+            images = [save_answer_image(conn, DATA, content or b'') for content in files]
+        self.send_json({'images':images}, HTTPStatus.CREATED)
 
     def import_paper(self):
         content_type = self.headers.get("Content-Type", "")

@@ -1,5 +1,6 @@
 # PDF text extraction and page coordinates (required for automatic digital-PDF parsing)
 PyMuPDF>=1.24,<2
+Pillow>=10,<13
 
 # Local Chinese OCR with bundled ONNX models, tested with Python 3.12.
 # Used for question anchors and text drafts; mathematical work is reviewed by Agent.

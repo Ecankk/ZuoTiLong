@@ -8,11 +8,14 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from urllib.parse import urlparse
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import server
 from learning_loop import apply_report, assess_attempt, loop_snapshot, submit_probe
+from answer_images import save_answer_image
 from pdf_pipeline import extract_pdf, segment_pages, _bank_score
 import pymupdf as fitz
 
@@ -73,12 +76,78 @@ class LearningLoopTests(unittest.TestCase):
         for key in ['expected','accepted','rubric','solution_note','payload_json']:
             self.assertNotIn(key,probe)
 
+    def test_photo_only_answer_is_durable_idempotent_and_waits_for_agent(self):
+        from PIL import Image
+        raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
+        asset=save_answer_image(self.conn,self.root,raw.getvalue())
+        self.apply();pid='paper-test-probe-test'
+        body={'response':'','image_ids':[asset['id']],'request_id':'22345678-1234-1234-1234-123456789012'}
+        result=submit_probe(self.conn,pid,body);self.conn.commit()
+        self.assertIsNone(result['assessment'])
+        self.assertEqual(result['status'],'awaiting_assessment')
+        self.assertTrue(submit_probe(self.conn,pid,body)['reused'])
+        attempt=loop_snapshot(self.conn)['probes'][0]['attempts'][0]
+        self.assertEqual(attempt['image_ids'],[asset['id']])
+        self.assertEqual(attempt['response'],'')
+        with self.assertRaises(ValueError):submit_probe(self.conn,pid,{**body,'image_ids':[],'response':'2/3'})
+        # Even a matching typed result cannot automatically grade accompanying handwritten work.
+        another=submit_probe(self.conn,pid,{'response':'2/3','image_ids':[asset['id']]})
+        self.assertIsNone(another['assessment'])
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_success'").fetchone()[0],0)
+
     def test_unknown_expression_waits_for_agent_not_marked_wrong(self):
         self.apply();result=submit_probe(self.conn,'paper-test-probe-test',{'response':'an equivalent expression'})
         self.assertEqual(result['status'],'awaiting_assessment')
         self.assertEqual(self.conn.execute('SELECT count(*) FROM learning_events').fetchone()[0],2)
         assess_attempt(self.conn,result['attempt_id'],{'correct':True,'feedback':'equivalent','author':'test-agent'})
         self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_success'").fetchone()[0],1)
+
+    def test_uploaded_photo_http_roundtrip_and_invalid_file_rollback(self):
+        from PIL import Image
+        raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
+        def upload(contents):
+            boundary='photo-upload-test'
+            parts=[(f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="../../private.png"\r\nContent-Type: image/png\r\n\r\n').encode()+data+b'\r\n' for data in contents]
+            body=b''.join(parts)+f'--{boundary}--\r\n'.encode()
+            handler=server.Handler.__new__(server.Handler)
+            handler.headers=Message();handler.headers['Content-Type']=f'multipart/form-data; boundary={boundary}';handler.headers['Content-Length']=str(len(body))
+            handler.rfile=BytesIO(body);result={}
+            handler.send_json=lambda payload,status=200:result.update(payload=payload,status=int(status))
+            handler.upload_answer_images()
+            return handler,result
+        with self.assertRaises(ValueError):upload([raw.getvalue(),b'invalid'])
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM answer_images').fetchone()[0],0)
+        handler,result=upload([raw.getvalue()])
+        self.assertEqual(result['status'],201)
+        image=result['payload']['images'][0];served=[]
+        handler.send_file=lambda path,mime:served.append((path,mime))
+        handler.api_get(urlparse(image['url']))
+        self.assertTrue(served[0][0].is_relative_to(self.root/'answer-images'))
+        self.assertEqual(served[0][1],'image/jpeg')
+        self.assertNotIn('path',image)
+        handler.api_get(urlparse('/api/answer-images/image-'+'0'*32))
+        self.assertEqual(result['status'],404)
+
+    def test_saved_photo_feedback_reuses_attempt_and_preserves_context(self):
+        from PIL import Image
+        from unittest.mock import Mock
+        raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
+        asset=save_answer_image(self.conn,self.root,raw.getvalue())
+        self.apply();pid='paper-test-probe-test'
+        attempt=submit_probe(self.conn,pid,{'response':'','image_ids':[asset['id']]})
+        self.conn.commit()
+        bridge=Mock(connected=True);handler=server.Handler.__new__(server.Handler)
+        with patch.object(server,'BRIDGE',bridge):
+            handler.request_probe_feedback(self.conn,pid,attempt['attempt_id'])
+            first=bridge.submit.call_args.args
+            handler.request_probe_feedback(self.conn,pid,attempt['attempt_id'])
+            self.assertEqual(bridge.submit.call_args.args,first)
+            with self.assertRaises(ValueError):handler.request_probe_feedback(self.conn,'another-probe',attempt['attempt_id'])
+        self.assertEqual(first[2]['screen']['probe_id'],pid)
+        self.assertEqual(first[2]['question_id'],'paper-test-q-01')
+        self.assertEqual(first[3],[asset['id']])
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM probe_attempts').fetchone()[0],1)
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_success'").fetchone()[0],0)
 
     def test_submit_is_idempotent_and_not_mastery(self):
         self.apply();body={'response':'2/3','request_id':'12345678-1234-1234-1234-123456789012'}

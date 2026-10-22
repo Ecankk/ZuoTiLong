@@ -3,6 +3,7 @@ import { postJson } from './api'
 import type { Paper, Question, VisibleContext } from './types'
 
 import { MathText } from './MathText'
+import { useAnswerImages, AnswerImagePicker, SubmittedImages } from './AnswerImages'
 export { MathText } from './MathText'
 
 export type Diagnosis = {
@@ -14,7 +15,7 @@ export type Probe = {
   id: string; paper_id: string; question_id: string; bank_id: string; skill_id: string; skill_label: string;
   prompt: string; targets: string; discriminates: string; expected?: string; solution_note?: string;
   status: string; priority: number; question_image: string; analysis_image: string; bank_exposed: boolean;
-  attempts: { id: string; response: string; answer_exposed: number; assessment?: { correct: boolean; feedback: string } }[]
+  attempts: { id: string; response: string; image_ids?:string[]; answer_exposed: number; assessment?: { correct: boolean; feedback: string } }[]
 }
 export type Skill = { skill_id: string; label: string; failures: number; successes: number; pending: number; papers: number; state: string; independent_probe_successes: number }
 export type Loop = { reports: { id: string; paper_id: string; summary: string; limitations: string[]; author: string; method: string; score_status: string; priorities: { label: string; evidence: string; action: string }[] }[];
@@ -73,15 +74,16 @@ export function LearningWorkspace({ loop, questions, papers, onReload, focusedQu
 }
 
 function ProbeCard({ probe, onReload, onSelect }: { probe: Probe; onReload: () => Promise<void>; onSelect: () => void }) {
+  const photos = useAnswerImages()
   const [response,setResponse]=useState('');const [exposed,setExposed]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [showAnalysis,setShowAnalysis]=useState(false);const [requestId]=useState(()=>crypto.randomUUID())
-  const submit=async()=>{setBusy(true);setError('');try{await postJson(`/api/probes/${probe.id}/submit`,{response,answer_exposed:exposed||probe.bank_exposed,request_id:requestId});setResponse('');await onReload()}catch(e){setError(e instanceof Error?e.message:'提交失败')}finally{setBusy(false)}}
+  const submit=async()=>{setBusy(true);setError('');try{await postJson(`/api/probes/${probe.id}/submit`,{response,image_ids:photos.images.map(image=>image.id),answer_exposed:exposed||probe.bank_exposed,request_id:requestId});setResponse('');photos.clear();await onReload()}catch(e){setError(e instanceof Error?e.message:'提交失败')}finally{setBusy(false)}}
   const last=probe.attempts.at(-1)
   return <article className="panel probe-card" tabIndex={0} onFocus={onSelect} onClick={onSelect}><span className="eyebrow">{probe.bank_id.replace('math1-','数学一 ')} · {probe.targets}</span><h3><MathText text={probe.skill_label}/></h3><p><MathText text={probe.discriminates}/></p>
     <img className="evidence-image" src={probe.question_image} alt="检验题原题图片"/>
     <div className="probe-prompt"><MathText text={probe.prompt}/></div>
-    {last?<div className="attempt-result"><b>你的作答：</b><MathText text={last.response}/><p><MathText text={last.assessment?.feedback||'已保存，等待 Agent 核对表达与推导；暂不判错。'}/></p><details onToggle={e=>setShowAnalysis(e.currentTarget.open)}><summary>查看本环节参考与原题解析</summary><p><MathText text={probe.expected||''}/></p><p><MathText text={probe.solution_note||''}/></p>{showAnalysis&&<img className="evidence-image" src={probe.analysis_image} alt="原题参考解析"/>}</details></div>:
-    <><textarea aria-label={`${probe.skill_label}的作答`} placeholder="写出这一步的结果或思路；不知道也可以如实写下。" value={response} onChange={e=>setResponse(e.target.value)}/><label className="check-label"><input type="checkbox" checked={exposed||probe.bank_exposed} disabled={probe.bank_exposed} onChange={e=>setExposed(e.target.checked)}/>{probe.bank_exposed?'已在本系统查看该题解析，本次记为有提示的练习':'此前看过这道题的答案或解析'}</label><button className="primary" disabled={busy||!response.trim()} onClick={submit}>{busy?'保存中…':'提交本环节作答'}</button></>}
-    {error&&<p role="alert" className="notice">{error}</p>}
+    {last?<div className="attempt-result"><b>你的作答：</b><MathText text={last.response||'已上传手写作答'}/><SubmittedImages ids={last.image_ids}/><p><MathText text={last.assessment?.feedback||'已保存，等待 Agent 核对表达与推导；暂不判错。'}/></p><details onToggle={e=>setShowAnalysis(e.currentTarget.open)}><summary>查看本环节参考与原题解析</summary><p><MathText text={probe.expected||''}/></p><p><MathText text={probe.solution_note||''}/></p>{showAnalysis&&<img className="evidence-image" src={probe.analysis_image} alt="原题参考解析"/>}</details></div>:
+    <><textarea aria-label={`${probe.skill_label}的作答`} placeholder="写出这一步的思路，或上传手写作答照片。" value={response} onChange={e=>setResponse(e.target.value)} onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();photos.addFiles(Array.from(e.clipboardData.files))}}}/><AnswerImagePicker draft={photos} disabled={busy}/><label className="check-label"><input type="checkbox" checked={exposed||probe.bank_exposed} disabled={probe.bank_exposed} onChange={e=>setExposed(e.target.checked)}/>{probe.bank_exposed?'已在本系统查看该题解析，本次记为有提示的练习':'此前看过这道题的答案或解析'}</label><button className="primary" disabled={busy||photos.busy||(!response.trim()&&!photos.images.length)} onClick={submit}>{busy?'保存中…':'提交本环节作答'}</button></>}
+    {last&&!last.assessment&&<button className="small-action" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{await postJson(`/api/probes/${probe.id}/feedback`,{attempt_id:last.id});await onReload()}catch(e){setError(e instanceof Error?e.message:'重发失败')}finally{setBusy(false)}}}>请 Agent 核对已保存作答</button>}{error&&<p role="alert" className="notice">{error}</p>}
   </article>
 }
 

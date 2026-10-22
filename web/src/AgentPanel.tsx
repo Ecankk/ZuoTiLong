@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { postJson } from './api'
 import { MathText } from './LearningWorkspace'
 import type { Question, VisibleContext } from './types'
+import { useAnswerImages, AnswerImagePicker, SubmittedImages } from './AnswerImages'
 
 type AgentRequest = { id: string; method: string; params: { command?: string; reason?: string; questions?: { id: string; question: string; options?: { label: string; description: string }[]; isSecret?: boolean }[]; [key: string]: unknown } }
 export type AgentState = {
   revision: number; connected: boolean; can_submit: boolean; input_locked: boolean; session_id?: string;
-  status: string; activity: string; error?: string; active_request?: string; requests: AgentRequest[];
-  turns: { request_id: string; text: string; status: string; context: { paper_id?: string; question_id?: string }; messages: { id: string; text: string; phase?: string; complete: boolean }[] }[]
+  status: string; activity: string; error?: string; connection_notice?: string; active_request?: string; requests: AgentRequest[];
+  turns: { request_id: string; text: string; status: string; image_ids?:string[]; context: { paper_id?: string; question_id?: string }; messages: { id: string; text: string; phase?: string; complete: boolean }[] }[]
 }
 
 export function useAgentState() {
@@ -35,6 +36,7 @@ export function AgentPanel({ agent, questions, visibleContext, onReload }: {
 }) {
   const { state, reachable } = agent
   const [text, setText] = useState('')
+  const photos = useAnswerImages()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const request = useRef<{ id: string; text: string; context: string } | null>(null)
@@ -63,21 +65,23 @@ export function AgentPanel({ agent, questions, visibleContext, onReload }: {
     const attachedQuestion = visibleContext.question_id
     const context = { screen: {...visibleContext, label: visibleContext.label.slice(0,2000)},
       ...(attachedPaper ? { paper_id: attachedPaper } : {}), ...(attachedQuestion ? { question_id: attachedQuestion } : {}) }
-    const content = text.trim(), contextKey = JSON.stringify(context)
+    const image_ids=photos.images.map(image=>image.id)
+    const content = text.trim(), contextKey = JSON.stringify({context,image_ids})
     if (!request.current || request.current.text !== content || request.current.context !== contextKey)
       request.current = { id: crypto.randomUUID(), text: content, context: contextKey }
-    if (await action('send', { text: content, request_id: request.current.id, context })) { setText(''); request.current = null }
+    if (await action('send', { text: content, request_id: request.current.id, context, image_ids })) { setText(''); photos.clear();request.current = null }
   }
-  const disabled = busy || !reachable || !state?.can_submit
+  const disabled = busy || photos.busy || !reachable || !state?.can_submit
   const labels: Record<string, string> = { disconnected: '未连接', connecting: '连接中', idle: '可以继续', running: '处理中 · 输入已锁定', waiting_user: '等待你的确认', failed: '本轮未完成', interrupted: '本轮已中断' }
   return <section className="panel agent-panel" aria-label="与 Codex 讨论">
-    <div className="panel-head"><div><div className="eyebrow">同一个 Codex 会话 · 本地保存</div><h2>与 Codex 讨论</h2></div><span className="status pending" role="status">{reachable ? labels[state?.status || 'disconnected'] : '正在确认连接'}</span></div>
+    <div className="panel-head"><div><div className="eyebrow">本机 Codex 登录 · 固定学习会话</div><h2>与 Codex 讨论</h2></div><span className="status pending" role="status">{reachable ? labels[state?.status || 'disconnected'] : '正在确认连接'}</span></div>
     <p className="muted">发送时附上当前页面与题目，等待完整反馈后继续。</p>
     <div className="agent-visible-context"><span>当前正在看</span><strong title={visibleContext.label}><MathText text={visibleContext.label}/></strong><small>{visibleContext.view}{visibleContext.section ? ` · ${visibleContext.section}` : ''}</small></div>
     {state?.session_id && <details><summary>当前会话</summary><code>{state.session_id}</code><p>重启后继续使用此会话。请在这里提交学习消息，避免同时在 CLI/Desktop 向该会话发消息。</p></details>}
+    {state?.connection_notice&&<p className="notice" role="status">{state.connection_notice}</p>}
     {!state?.connected && <button className="primary" disabled={busy || state?.status === 'connecting' || !reachable} onClick={() => action('connect')}>{state?.session_id ? '重新连接原会话' : '连接 Codex'}</button>}
     {!!state?.turns.length && <div className="agent-transcript" ref={transcript} aria-live="polite" onScroll={e => { const n=e.currentTarget; followLatest.current=n.scrollHeight-n.scrollTop-n.clientHeight<100 }}>{state.turns.map(turn => <article className="agent-turn" key={turn.request_id}>
-      <div className="agent-user"><small>你 {turn.context.question_id ? `· 第${questions.find(q => q.id === turn.context.question_id)?.number || '?'}题` : ''}</small><MathText text={turn.text}/></div>
+      <div className="agent-user"><small>你 {turn.context.question_id ? `· 第${questions.find(q => q.id === turn.context.question_id)?.number || '?'}题` : ''}</small><MathText text={turn.text}/><SubmittedImages ids={turn.image_ids}/></div>
       {turn.messages.map(message => <div key={message.id} className={`agent-answer ${message.phase === 'commentary' ? 'agent-progress' : ''}`}><small>{message.phase === 'commentary' ? '处理进展' : 'Codex'}</small><MathText text={message.text}/></div>)}
       {turn.status !== 'completed' && <small className="muted">{turn.request_id === state.active_request ? state.activity : '此前未完成的记录'}</small>}
     </article>)}</div>}
@@ -88,8 +92,9 @@ export function AgentPanel({ agent, questions, visibleContext, onReload }: {
       {state.connected && ['failed', 'interrupted'].includes(state.status) && <button className="primary" disabled={busy} onClick={() => action('retry')}>重试原请求</button>}
     </div>}
     <fieldset className="agent-composer" disabled={disabled}>
-      <textarea aria-label="给 Codex 的内容" value={text} onChange={e => setText(e.target.value)} placeholder="例如：我知道这里要换元，但不确定积分上下限为什么这样变。" maxLength={16000}/>
-      <button className="primary" disabled={disabled || !text.trim()} onClick={send}>{busy ? '正在提交…' : '发送并等待反馈'}</button>
+      <textarea aria-label="给 Codex 的内容" value={text} onChange={e => setText(e.target.value)} onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();photos.addFiles(Array.from(e.clipboardData.files))}}} placeholder="写下思路，或上传手写作答照片；也可直接粘贴截图。" maxLength={16000}/>
+      <AnswerImagePicker draft={photos} disabled={disabled}/>
+      <button className="primary" disabled={disabled || (!text.trim()&&!photos.images.length)} onClick={send}>{busy ? '正在提交…' : '发送并等待反馈'}</button>
     </fieldset>
   </section>
 }

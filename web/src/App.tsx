@@ -46,7 +46,7 @@ export default function App() {
       <div className="brand"><span className="brand-mark">M</span><div><strong>MathLens</strong><small>数学一 · 试卷诊断</small></div></div>
       <div className="workspace"><i className={online ? 'online' : ''} /><div><strong>我的数学项目</strong><small>{online ? 'SQLite 本地数据' : '服务未连接'}</small></div></div>
       <nav>{([['home', '⌂', '今日工作'], ['papers', '▤', '试卷'], ['queue', '◌', '题目队列'], ['bank', '⌘', '本地题库'], ['profile', '◒', '个人画像']] as [View, string, string][]).map(([id, icon, label]) => <button key={id} className={view === id ? 'nav active' : 'nav'} onClick={() => switchView(id)}><span>{icon}</span>{label}{id === 'queue' && <em>{queue.length}</em>}</button>)}</nav>
-      <div className="side-foot">v0.4.1 · 单会话学习工作台</div>
+      <div className="side-foot">v0.4.2 · 单会话学习工作台</div>
     </aside>
     <main className="main">
       <header className="topbar"><div><div className="eyebrow">{viewLabel(view)}</div><h1>{view === 'home' ? '今天只处理最值得回收的分' : viewLabel(view)}</h1></div><div className="top-actions"><span className={online ? 'connection ok' : 'connection'}><i />{online ? '本地服务已连接' : '等待本地服务'}</span><button className="primary" onClick={() => switchView('papers')}>＋ 导入试卷</button></div></header>

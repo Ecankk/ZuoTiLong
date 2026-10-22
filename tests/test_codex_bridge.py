@@ -85,6 +85,42 @@ class CodexBridgeTests(unittest.TestCase):
         self.event("turn/completed", tid, turn={"id": tid, "status": "completed"})
         self.assertTrue(self.bridge.snapshot()["can_submit"])
 
+    def test_missing_empty_session_is_recovered_but_history_is_never_replaced(self):
+        class MissingRollout(FakeCodex):
+            def request(self,method,params):
+                if method=='thread/resume':
+                    self.calls.append((method,params));raise RuntimeError('no rollout found for thread id old')
+                if method=='thread/start':
+                    self.calls.append((method,params));return {'thread':{'id':'recovered-session'}}
+                return super().request(method,params)
+        self.bridge.close();self.bridge=CodexBridge(ROOT,self.data,MissingRollout)
+        self.bridge.connect();self.wait(lambda:self.bridge.snapshot()['can_submit'])
+        self.assertEqual(self.bridge.state['session_id'],'recovered-session')
+        self.assertTrue(self.bridge.state['connection_notice'])
+        self.assertTrue(any(m=='thread/name/set' for m,_ in self.bridge.transport.calls))
+        self.send();self.bridge.close();self.bridge=CodexBridge(ROOT,self.data,MissingRollout)
+        self.bridge.connect();self.wait(lambda:self.bridge.state.get('error'))
+        self.assertTrue(self.bridge.snapshot()['input_locked'])
+        self.assertFalse(any(m=='thread/start' for m,_ in self.bridge.transport.calls))
+
+    def test_photo_only_message_attaches_validated_image_to_codex(self):
+        from PIL import Image
+        from io import BytesIO
+        from answer_images import init_answer_images,save_answer_image
+        raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
+        with closing(sqlite3.connect(self.data/'mathlens.db')) as conn,conn:
+            conn.row_factory=sqlite3.Row;init_answer_images(conn)
+            asset=save_answer_image(conn,self.data,raw.getvalue())
+        rid=str(uuid.uuid4());self.bridge.submit('',rid,image_ids=[asset['id']])
+        self.wait(lambda:self.bridge.state['turns'][-1]['codex_turn_id'])
+        turn=self.bridge.state['turns'][-1]
+        self.assertEqual(turn['image_ids'],[asset['id']])
+        self.assertEqual(turn['inputs'][-1]['type'],'localImage')
+        self.assertTrue(Path(turn['inputs'][-1]['path']).is_file())
+        self.assertFalse(self.bridge.snapshot()['can_submit'])
+        self.bridge.submit('',rid,image_ids=[asset['id']])
+        self.assertEqual(len(self.bridge.state['turns']),1)
+
     def test_page_only_context_does_not_require_a_paper_or_database(self):
         context = {"screen": {"view": "本地题库", "label": "题库列表", "section": "检索"}}
         self.bridge.submit("解释这一页", str(uuid.uuid4()), context)

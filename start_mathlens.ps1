@@ -14,7 +14,7 @@ function Read-MathLensHealth {
 }
 try {
     $health = Read-MathLensHealth
-    if ($health -and $health.version -ne '0.4.1') {
+    if ($health -and $health.version -ne '0.4.2') {
         $pidFile = Join-Path $dataDirectory 'server.pid'
         if (-not (Test-Path -LiteralPath $pidFile)) { throw 'An older server is running without a managed PID. Stop that MathLens server first.' }
         $ownedPid = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()

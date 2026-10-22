@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { postJson } from './api'
 import { MathText } from './LearningWorkspace'
-import type { Paper, Question, VisibleContext } from './types'
+import type { Question, VisibleContext } from './types'
 
 type AgentRequest = { id: string; method: string; params: { command?: string; reason?: string; questions?: { id: string; question: string; options?: { label: string; description: string }[]; isSecret?: boolean }[]; [key: string]: unknown } }
 export type AgentState = {
@@ -30,28 +30,18 @@ export function useAgentState() {
   return { state, reachable, refresh, accept: (next: AgentState) => setState(old => !old || next.revision >= old.revision ? next : old) }
 }
 
-export function AgentPanel({ agent, papers, questions, visibleContext, onReload }: {
-  agent: ReturnType<typeof useAgentState>; papers: Paper[]; questions: Question[]; visibleContext: VisibleContext; onReload: () => Promise<void>
+export function AgentPanel({ agent, questions, visibleContext, onReload }: {
+  agent: ReturnType<typeof useAgentState>; questions: Question[]; visibleContext: VisibleContext; onReload: () => Promise<void>
 }) {
   const { state, reachable } = agent
   const [text, setText] = useState('')
-  const [paperId, setPaperId] = useState('')
-  const [questionId, setQuestionId] = useState('')
-  const [followPage, setFollowPage] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const request = useRef<{ id: string; text: string; context: string } | null>(null)
   const transcript = useRef<HTMLDivElement>(null)
   const followLatest = useRef(true)
-  const restoredContext = useRef(false)
   const lastCompleted = useRef('')
   const last = state?.turns.at(-1)
-  useEffect(() => {
-    if (state && !restoredContext.current) {
-      restoredContext.current = true
-      if (last) { setPaperId(last.context.paper_id || ''); setQuestionId(last.context.question_id || '') }
-    }
-  }, [state])
   useEffect(() => {
     if (last?.status === 'completed' && lastCompleted.current !== last.request_id) {
       lastCompleted.current = last.request_id; onReload()
@@ -69,8 +59,8 @@ export function AgentPanel({ agent, papers, questions, visibleContext, onReload 
   }
   const send = async () => {
     followLatest.current = true
-    const attachedPaper = followPage ? visibleContext.paper_id : paperId
-    const attachedQuestion = followPage ? visibleContext.question_id : questionId
+    const attachedPaper = visibleContext.paper_id
+    const attachedQuestion = visibleContext.question_id
     const context = { screen: {...visibleContext, label: visibleContext.label.slice(0,2000)},
       ...(attachedPaper ? { paper_id: attachedPaper } : {}), ...(attachedQuestion ? { question_id: attachedQuestion } : {}) }
     const content = text.trim(), contextKey = JSON.stringify(context)
@@ -98,9 +88,6 @@ export function AgentPanel({ agent, papers, questions, visibleContext, onReload 
       {state.connected && ['failed', 'interrupted'].includes(state.status) && <button className="primary" disabled={busy} onClick={() => action('retry')}>重试原请求</button>}
     </div>}
     <fieldset className="agent-composer" disabled={disabled}>
-      <label className="check-label"><input type="checkbox" checked={followPage} onChange={e => setFollowPage(e.target.checked)}/>跟随当前题目，附上原卷区域</label>
-      {!followPage && <div className="agent-context"><label>关联试卷<select aria-label="关联试卷" value={paperId} onChange={e => { setPaperId(e.target.value); setQuestionId('') }}><option value="">整体讨论</option>{papers.filter(p => p.source_name).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
-        <label>关联题目<select aria-label="关联题目" value={questionId} onChange={e => setQuestionId(e.target.value)}><option value="">整张试卷</option>{questions.filter(q => q.paper_id === paperId).sort((a,b) => Number(a.number)-Number(b.number)).map(q => <option key={q.id} value={q.id}>第 {q.number} 题</option>)}</select></label></div>}
       <textarea aria-label="给 Codex 的内容" value={text} onChange={e => setText(e.target.value)} placeholder="例如：我知道这里要换元，但不确定积分上下限为什么这样变。" maxLength={16000}/>
       <button className="primary" disabled={disabled || !text.trim()} onClick={send}>{busy ? '正在提交…' : '发送并等待反馈'}</button>
     </fieldset>

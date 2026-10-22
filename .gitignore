@@ -30,3 +30,6 @@ memory/
 !.env.example
 *.pem
 *.key
+
+# Private development notes and planning (kept inside the project, never published)
+docs/local/

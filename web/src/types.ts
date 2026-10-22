@@ -1,5 +1,10 @@
 export type View = 'home' | 'papers' | 'queue' | 'bank' | 'profile'
 
+export type VisibleContext = {
+  view: string; label: string; paper_id?: string; question_id?: string;
+  section?: string; probe_id?: string; bank_id?: string; expanded?: string[]
+}
+
 export type Paper = {
   id: string
   title: string

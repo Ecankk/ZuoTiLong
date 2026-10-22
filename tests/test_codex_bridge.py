@@ -1,4 +1,6 @@
 import json
+from contextlib import closing
+import hashlib
 from pathlib import Path
 import sys
 import tempfile
@@ -9,6 +11,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from email.message import Message
 import uuid
+import sqlite3
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -81,6 +84,51 @@ class CodexBridgeTests(unittest.TestCase):
         self.assertFalse(self.bridge.snapshot()["can_submit"])
         self.event("turn/completed", tid, turn={"id": tid, "status": "completed"})
         self.assertTrue(self.bridge.snapshot()["can_submit"])
+
+    def test_page_only_context_does_not_require_a_paper_or_database(self):
+        context = {"screen": {"view": "本地题库", "label": "题库列表", "section": "检索"}}
+        self.bridge.submit("解释这一页", str(uuid.uuid4()), context)
+        self.assertFalse((self.data / "mathlens.db").exists())
+        self.assertIn('题库列表', self.bridge.state["turns"][-1]["inputs"][0]["text"])
+        self.assertEqual(len(self.bridge.state["turns"][-1]["inputs"]), 1)
+
+    def test_screen_schema_rejects_unbounded_or_unsupported_content(self):
+        for screen in ({"url": "file:///private"}, {"view": {}}, {"expanded": ["x"] * 17}, {"label": "x" * 2001}):
+            with self.assertRaises(ValueError):
+                self.bridge.submit("测试", str(uuid.uuid4()), {"screen": screen})
+        self.assertEqual(self.bridge.state["turns"], [])
+
+    def test_followed_question_and_manual_override_attach_the_correct_region(self):
+        import pymupdf
+        pdf = self.data / "fixture.pdf"
+        with pymupdf.open() as doc:
+            for color in ((1,0,0), (0,0,1)):
+                page = doc.new_page(width=100, height=100)
+                page.draw_rect(page.rect, fill=color)
+            doc.save(pdf)
+            doc[0].get_pixmap().save(self.data / "probe.png")
+        with closing(sqlite3.connect(self.data / "mathlens.db")) as conn, conn:
+            conn.executescript("CREATE TABLE papers(id TEXT,source_path TEXT); CREATE TABLE questions(id TEXT,paper_id TEXT,regions_json TEXT); CREATE TABLE diagnostic_probes(id TEXT,paper_id TEXT,question_id TEXT,bank_id TEXT); CREATE TABLE bank_resources(bank_id TEXT,question_path TEXT);")
+            conn.execute("INSERT INTO papers VALUES('paper',?)", (str(pdf),))
+            conn.execute("INSERT INTO diagnostic_probes VALUES('probe','paper','q1','bank')")
+            conn.execute("INSERT INTO bank_resources VALUES('bank','probe.png')")
+            for index in (1, 2):
+                conn.execute("INSERT INTO questions VALUES(?, 'paper', ?)", (f"q{index}", json.dumps([{"page": index, "bbox": [0,0,100,100]}])))
+        images = []
+        for index in (1, 2):
+            context = {"paper_id": "paper", "question_id": f"q{index}", "screen": {"view": "今日工作", "paper_id": "paper", "question_id": "q1", "probe_id": "probe", "bank_id": "bank", "expanded": ["这道题的指纹"]}}
+            self.bridge.submit("解释这道题", str(uuid.uuid4()), context)
+            self.wait(lambda: self.bridge.state["turns"][-1]["codex_turn_id"] is not None)
+            turn = self.bridge.state["turns"][-1]
+            images.append(hashlib.sha256(Path(turn["inputs"][1]["path"]).read_bytes()).hexdigest())
+            self.assertEqual(turn["context"]["screen"]["question_id"], "q1")
+            self.assertEqual(len(turn["inputs"]), 3 if index == 1 else 2)
+            self.finish(turn["codex_turn_id"])
+        self.assertNotEqual(images[0], images[1])
+        with self.assertRaises(ValueError):
+            self.bridge.submit("测试", str(uuid.uuid4()), {"screen": {"question_id": "not-found"}})
+        with self.assertRaises(ValueError):
+            self.bridge.submit("测试", str(uuid.uuid4()), {"screen": {"question_id": "q2", "probe_id": "probe"}})
 
     def test_duplicate_retry_is_idempotent_and_other_input_is_rejected(self):
         rid, _ = self.send()

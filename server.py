@@ -468,7 +468,7 @@ class Handler(BaseHTTPRequestHandler):
         conn = connect()
         try:
             if parsed.path == "/api/health":
-                self.send_json({"ok": True, "version": "0.4.0"})
+                self.send_json({"ok": True, "version": "0.4.1"})
             elif parsed.path == "/api/bootstrap":
                 self.send_json(bootstrap())
             elif parsed.path == "/api/profile":

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { postJson } from './api'
 import { MathText } from './LearningWorkspace'
-import type { Paper, Question } from './types'
+import type { Paper, Question, VisibleContext } from './types'
 
 type AgentRequest = { id: string; method: string; params: { command?: string; reason?: string; questions?: { id: string; question: string; options?: { label: string; description: string }[]; isSecret?: boolean }[]; [key: string]: unknown } }
 export type AgentState = {
@@ -30,13 +30,14 @@ export function useAgentState() {
   return { state, reachable, refresh, accept: (next: AgentState) => setState(old => !old || next.revision >= old.revision ? next : old) }
 }
 
-export function AgentPanel({ agent, papers, questions, onReload }: {
-  agent: ReturnType<typeof useAgentState>; papers: Paper[]; questions: Question[]; onReload: () => Promise<void>
+export function AgentPanel({ agent, papers, questions, visibleContext, onReload }: {
+  agent: ReturnType<typeof useAgentState>; papers: Paper[]; questions: Question[]; visibleContext: VisibleContext; onReload: () => Promise<void>
 }) {
   const { state, reachable } = agent
   const [text, setText] = useState('')
   const [paperId, setPaperId] = useState('')
   const [questionId, setQuestionId] = useState('')
+  const [followPage, setFollowPage] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const request = useRef<{ id: string; text: string; context: string } | null>(null)
@@ -68,7 +69,10 @@ export function AgentPanel({ agent, papers, questions, onReload }: {
   }
   const send = async () => {
     followLatest.current = true
-    const context = { ...(paperId ? { paper_id: paperId } : {}), ...(questionId ? { question_id: questionId } : {}) }
+    const attachedPaper = followPage ? visibleContext.paper_id : paperId
+    const attachedQuestion = followPage ? visibleContext.question_id : questionId
+    const context = { screen: {...visibleContext, label: visibleContext.label.slice(0,2000)},
+      ...(attachedPaper ? { paper_id: attachedPaper } : {}), ...(attachedQuestion ? { question_id: attachedQuestion } : {}) }
     const content = text.trim(), contextKey = JSON.stringify(context)
     if (!request.current || request.current.text !== content || request.current.context !== contextKey)
       request.current = { id: crypto.randomUUID(), text: content, context: contextKey }
@@ -78,7 +82,8 @@ export function AgentPanel({ agent, papers, questions, onReload }: {
   const labels: Record<string, string> = { disconnected: '未连接', connecting: '连接中', idle: '可以继续', running: '处理中 · 输入已锁定', waiting_user: '等待你的确认', failed: '本轮未完成', interrupted: '本轮已中断' }
   return <section className="panel agent-panel" aria-label="与 Codex 讨论">
     <div className="panel-head"><div><div className="eyebrow">同一个 Codex 会话 · 本地保存</div><h2>与 Codex 讨论</h2></div><span className="status pending" role="status">{reachable ? labels[state?.status || 'disconnected'] : '正在确认连接'}</span></div>
-    <p className="muted">选一张试卷或一道题，补充你的思路。发送后等待完整反馈，再继续下一步。</p>
+    <p className="muted">发送时附上当前页面与题目，等待完整反馈后继续。</p>
+    <div className="agent-visible-context"><span>当前正在看</span><strong title={visibleContext.label}><MathText text={visibleContext.label}/></strong><small>{visibleContext.view}{visibleContext.section ? ` · ${visibleContext.section}` : ''}</small></div>
     {state?.session_id && <details><summary>当前会话</summary><code>{state.session_id}</code><p>重启后继续使用此会话。请在这里提交学习消息，避免同时在 CLI/Desktop 向该会话发消息。</p></details>}
     {!state?.connected && <button className="primary" disabled={busy || state?.status === 'connecting' || !reachable} onClick={() => action('connect')}>{state?.session_id ? '重新连接原会话' : '连接 Codex'}</button>}
     {!!state?.turns.length && <div className="agent-transcript" ref={transcript} aria-live="polite" onScroll={e => { const n=e.currentTarget; followLatest.current=n.scrollHeight-n.scrollTop-n.clientHeight<100 }}>{state.turns.map(turn => <article className="agent-turn" key={turn.request_id}>
@@ -93,8 +98,9 @@ export function AgentPanel({ agent, papers, questions, onReload }: {
       {state.connected && ['failed', 'interrupted'].includes(state.status) && <button className="primary" disabled={busy} onClick={() => action('retry')}>重试原请求</button>}
     </div>}
     <fieldset className="agent-composer" disabled={disabled}>
-      <div className="agent-context"><label>关联试卷<select aria-label="关联试卷" value={paperId} onChange={e => { setPaperId(e.target.value); setQuestionId('') }}><option value="">整体讨论</option>{papers.filter(p => p.source_name).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
-        <label>关联题目<select aria-label="关联题目" value={questionId} onChange={e => setQuestionId(e.target.value)}><option value="">整张试卷</option>{questions.filter(q => q.paper_id === paperId).sort((a,b) => Number(a.number)-Number(b.number)).map(q => <option key={q.id} value={q.id}>第 {q.number} 题</option>)}</select></label></div>
+      <label className="check-label"><input type="checkbox" checked={followPage} onChange={e => setFollowPage(e.target.checked)}/>跟随当前题目，附上原卷区域</label>
+      {!followPage && <div className="agent-context"><label>关联试卷<select aria-label="关联试卷" value={paperId} onChange={e => { setPaperId(e.target.value); setQuestionId('') }}><option value="">整体讨论</option>{papers.filter(p => p.source_name).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
+        <label>关联题目<select aria-label="关联题目" value={questionId} onChange={e => setQuestionId(e.target.value)}><option value="">整张试卷</option>{questions.filter(q => q.paper_id === paperId).sort((a,b) => Number(a.number)-Number(b.number)).map(q => <option key={q.id} value={q.id}>第 {q.number} 题</option>)}</select></label></div>}
       <textarea aria-label="给 Codex 的内容" value={text} onChange={e => setText(e.target.value)} placeholder="例如：我知道这里要换元，但不确定积分上下限为什么这样变。" maxLength={16000}/>
       <button className="primary" disabled={disabled || !text.trim()} onClick={send}>{busy ? '正在提交…' : '发送并等待反馈'}</button>
     </fieldset>

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { analyzePaper, confirmPaper, getBootstrap, paperFileUrl, postJson, saveDiagnosis, uploadPaper } from './api'
-import type { BankQuestion, Bootstrap, Paper, Profile, Question, View } from './types'
+import type { BankQuestion, Bootstrap, Paper, Profile, Question, View, VisibleContext } from './types'
 import { LearningWorkspace, EvidenceProfile } from './LearningWorkspace'
 import { AgentPanel, useAgentState } from './AgentPanel'
 
@@ -19,6 +19,8 @@ export default function App() {
   const [confirming, setConfirming] = useState<Paper | null>(null)
   const [message, setMessage] = useState('')
   const [focusedQuestion, setFocusedQuestion] = useState<Question | undefined>()
+  const [workspaceContext, setWorkspaceContext] = useState<VisibleContext | null>(null)
+  const [agentOpen, setAgentOpen] = useState(() => window.innerWidth > 1200)
 
   const reload = async () => {
     try { setData(await getBootstrap()); setOnline(true) }
@@ -33,25 +35,32 @@ export default function App() {
   const switchView = (next: View) => { setView(next); setMessage('') }
   const openQuestion = (q: Question) => { if(data.loop?.diagnoses[q.id]){setFocusedQuestion(q);setView('home')}else{setSelected(q)} }
 
-  return <div className="shell">
+  const visibleContext: VisibleContext = selected
+    ? { view: viewLabel(view), paper_id: selected.paper_id, question_id: selected.id, label: `第 ${selected.number} 题 · ${selected.stem}`, section: '单题诊断' }
+    : confirming ? { view: viewLabel(view), paper_id: confirming.id, label: confirming.title, section: '人工确认' }
+    : view === 'home' && data.loop?.reports.length && workspaceContext ? workspaceContext
+    : { view: viewLabel(view), label: viewLabel(view) }
+
+  return <div className={`shell ${agentOpen ? '' : 'agent-collapsed'}`}>
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">M</span><div><strong>MathLens</strong><small>数学一 · 试卷诊断</small></div></div>
       <div className="workspace"><i className={online ? 'online' : ''} /><div><strong>我的数学项目</strong><small>{online ? 'SQLite 本地数据' : '服务未连接'}</small></div></div>
       <nav>{([['home', '⌂', '今日工作'], ['papers', '▤', '试卷'], ['queue', '◌', '题目队列'], ['bank', '⌘', '本地题库'], ['profile', '◒', '个人画像']] as [View, string, string][]).map(([id, icon, label]) => <button key={id} className={view === id ? 'nav active' : 'nav'} onClick={() => switchView(id)}><span>{icon}</span>{label}{id === 'queue' && <em>{queue.length}</em>}</button>)}</nav>
-      <div className="side-foot">v0.4 · 单会话学习工作台</div>
+      <div className="side-foot">v0.4.1 · 单会话学习工作台</div>
     </aside>
     <main className="main">
       <header className="topbar"><div><div className="eyebrow">{viewLabel(view)}</div><h1>{view === 'home' ? '今天只处理最值得回收的分' : viewLabel(view)}</h1></div><div className="top-actions"><span className={online ? 'connection ok' : 'connection'}><i />{online ? '本地服务已连接' : '等待本地服务'}</span><button className="primary" onClick={() => switchView('papers')}>＋ 导入试卷</button></div></header>
       {message && <div className="notice">{message}</div>}
-      <AgentPanel agent={agent} papers={data.papers} questions={data.questions} onReload={reload}/>
       <fieldset className="learning-inputs" disabled={!!agent.state?.input_locked || !agent.reachable}>
-      {view === 'home' && (data.loop?.reports.length ? <LearningWorkspace loop={data.loop} questions={data.questions} papers={data.papers} onReload={reload} focusedQuestion={focusedQuestion}/> : <Home data={data} queue={queue} latest={latest} onSelect={openQuestion} onView={switchView} />)}
+      {view === 'home' && (data.loop?.reports.length ? <LearningWorkspace loop={data.loop} questions={data.questions} papers={data.papers} onReload={reload} focusedQuestion={focusedQuestion} onContextChange={setWorkspaceContext}/> : <Home data={data} queue={queue} latest={latest} onSelect={openQuestion} onView={switchView} />)}
       {view === 'papers' && <Papers data={data} onReload={reload} onConfirm={setConfirming} />}
       {view === 'queue' && <Queue questions={data.questions} onSelect={openQuestion} />}
       {view === 'bank' && <Bank bank={data.bank} />}
       {view === 'profile' && (data.loop?.skills.length ? <EvidenceProfile skills={data.loop.skills}/> : <ProfileView profile={data.profile} />)}
       </fieldset>
     </main>
+    <aside id="agent-workspace" className="agent-rail" hidden={!agentOpen}><AgentPanel agent={agent} papers={data.papers} questions={data.questions} visibleContext={visibleContext} onReload={reload}/></aside>
+    <button className="primary agent-toggle" aria-controls="agent-workspace" aria-expanded={agentOpen} onClick={()=>setAgentOpen(open=>!open)}>{agentOpen ? '收起 Agent' : '打开 Agent'}{agent.state?.input_locked ? ' · 处理中' : ''}</button>
     {selected && <QuestionDrawer question={selected} bank={data.bank} onClose={() => setSelected(null)} onReload={reload} />}
     {confirming && <ConfirmDrawer paper={confirming} onClose={() => setConfirming(null)} onDone={() => { setConfirming(null); reload(); switchView('queue') }} />}
   </div>

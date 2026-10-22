@@ -20,7 +20,8 @@ export type Loop = { reports: { id: string; paper_id: string; summary: string; l
   diagnoses: Record<string, Diagnosis>; probes: Probe[]; skills: Skill[] }
 
 export function MathText({ text }: { text: string }) {
-  const parts = text.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g)
+  const normalized = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, formula: string) => '$$' + formula + '$$').replace(/\\\(([\s\S]*?)\\\)/g, (_, formula: string) => '$' + formula + '$')
+  const parts = normalized.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g)
   return <span className="math-text">{parts.map((part, i) => {
     if (part.startsWith('$') && window.katex) {
       const display = part.startsWith('$$'); const input = part.slice(display ? 2 : 1, display ? -2 : -1)

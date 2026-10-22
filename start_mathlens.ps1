@@ -14,8 +14,21 @@ function Read-MathLensHealth {
 }
 try {
     $health = Read-MathLensHealth
-    if ($health -and $health.version -ne '0.3.0') {
-        throw 'An older MathLens server is running. Close its server window, then launch again.'
+    if ($health -and $health.version -ne '0.4.0') {
+        $pidFile = Join-Path $dataDirectory 'server.pid'
+        if (-not (Test-Path -LiteralPath $pidFile)) { throw 'An older server is running without a managed PID. Stop that MathLens server first.' }
+        $ownedPid = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()
+        $ownedProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$ownedPid"
+        $expectedPython = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '.venv/Scripts/python.exe'))
+        if (-not $ownedProcess -or $ownedProcess.ExecutablePath -ne $expectedPython -or $ownedProcess.CommandLine -notmatch 'server\.py.*--port\s+4173') {
+            throw 'The saved PID is not this project server. Stop the older MathLens service before launching.'
+        }
+        $ownedChildren = Get-CimInstance Win32_Process -Filter "ParentProcessId=$ownedPid" | Where-Object { $_.CommandLine -match 'server\.py.*--port\s+4173' }
+        foreach ($child in $ownedChildren) { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue }
+        Stop-Process -Id $ownedPid -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+        $health = Read-MathLensHealth
+        if ($health) { throw 'The older service is still listening. It was not replaced.' }
     }
     if (-not $health) {
         $pythonPath = Join-Path $PSScriptRoot '.venv/Scripts/python.exe'

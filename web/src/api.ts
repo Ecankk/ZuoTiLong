@@ -12,7 +12,8 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!response.ok) throw new Error(await response.text())
+  if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || '请求失败') }
+  window.dispatchEvent(new Event('mathlens:agent-refresh'))
   return response.json()
 }
 

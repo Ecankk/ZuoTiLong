@@ -4,13 +4,17 @@
 
 ## 当前支持
 
+工作约定在根目录 `AGENTS.md`。选题由 Agent 阅读后决定，源分类只作目录导航。不要把题库同类、文本相似或尚未审定的默认难度当作选择条件。持续网页对话的设计及尚未实现部分见 [Agent 交互设计](agent-first-design.md)。
+
 1. 网页上传 PDF 后自动运行本地 OCR/文字提取和切题，在 `.mathlens/tasks/<paper_id>/request.json` 写出任务、源文件 SHA256、完整页图及逐题区域。
 2. Agent 阅读页图，区分题干、黑字作答和批改；必要时针对影响结论的疑点询问用户。OCR 是草稿，不能代替图像证据。
 3. Agent 通过题库元数据和资源图片选择已有题，创建入手、建系、运算、最终处理等分环节检验。网页收集真实作答。
 4. 明确、简单的数值回答可按报告给出的允许答案核对；其他回答进入等待评价，不自动判错。Agent 再次运行 `pending` 读取作答并评价，网页每 5 秒刷新。
 5. 每次评价生成证据事件。画像由原卷事件和检验事件汇总；看过参考解析的题不计入独立检验成功。
 
-首次示例中的识别与诊断由本轮 Agent 实际完成并保存；不代表安装后有无人值守的 AI 常驻进程。打开 CLI 后，需要让 Agent 检查待办并完成相应任务。
+网页点击“连接 Codex”后，服务通过本机 `codex app-server` 建立一个专用会话，沿用本机登录与默认模型，不需填写 AI URL/API key。重连恢复持久保存的同一个会话。也可以独立使用下述 CLI 命令，但不要在网页处理过程中同时向其专用会话输入。
+
+用户发送讨论或在已连接状态提交检验/完成试卷切分后，网页等待该轮完整最终反馈，期间禁用下一步学习输入，后端同样拒绝写入。授权和 Agent 必要追问是当前轮次的补充，不是新轮次。失败/断线保留输入锁与记录，重连核对原轮次后可重试。模型能力和服务可用性仍由本机 Codex 登录提供。
 
 ## 命令
 
@@ -25,6 +29,13 @@
 
 # 查看任务包和等待评价的真实作答
 .\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py pending
+
+# 新会话恢复个人资料、最新诊断、真实作答和记忆文件入口（只读）
+.\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py context
+
+# 自选分类范围浏览，查看返回的原图；不进行自动选题（只读、带分页）
+.\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py catalog --topic "曲线积分" --topic "曲面积分"
+.\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py catalog --id math1-2021-12
 
 # Agent 写好报告后，由应用校验并写入数据库
 .\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py apply <paper_id> ".mathlens\agent-result.json"

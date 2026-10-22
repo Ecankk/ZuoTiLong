@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from pdf_pipeline import extract_pdf, match_bank_questions
 from learning_loop import init_loop, loop_snapshot, submit_probe, apply_report
+from codex_bridge import CodexBridge, BridgeConflict
 
 
 ROOT = Path(__file__).resolve().parent
@@ -26,6 +27,7 @@ DIST = ROOT / "dist"
 DATA = Path(os.environ.get("MATHLENS_DATA_DIR", str(ROOT / ".mathlens"))).resolve()
 PAPERS_DIR = DATA / "papers"
 DB_PATH = DATA / "mathlens.db"
+BRIDGE = None
 
 
 def now_iso() -> str:
@@ -367,9 +369,26 @@ class Handler(BaseHTTPRequestHandler):
         self.static(parsed.path)
 
     def do_POST(self):
+        host = self.headers.get("Host", "")
+        origin = self.headers.get("Origin")
+        if urlparse("http://" + host).hostname not in ("127.0.0.1", "localhost", "::1") or (origin and origin != "http://" + host):
+            self.send_json({"error": "只接受本地网页的同源请求"}, HTTPStatus.FORBIDDEN)
+            return
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/"):
-            self.api_post(parsed)
+            try:
+                if parsed.path.startswith("/api/agent/"):
+                    self.agent_post(parsed)
+                elif BRIDGE:
+                    with BRIDGE.lock:
+                        BRIDGE.assert_user_write_allowed()
+                        self.api_post(parsed)
+                else:
+                    self.api_post(parsed)
+            except BridgeConflict as exc:
+                self.send_json({"error": str(exc)}, HTTPStatus.CONFLICT)
+            except (ValueError, RuntimeError, TimeoutError) as exc:
+                self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
         self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -394,6 +413,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def api_get(self, parsed):
+        if parsed.path == "/api/agent/state":
+            self.send_json(BRIDGE.snapshot() if BRIDGE else {"connected": False, "status": "disconnected", "input_locked": False, "can_submit": False, "turns": [], "requests": []})
+            return
         if parsed.path.startswith("/api/questions/") and parsed.path.endswith("/evidence"):
             import pymupdf as fitz
             qid = parsed.path.split("/")[3]
@@ -446,7 +468,7 @@ class Handler(BaseHTTPRequestHandler):
         conn = connect()
         try:
             if parsed.path == "/api/health":
-                self.send_json({"ok": True, "version": "0.3.0"})
+                self.send_json({"ok": True, "version": "0.4.0"})
             elif parsed.path == "/api/bootstrap":
                 self.send_json(bootstrap())
             elif parsed.path == "/api/profile":
@@ -478,6 +500,30 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             conn.close()
 
+    def agent_post(self, parsed):
+        if not BRIDGE:
+            raise ValueError("会话服务未启动")
+        if self.headers.get_content_type() != "application/json":
+            raise ValueError("需要 application/json")
+        if int(self.headers.get("Content-Length", "0")) > 100000:
+            raise ValueError("请求过长")
+        body = self.read_json()
+        action = parsed.path.removeprefix("/api/agent/")
+        if action == "connect":
+            result = BRIDGE.connect()
+        elif action == "send":
+            result = BRIDGE.submit(body.get("text", ""), body.get("request_id"), body.get("context"))
+        elif action == "respond":
+            result = BRIDGE.respond(str(body.get("request_id")), body)
+        elif action == "retry":
+            result = BRIDGE.retry()
+        elif action == "interrupt":
+            result = BRIDGE.interrupt()
+        else:
+            self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+            return
+        self.send_json(result)
+
     def api_post(self, parsed):
         if parsed.path == "/api/papers/import":
             self.import_paper()
@@ -493,15 +539,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"paper": as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())}, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/analyze"):
                 paper_id = parsed.path.split("/")[3]
-                self.send_json(analyze_paper_record(conn, paper_id), HTTPStatus.CREATED)
+                result = analyze_paper_record(conn, paper_id)
+                if BRIDGE and BRIDGE.connected:
+                    BRIDGE.submit("这份已完成试卷已完成初步切分，请读取任务包与原图，分析作答并反馈；已有报告时先核对是否需要增量修订。", str(uuid.uuid4()), {"paper_id": paper_id})
+                self.send_json(result, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/agent-report"):
                 paper_id = parsed.path.split("/")[3]
                 result = apply_report(conn, paper_id, self.read_json(), ROOT)
                 conn.commit()
                 self.send_json(result, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/probes/") and parsed.path.endswith("/submit"):
+                if BRIDGE and not BRIDGE.connected:
+                    raise ValueError("请先连接 Codex，以便提交后获得 Agent 反馈")
                 result = submit_probe(conn, parsed.path.split("/")[3], self.read_json())
                 conn.commit()
+                if BRIDGE:
+                    probe = conn.execute("SELECT paper_id,question_id FROM diagnostic_probes WHERE id=?", (parsed.path.split("/")[3],)).fetchone()
+                    BRIDGE.submit(f"检验作答已保存，attempt_id={result['attempt_id']}。请读取实际回答、核对并评价，再反馈下一步。已有评价时不要重复写入。", str(uuid.uuid5(uuid.NAMESPACE_URL, "mathlens:attempt:" + result['attempt_id'])), dict(probe))
                 self.send_json(result, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/confirm"):
                 paper_id = parsed.path.split("/")[3]
@@ -616,6 +670,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    global BRIDGE
     import argparse
     parser = argparse.ArgumentParser(description="MathLens local-first paper diagnosis server")
     parser.add_argument("--host", default="127.0.0.1")
@@ -628,6 +683,7 @@ def main():
         server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
     server.server_bind()
     server.server_activate()
+    BRIDGE = CodexBridge(ROOT, DATA)
     print(f"MathLens running at http://{args.host}:{args.port}/")
     print(f"Data directory: {DATA}")
     try:
@@ -635,6 +691,7 @@ def main():
     except KeyboardInterrupt:
         print("\nStopped")
     finally:
+        BRIDGE.close()
         server.server_close()
 
 

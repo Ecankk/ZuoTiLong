@@ -1,0 +1,601 @@
+{
+  "scope": "当前已导入图片题库的分类元数据；不代表数学答案正确率或标签逐题准确率",
+  "question_count": 386,
+  "source_topic_count": 68,
+  "missing_topic_count": 0,
+  "questions_with_operation_or_micro_skill_fields": 0,
+  "classification_model": "每条源记录一个 knowledge_point 字符串",
+  "topics": [
+    {
+      "label": "二次型",
+      "count": 18,
+      "examples": [
+        "math1-2009-21",
+        "math1-2010-21",
+        "math1-2011-13"
+      ]
+    },
+    {
+      "label": "第二类曲线积分",
+      "count": 14,
+      "examples": [
+        "math1-2010-11",
+        "math1-2011-12",
+        "math1-2012-19"
+      ]
+    },
+    {
+      "label": "线性方程组",
+      "count": 14,
+      "examples": [
+        "math1-2010-20",
+        "math1-2012-20",
+        "math1-2013-20"
+      ]
+    },
+    {
+      "label": "矩阵的相似与相似对角化",
+      "count": 13,
+      "examples": [
+        "math1-2010-06",
+        "math1-2013-06",
+        "math1-2014-21"
+      ]
+    },
+    {
+      "label": "随机变量及其分布",
+      "count": 13,
+      "examples": [
+        "math1-2010-07",
+        "math1-2010-08",
+        "math1-2011-07"
+      ]
+    },
+    {
+      "label": "协方差与相关系数",
+      "count": 13,
+      "examples": [
+        "math1-2011-14",
+        "math1-2011-22",
+        "math1-2012-08"
+      ]
+    },
+    {
+      "label": "数学期望与方差",
+      "count": 11,
+      "examples": [
+        "math1-2009-07",
+        "math1-2010-14",
+        "math1-2011-08"
+      ]
+    },
+    {
+      "label": "多元函数的极值问题",
+      "count": 11,
+      "examples": [
+        "math1-2009-15",
+        "math1-2011-03",
+        "math1-2012-16"
+      ]
+    },
+    {
+      "label": "幂级数的和函数及幂级数展开式",
+      "count": 10,
+      "examples": [
+        "math1-2009-16",
+        "math1-2010-18",
+        "math1-2012-17"
+      ]
+    },
+    {
+      "label": "第二类曲面积分",
+      "count": 10,
+      "examples": [
+        "math1-2009-19",
+        "math1-2014-18",
+        "math1-2016-18"
+      ]
+    },
+    {
+      "label": "矩估计和最大似然估计",
+      "count": 10,
+      "examples": [
+        "math1-2009-23",
+        "math1-2011-23",
+        "math1-2012-23"
+      ]
+    },
+    {
+      "label": "随机事件和概率",
+      "count": 10,
+      "examples": [
+        "math1-2012-14",
+        "math1-2014-07",
+        "math1-2015-07"
+      ]
+    },
+    {
+      "label": "偏导数的概念与计算",
+      "count": 9,
+      "examples": [
+        "math1-2009-09",
+        "math1-2010-02",
+        "math1-2011-11"
+      ]
+    },
+    {
+      "label": "定积分的计算",
+      "count": 9,
+      "examples": [
+        "math1-2010-10",
+        "math1-2012-10",
+        "math1-2013-15"
+      ]
+    },
+    {
+      "label": "导数与微分的概念",
+      "count": 9,
+      "examples": [
+        "math1-2015-18",
+        "math1-2016-04",
+        "math1-2018-01"
+      ]
+    },
+    {
+      "label": "二维随机变量及其分布",
+      "count": 8,
+      "examples": [
+        "math1-2009-08",
+        "math1-2012-07",
+        "math1-2013-22"
+      ]
+    },
+    {
+      "label": "函数极限的计算",
+      "count": 8,
+      "examples": [
+        "math1-2010-01",
+        "math1-2011-15",
+        "math1-2014-15"
+      ]
+    },
+    {
+      "label": "导数与微分的计算",
+      "count": 8,
+      "examples": [
+        "math1-2010-09",
+        "math1-2012-02",
+        "math1-2013-09"
+      ]
+    },
+    {
+      "label": "曲线的凹凸性、拐点及渐近线",
+      "count": 8,
+      "examples": [
+        "math1-2011-01",
+        "math1-2012-01",
+        "math1-2014-01"
+      ]
+    },
+    {
+      "label": "确定极限中的参数",
+      "count": 7,
+      "examples": [
+        "math1-2009-01",
+        "math1-2013-01",
+        "math1-2015-15"
+      ]
+    },
+    {
+      "label": "估计量的无偏性",
+      "count": 7,
+      "examples": [
+        "math1-2009-14",
+        "math1-2010-23",
+        "math1-2014-14"
+      ]
+    },
+    {
+      "label": "矩阵的秩",
+      "count": 7,
+      "examples": [
+        "math1-2010-05",
+        "math1-2012-13",
+        "math1-2017-13"
+      ]
+    },
+    {
+      "label": "定积分的概念、性质及几何意义",
+      "count": 7,
+      "examples": [
+        "math1-2010-17",
+        "math1-2011-04",
+        "math1-2012-04"
+      ]
+    },
+    {
+      "label": "常数项级数敛散性的判定",
+      "count": 6,
+      "examples": [
+        "math1-2009-04",
+        "math1-2014-19",
+        "math1-2016-19"
+      ]
+    },
+    {
+      "label": "向量内积与向量正交",
+      "count": 6,
+      "examples": [
+        "math1-2009-05",
+        "math1-2010-13",
+        "math1-2015-20"
+      ]
+    },
+    {
+      "label": "重积分的计算",
+      "count": 6,
+      "examples": [
+        "math1-2009-12",
+        "math1-2011-19",
+        "math1-2015-12"
+      ]
+    },
+    {
+      "label": "一阶非齐次线性微分方程",
+      "count": 6,
+      "examples": [
+        "math1-2011-10",
+        "math1-2016-03",
+        "math1-2018-18"
+      ]
+    },
+    {
+      "label": "特征值与特征向量",
+      "count": 5,
+      "examples": [
+        "math1-2009-13",
+        "math1-2011-21",
+        "math1-2018-13"
+      ]
+    },
+    {
+      "label": "定积分的应用",
+      "count": 5,
+      "examples": [
+        "math1-2009-17",
+        "math1-2011-09",
+        "math1-2012-18"
+      ]
+    },
+    {
+      "label": "函数的单调性、极值与最值",
+      "count": 5,
+      "examples": [
+        "math1-2010-16",
+        "math1-2014-16",
+        "math1-2017-02"
+      ]
+    },
+    {
+      "label": "向量组之间的线性表示",
+      "count": 5,
+      "examples": [
+        "math1-2011-20",
+        "math1-2013-05",
+        "math1-2020-06"
+      ]
+    },
+    {
+      "label": "全微分的概念与计算",
+      "count": 5,
+      "examples": [
+        "math1-2012-03",
+        "math1-2015-11",
+        "math1-2016-11"
+      ]
+    },
+    {
+      "label": "常系数齐次线性微分方程",
+      "count": 5,
+      "examples": [
+        "math1-2012-09",
+        "math1-2016-16",
+        "math1-2017-10"
+      ]
+    },
+    {
+      "label": "方向导数和梯度",
+      "count": 5,
+      "examples": [
+        "math1-2012-11",
+        "math1-2017-03",
+        "math1-2019-16"
+      ]
+    },
+    {
+      "label": "行列式",
+      "count": 5,
+      "examples": [
+        "math1-2014-05",
+        "math1-2015-13",
+        "math1-2016-13"
+      ]
+    },
+    {
+      "label": "伴随矩阵与可逆矩阵",
+      "count": 4,
+      "examples": [
+        "math1-2009-06",
+        "math1-2011-06",
+        "math1-2013-13"
+      ]
+    },
+    {
+      "label": "常系数非齐次线性微分方程",
+      "count": 4,
+      "examples": [
+        "math1-2009-10",
+        "math1-2010-15",
+        "math1-2014-17"
+      ]
+    },
+    {
+      "label": "微分中值定理",
+      "count": 4,
+      "examples": [
+        "math1-2009-18",
+        "math1-2013-18",
+        "math1-2020-19"
+      ]
+    },
+    {
+      "label": "向量组的线性相关性",
+      "count": 4,
+      "examples": [
+        "math1-2009-20",
+        "math1-2012-05",
+        "math1-2014-06"
+      ]
+    },
+    {
+      "label": "反常积分的计算与敛散性",
+      "count": 4,
+      "examples": [
+        "math1-2010-03",
+        "math1-2013-12",
+        "math1-2016-01"
+      ]
+    },
+    {
+      "label": "求幂级数的收敛半径、收敛区间和收敛域",
+      "count": 4,
+      "examples": [
+        "math1-2011-02",
+        "math1-2015-03",
+        "math1-2020-04"
+      ]
+    },
+    {
+      "label": "矩阵的运算与变换",
+      "count": 4,
+      "examples": [
+        "math1-2011-05",
+        "math1-2012-06",
+        "math1-2020-05"
+      ]
+    },
+    {
+      "label": "数列敛散性的判定",
+      "count": 4,
+      "examples": [
+        "math1-2011-18",
+        "math1-2018-19",
+        "math1-2019-18"
+      ]
+    },
+    {
+      "label": "多元函数微分学的几何应用",
+      "count": 4,
+      "examples": [
+        "math1-2013-02",
+        "math1-2014-09",
+        "math1-2018-02"
+      ]
+    },
+    {
+      "label": "傅里叶级数",
+      "count": 4,
+      "examples": [
+        "math1-2013-03",
+        "math1-2023-13",
+        "math1-2024-13"
+      ]
+    },
+    {
+      "label": "边缘分布和条件分布",
+      "count": 3,
+      "examples": [
+        "math1-2009-22",
+        "math1-2010-22",
+        "math1-2025-22"
+      ]
+    },
+    {
+      "label": "重积分的应用",
+      "count": 3,
+      "examples": [
+        "math1-2010-12",
+        "math1-2013-19",
+        "math1-2019-19"
+      ]
+    },
+    {
+      "label": "第一类曲面积分",
+      "count": 3,
+      "examples": [
+        "math1-2010-19",
+        "math1-2012-12",
+        "math1-2017-19"
+      ]
+    },
+    {
+      "label": "数理统计的基本概念",
+      "count": 3,
+      "examples": [
+        "math1-2013-08",
+        "math1-2017-08",
+        "math1-2023-09"
+      ]
+    },
+    {
+      "label": "交换积分次序与坐标系之间的转化",
+      "count": 3,
+      "examples": [
+        "math1-2014-03",
+        "math1-2015-04",
+        "math1-2025-04"
+      ]
+    },
+    {
+      "label": "大数定律和中心极限定理",
+      "count": 3,
+      "examples": [
+        "math1-2014-23",
+        "math1-2020-08",
+        "math1-2022-09"
+      ]
+    },
+    {
+      "label": "假设检验",
+      "count": 3,
+      "examples": [
+        "math1-2018-08",
+        "math1-2021-10",
+        "math1-2025-10"
+      ]
+    },
+    {
+      "label": "泰勒公式",
+      "count": 3,
+      "examples": [
+        "math1-2021-03",
+        "math1-2023-20",
+        "math1-2024-19"
+      ]
+    },
+    {
+      "label": "重积分的概念与性质",
+      "count": 2,
+      "examples": [
+        "math1-2009-02",
+        "math1-2010-04"
+      ]
+    },
+    {
+      "label": "变限积分",
+      "count": 2,
+      "examples": [
+        "math1-2009-03",
+        "math1-2024-01"
+      ]
+    },
+    {
+      "label": "第一类曲线积分",
+      "count": 2,
+      "examples": [
+        "math1-2009-11",
+        "math1-2018-12"
+      ]
+    },
+    {
+      "label": "方程根的存在性与个数",
+      "count": 2,
+      "examples": [
+        "math1-2011-17",
+        "math1-2017-18"
+      ]
+    },
+    {
+      "label": "可分离变量的微分方程与齐次方程",
+      "count": 2,
+      "examples": [
+        "math1-2014-11",
+        "math1-2019-10"
+      ]
+    },
+    {
+      "label": "微分方程的应用",
+      "count": 2,
+      "examples": [
+        "math1-2015-16",
+        "math1-2023-17"
+      ]
+    },
+    {
+      "label": "不定积分的计算",
+      "count": 2,
+      "examples": [
+        "math1-2016-02",
+        "math1-2018-15"
+      ]
+    },
+    {
+      "label": "旋度的定义",
+      "count": 2,
+      "examples": [
+        "math1-2016-10",
+        "math1-2018-11"
+      ]
+    },
+    {
+      "label": "其他方程",
+      "count": 2,
+      "examples": [
+        "math1-2021-13",
+        "math1-2024-14"
+      ]
+    },
+    {
+      "label": "不等式的证明",
+      "count": 1,
+      "examples": [
+        "math1-2012-15"
+      ]
+    },
+    {
+      "label": "线性微分方程的解的结构",
+      "count": 1,
+      "examples": [
+        "math1-2013-10"
+      ]
+    },
+    {
+      "label": "区间估计和置信区间",
+      "count": 1,
+      "examples": [
+        "math1-2016-14"
+      ]
+    },
+    {
+      "label": "函数的连续性",
+      "count": 1,
+      "examples": [
+        "math1-2017-01"
+      ]
+    },
+    {
+      "label": "导数的几何意义",
+      "count": 1,
+      "examples": [
+        "math1-2018-10"
+      ]
+    },
+    {
+      "label": "无穷小量的比较",
+      "count": 1,
+      "examples": [
+        "math1-2020-01"
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { analyzePaper, confirmPaper, getBootstrap, paperFileUrl, postJson, saveDiagnosis, uploadPaper } from './api'
 import type { BankQuestion, Bootstrap, Paper, Profile, Question, View } from './types'
 import { LearningWorkspace, EvidenceProfile } from './LearningWorkspace'
+import { AgentPanel, useAgentState } from './AgentPanel'
 
 const stages = ['题目切入', '建模与路径', '中间计算', '最终处理', '时间与审题']
 const errors = ['概念不清', '方法不会', '变式不会', '计算失误', '审题表达']
@@ -10,6 +11,7 @@ function dateLabel(value?: string) { return value ? `${value.slice(5).replace('-
 function esc(value?: string) { return value || '' }
 
 export default function App() {
+  const agent = useAgentState()
   const [data, setData] = useState<Bootstrap | null>(null)
   const [view, setView] = useState<View>('home')
   const [online, setOnline] = useState(true)
@@ -36,16 +38,19 @@ export default function App() {
       <div className="brand"><span className="brand-mark">M</span><div><strong>MathLens</strong><small>数学一 · 试卷诊断</small></div></div>
       <div className="workspace"><i className={online ? 'online' : ''} /><div><strong>我的数学项目</strong><small>{online ? 'SQLite 本地数据' : '服务未连接'}</small></div></div>
       <nav>{([['home', '⌂', '今日工作'], ['papers', '▤', '试卷'], ['queue', '◌', '题目队列'], ['bank', '⌘', '本地题库'], ['profile', '◒', '个人画像']] as [View, string, string][]).map(([id, icon, label]) => <button key={id} className={view === id ? 'nav active' : 'nav'} onClick={() => switchView(id)}><span>{icon}</span>{label}{id === 'queue' && <em>{queue.length}</em>}</button>)}</nav>
-      <div className="side-foot">v0.3 · 本地试卷诊断</div>
+      <div className="side-foot">v0.4 · 单会话学习工作台</div>
     </aside>
     <main className="main">
       <header className="topbar"><div><div className="eyebrow">{viewLabel(view)}</div><h1>{view === 'home' ? '今天只处理最值得回收的分' : viewLabel(view)}</h1></div><div className="top-actions"><span className={online ? 'connection ok' : 'connection'}><i />{online ? '本地服务已连接' : '等待本地服务'}</span><button className="primary" onClick={() => switchView('papers')}>＋ 导入试卷</button></div></header>
       {message && <div className="notice">{message}</div>}
+      <AgentPanel agent={agent} papers={data.papers} questions={data.questions} onReload={reload}/>
+      <fieldset className="learning-inputs" disabled={!!agent.state?.input_locked || !agent.reachable}>
       {view === 'home' && (data.loop?.reports.length ? <LearningWorkspace loop={data.loop} questions={data.questions} papers={data.papers} onReload={reload} focusedQuestion={focusedQuestion}/> : <Home data={data} queue={queue} latest={latest} onSelect={openQuestion} onView={switchView} />)}
       {view === 'papers' && <Papers data={data} onReload={reload} onConfirm={setConfirming} />}
       {view === 'queue' && <Queue questions={data.questions} onSelect={openQuestion} />}
       {view === 'bank' && <Bank bank={data.bank} />}
       {view === 'profile' && (data.loop?.skills.length ? <EvidenceProfile skills={data.loop.skills}/> : <ProfileView profile={data.profile} />)}
+      </fieldset>
     </main>
     {selected && <QuestionDrawer question={selected} bank={data.bank} onClose={() => setSelected(null)} onReload={reload} />}
     {confirming && <ConfirmDrawer paper={confirming} onClose={() => setConfirming(null)} onDone={() => { setConfirming(null); reload(); switchView('queue') }} />}

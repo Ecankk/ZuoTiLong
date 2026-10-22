@@ -4,12 +4,14 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import sqlite3
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import server
 from learning_loop import apply_report, assess_attempt, import_image_bank, loop_snapshot
+from agent_workspace import bank_catalog, workspace_context
 
 
 def main():
@@ -20,8 +22,19 @@ def main():
     p=sub.add_parser("assess");p.add_argument("attempt_id");p.add_argument("assessment",type=Path)
     p=sub.add_parser("import-bank");p.add_argument("directory",type=Path)
     sub.add_parser("pending")
-    args=parser.parse_args();server.init_db()
-    conn=server.connect()
+    p=sub.add_parser("catalog",help="浏览题库目录和原图路径，由 Agent 自行阅读选择")
+    p.add_argument("--topic",action="append",default=[],help="可重复，任一分类包含关键词即可；不是匹配规则")
+    p.add_argument("--id",dest="bank_id")
+    p.add_argument("--offset",type=int,default=0);p.add_argument("--limit",type=int,default=30)
+    p=sub.add_parser("context",help="恢复个人历史、最新诊断、真实作答和记忆文件入口")
+    p.add_argument("--paper",dest="paper_id")
+    args=parser.parse_args()
+    if args.command in ("catalog", "context"):
+        conn=sqlite3.connect(server.DB_PATH.resolve().as_uri()+"?mode=ro",uri=True)
+        conn.row_factory=sqlite3.Row
+    else:
+        server.init_db()
+        conn=server.connect()
     try:
         if args.command=="prepare":
             source=args.pdf.resolve();digest=hashlib.sha256(source.read_bytes()).hexdigest()
@@ -53,6 +66,10 @@ def main():
             print(json.dumps(applied,ensure_ascii=False))
         elif args.command=="assess":
             print(json.dumps(assess_attempt(conn,args.attempt_id,json.loads(args.assessment.read_text(encoding="utf-8"))),ensure_ascii=False));conn.commit()
+        elif args.command=="catalog":
+            print(json.dumps(bank_catalog(conn,server.DATA,topics=args.topic,bank_id=args.bank_id,offset=args.offset,limit=args.limit),ensure_ascii=False,indent=2))
+        elif args.command=="context":
+            print(json.dumps(workspace_context(conn,server.DATA,args.paper_id),ensure_ascii=False,indent=2))
         else:
             snapshot=loop_snapshot(conn)
             tasks=[str(p) for p in (server.DATA/"tasks").glob("*/request.json") if not conn.execute('SELECT id FROM agent_reports WHERE paper_id=?',(p.parent.name,)).fetchone()]

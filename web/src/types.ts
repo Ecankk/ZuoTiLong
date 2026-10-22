@@ -53,4 +53,4 @@ export type Profile = {
   repeated_errors: Array<{ label: string; count: number }>
 }
 
-export type Bootstrap = { papers: Paper[]; questions: Question[]; bank: BankQuestion[]; profile: Profile }
+export type Bootstrap = { papers: Paper[]; questions: Question[]; bank: BankQuestion[]; profile: Profile; loop: import('./LearningWorkspace').Loop }

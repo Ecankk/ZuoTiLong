@@ -1,0 +1,355 @@
+{
+  "image_bank": {
+    "source": "https://github.com/lx-ruc/kaoyanshuxue",
+    "commit": "196dc9d2d8271978a030a3721a828c8723cd3864",
+    "groups": [
+      {
+        "group": "数学一",
+        "records": 386,
+        "years": [
+          "2009",
+          "2010",
+          "2011",
+          "2012",
+          "2013",
+          "2014",
+          "2015",
+          "2016",
+          "2017",
+          "2018",
+          "2019",
+          "2020",
+          "2021",
+          "2022",
+          "2023",
+          "2024",
+          "2025"
+        ],
+        "types": {
+          "1": 146,
+          "2": 102,
+          "3": 138
+        },
+        "missing_question_images": [],
+        "missing_analysis_images": [],
+        "missing_nonchoice_answer_images": [
+          "数学一_2024_Q19"
+        ],
+        "decoded_images": 1011,
+        "invalid_or_tiny_images": [
+          {
+            "path": "kaoyan_math_images\\数学一\\2017\\answers\\Q14_id825_answer.png",
+            "error": "tiny_image"
+          }
+        ]
+      },
+      {
+        "group": "数学三",
+        "records": 386,
+        "years": [
+          "2009",
+          "2010",
+          "2011",
+          "2012",
+          "2013",
+          "2014",
+          "2015",
+          "2016",
+          "2017",
+          "2018",
+          "2019",
+          "2020",
+          "2021",
+          "2022",
+          "2023",
+          "2024",
+          "2025"
+        ],
+        "types": {
+          "1": 146,
+          "2": 102,
+          "3": 138
+        },
+        "missing_question_images": [],
+        "missing_analysis_images": [],
+        "missing_nonchoice_answer_images": [
+          "数学三_2024_Q20"
+        ],
+        "decoded_images": 0,
+        "invalid_or_tiny_images": []
+      },
+      {
+        "group": "数学二",
+        "records": 386,
+        "years": [
+          "2009",
+          "2010",
+          "2011",
+          "2012",
+          "2013",
+          "2014",
+          "2015",
+          "2016",
+          "2017",
+          "2018",
+          "2019",
+          "2020",
+          "2021",
+          "2022",
+          "2023",
+          "2024",
+          "2025"
+        ],
+        "types": {
+          "1": 146,
+          "2": 102,
+          "3": 138
+        },
+        "missing_question_images": [],
+        "missing_analysis_images": [],
+        "missing_nonchoice_answer_images": [
+          "数学二_2025_Q21",
+          "数学二_2024_Q21"
+        ],
+        "decoded_images": 0,
+        "invalid_or_tiny_images": []
+      }
+    ],
+    "root_license_files": []
+  },
+  "text_bank": {
+    "source": "https://github.com/TsekaLuk/Kaoyan-Math1-Papers",
+    "commit": "3151b4acf26ea19ccd427b869a715e65e1990091",
+    "year_named_documents": 40,
+    "unique_years": 38,
+    "duplicate_years": {
+      "2024": 3
+    },
+    "missing_years_1987_2025": [
+      1994
+    ],
+    "broken_image_links": [
+      {
+        "document": "papers/1990年考研数学(一)真题.md",
+        "reference": "images/b38959760655b669fe62a3d460dbac87eae7f3847de9d767f162ae52b05630d2.jpg",
+        "basename_candidates": [
+          "papers/images/1990年考研数学(一)真题/b38959760655b669fe62a3d460dbac87eae7f3847de9d767f162ae52b05630d2.jpg"
+        ]
+      },
+      {
+        "document": "papers/1990年考研数学(一)真题.md",
+        "reference": "images/ae201c81b0550aa09dcb5ed7516c92a49ce98ec220e8ef483d6cd295a3f473b5.jpg",
+        "basename_candidates": [
+          "papers/images/1990年考研数学(一)真题/ae201c81b0550aa09dcb5ed7516c92a49ce98ec220e8ef483d6cd295a3f473b5.jpg"
+        ]
+      },
+      {
+        "document": "papers/1991年考研数学(一)真题.md",
+        "reference": "images/634fe177cf1f729f9d114f24f3d04fb677271ea74378b103b6b4de2f4ca2cac9.jpg",
+        "basename_candidates": [
+          "papers/images/1991年考研数学(一)真题/634fe177cf1f729f9d114f24f3d04fb677271ea74378b103b6b4de2f4ca2cac9.jpg"
+        ]
+      },
+      {
+        "document": "papers/1999年考研数学(一)真题.md",
+        "reference": "images/555bba7a0052324fef18a51fa14df2f7f279be57eef2b451e5c2aa44d6a36dff.jpg",
+        "basename_candidates": [
+          "papers/images/1999年考研数学(一)真题/555bba7a0052324fef18a51fa14df2f7f279be57eef2b451e5c2aa44d6a36dff.jpg"
+        ]
+      },
+      {
+        "document": "papers/2001年考研数学(一)真题.md",
+        "reference": "images/d204f4c9b94d3f324ee2c005bdd513e59c0816c5c59d5b7dd1b731021727da3f.jpg",
+        "basename_candidates": [
+          "papers/images/2001年考研数学(一)真题/d204f4c9b94d3f324ee2c005bdd513e59c0816c5c59d5b7dd1b731021727da3f.jpg"
+        ]
+      },
+      {
+        "document": "papers/2001年考研数学(一)真题.md",
+        "reference": "images/ea979b497525aeee952ac442eec861aa25a2b459fabd289a37ba456482f69683.jpg",
+        "basename_candidates": [
+          "papers/images/2001年考研数学(一)真题/ea979b497525aeee952ac442eec861aa25a2b459fabd289a37ba456482f69683.jpg"
+        ]
+      },
+      {
+        "document": "papers/2001年考研数学(一)真题.md",
+        "reference": "images/ada79bd15b5a570bc5fbeb73119cc67dd7251c4a4cef2c0c8a61858222f6bf3b.jpg",
+        "basename_candidates": [
+          "papers/images/2001年考研数学(一)真题/ada79bd15b5a570bc5fbeb73119cc67dd7251c4a4cef2c0c8a61858222f6bf3b.jpg"
+        ]
+      },
+      {
+        "document": "papers/2001年考研数学(一)真题.md",
+        "reference": "images/be0c86536ba8da8e684128af4a548c6f804336be1177d970457a229a173c2951.jpg",
+        "basename_candidates": [
+          "papers/images/2001年考研数学(一)真题/be0c86536ba8da8e684128af4a548c6f804336be1177d970457a229a173c2951.jpg"
+        ]
+      },
+      {
+        "document": "papers/2001年考研数学(一)真题.md",
+        "reference": "images/9fe86278a50353a837be2e178e22870d161775391196b2248c4d9bbe1472f96e.jpg",
+        "basename_candidates": [
+          "papers/images/2001年考研数学(一)真题/9fe86278a50353a837be2e178e22870d161775391196b2248c4d9bbe1472f96e.jpg"
+        ]
+      },
+      {
+        "document": "papers/2002年考研数学(一)真题.md",
+        "reference": "images/5a83b0446d5d8be79a045e814853bc7c8100c050854275d5d10f62e99d7d957a.jpg",
+        "basename_candidates": [
+          "papers/images/2002年考研数学(一)真题/5a83b0446d5d8be79a045e814853bc7c8100c050854275d5d10f62e99d7d957a.jpg"
+        ]
+      },
+      {
+        "document": "papers/2002年考研数学(一)真题.md",
+        "reference": "images/8127aa31eb9b732b4b21f0f9cef9fb714092b8e440718188c6f9f5e6bca799ea.jpg",
+        "basename_candidates": [
+          "papers/images/2002年考研数学(一)真题/8127aa31eb9b732b4b21f0f9cef9fb714092b8e440718188c6f9f5e6bca799ea.jpg"
+        ]
+      },
+      {
+        "document": "papers/2002年考研数学(一)真题.md",
+        "reference": "images/6a75d47c3f3e7e51ebaa752538b7c072f125f4e206a99dc4cf9ded5b5eb9967e.jpg",
+        "basename_candidates": [
+          "papers/images/2002年考研数学(一)真题/6a75d47c3f3e7e51ebaa752538b7c072f125f4e206a99dc4cf9ded5b5eb9967e.jpg"
+        ]
+      },
+      {
+        "document": "papers/2002年考研数学(一)真题.md",
+        "reference": "images/9e0f14659cf0e9e2d0d8f7fb57cbd30d2d222507d38b5194e452c67cb2205a15.jpg",
+        "basename_candidates": [
+          "papers/images/2002年考研数学(一)真题/9e0f14659cf0e9e2d0d8f7fb57cbd30d2d222507d38b5194e452c67cb2205a15.jpg"
+        ]
+      },
+      {
+        "document": "papers/2003年考研数学(一)真题.md",
+        "reference": "images/341a324b59e43d9ab00862c2b1bb32802af9d1393c521c0602bb888bbeac2b38.jpg",
+        "basename_candidates": [
+          "papers/images/2003年考研数学(一)真题/341a324b59e43d9ab00862c2b1bb32802af9d1393c521c0602bb888bbeac2b38.jpg"
+        ]
+      },
+      {
+        "document": "papers/2005年考研数学(一)真题.md",
+        "reference": "images/7c2bcc0e2dcb5f03746b2233cfda8d0ac73ff90c63028e1a77482f6bc5a6d378.jpg",
+        "basename_candidates": [
+          "papers/images/2005年考研数学(一)真题/7c2bcc0e2dcb5f03746b2233cfda8d0ac73ff90c63028e1a77482f6bc5a6d378.jpg"
+        ]
+      },
+      {
+        "document": "papers/2007年考研数学(一)真题.md",
+        "reference": "images/953e153f419097465ca8ddb42a5439ce75562323ac837ef1df2e2af60cd7d83e.jpg",
+        "basename_candidates": [
+          "papers/images/2007年考研数学(一)真题/953e153f419097465ca8ddb42a5439ce75562323ac837ef1df2e2af60cd7d83e.jpg"
+        ]
+      },
+      {
+        "document": "papers/2008年考研数学(一)真题.md",
+        "reference": "images/a6b0d31b446dd394efbff05a5f60626a44aed34118b24b3b79ef922c7fff558d.jpg",
+        "basename_candidates": [
+          "papers/images/2008年考研数学(一)真题/a6b0d31b446dd394efbff05a5f60626a44aed34118b24b3b79ef922c7fff558d.jpg"
+        ]
+      },
+      {
+        "document": "papers/2009年考研数学(一)真题.md",
+        "reference": "images/f0ad81bede8b383c81253f0a73011914681fc2f2a11e0dc7594747fecdb7b24b.jpg",
+        "basename_candidates": [
+          "papers/images/2009年考研数学(一)真题/f0ad81bede8b383c81253f0a73011914681fc2f2a11e0dc7594747fecdb7b24b.jpg"
+        ]
+      },
+      {
+        "document": "papers/2009年考研数学(一)真题.md",
+        "reference": "images/71ca8ffd0df0176c2a87155b71c4ac8ad9102037ab86fbdc738e4f3b94c0a250.jpg",
+        "basename_candidates": [
+          "papers/images/2009年考研数学(一)真题/71ca8ffd0df0176c2a87155b71c4ac8ad9102037ab86fbdc738e4f3b94c0a250.jpg"
+        ]
+      },
+      {
+        "document": "papers/2009年考研数学(一)真题.md",
+        "reference": "images/6948bb1a1bf4296852c1eb7e8973f665840f8dd10fc670df7e4bd9e66fa35ddd.jpg",
+        "basename_candidates": [
+          "papers/images/2009年考研数学(一)真题/6948bb1a1bf4296852c1eb7e8973f665840f8dd10fc670df7e4bd9e66fa35ddd.jpg"
+        ]
+      },
+      {
+        "document": "papers/2009年考研数学(一)真题.md",
+        "reference": "images/9b1b9712cbf2e4a626ca95a50434a133a693d4785d1172454d82a9b315abbed1.jpg",
+        "basename_candidates": [
+          "papers/images/2009年考研数学(一)真题/9b1b9712cbf2e4a626ca95a50434a133a693d4785d1172454d82a9b315abbed1.jpg"
+        ]
+      },
+      {
+        "document": "papers/2009年考研数学(一)真题.md",
+        "reference": "images/44ac9b23a8d8675c3aff6f33183e31e714f66e9d1804d87eac41c0bb2dedfd1c.jpg",
+        "basename_candidates": [
+          "papers/images/2009年考研数学(一)真题/44ac9b23a8d8675c3aff6f33183e31e714f66e9d1804d87eac41c0bb2dedfd1c.jpg"
+        ]
+      },
+      {
+        "document": "papers/2009年考研数学(一)真题.md",
+        "reference": "images/7fb46f026167894cb065ce3c70f7c27ea2a3bf15bbcf5fc6daecdfa91a73ef54.jpg",
+        "basename_candidates": [
+          "papers/images/2009年考研数学(一)真题/7fb46f026167894cb065ce3c70f7c27ea2a3bf15bbcf5fc6daecdfa91a73ef54.jpg"
+        ]
+      },
+      {
+        "document": "papers/2015年考研数学(一)真题.md",
+        "reference": "images/c6f9e3106314deb729f84ebf17c829522532fccf52a6901247924bbc5c8e8f43.jpg",
+        "basename_candidates": [
+          "papers/images/2015年考研数学(一)真题/c6f9e3106314deb729f84ebf17c829522532fccf52a6901247924bbc5c8e8f43.jpg"
+        ]
+      },
+      {
+        "document": "papers/2017年考研数学(一)真题.md",
+        "reference": "images/8e8f4df12e914f4ef16f2f4912ebc91d19101c0d902a3618f59ad880069238a3.jpg",
+        "basename_candidates": [
+          "papers/images/2017年考研数学(一)真题/8e8f4df12e914f4ef16f2f4912ebc91d19101c0d902a3618f59ad880069238a3.jpg"
+        ]
+      },
+      {
+        "document": "papers/2019年考研数学(一)真题.md",
+        "reference": "images/bc18cfda0de2fa3572c9972712c0aa0c2892886048b84f42471ae448cf773216.jpg",
+        "basename_candidates": [
+          "papers/images/2019年考研数学(一)真题/bc18cfda0de2fa3572c9972712c0aa0c2892886048b84f42471ae448cf773216.jpg"
+        ]
+      },
+      {
+        "document": "papers/2024年数学(一)真题及参考答案.md",
+        "reference": "images/8561745929f3f15694857ad2d30723b7cfd5e3576372495900893acfca1237e0.jpg",
+        "basename_candidates": [
+          "papers/images/2024年数学(一)真题及参考答案/8561745929f3f15694857ad2d30723b7cfd5e3576372495900893acfca1237e0.jpg",
+          "solutions/2024年解析/images/8561745929f3f15694857ad2d30723b7cfd5e3576372495900893acfca1237e0.jpg"
+        ]
+      },
+      {
+        "document": "papers/2024考研数学一真题+答案.md",
+        "reference": "images/fe951ed74c2efdc3e42c9e25c46887fd8cd8c2e2684a82656a733980c354d748.jpg",
+        "basename_candidates": [
+          "papers/images/2024考研数学一真题+答案/fe951ed74c2efdc3e42c9e25c46887fd8cd8c2e2684a82656a733980c354d748.jpg"
+        ]
+      },
+      {
+        "document": "papers/2024考研数学一真题.md",
+        "reference": "images/2fbda3b762a9ad8fc18a861a7db3f2966a6cab9c555a1be5ed4d6b62f8f71a5e.jpg",
+        "basename_candidates": [
+          "papers/images/2024考研数学一真题/2fbda3b762a9ad8fc18a861a7db3f2966a6cab9c555a1be5ed4d6b62f8f71a5e.jpg"
+        ]
+      },
+      {
+        "document": "papers/2025年数学一真题.md",
+        "reference": "images/d1aac1acec58059a3d6cf16b6341ff359ed2871f9b14a50a3c79e1389f2d802b.jpg",
+        "basename_candidates": [
+          "papers/images/2025年数学一真题/d1aac1acec58059a3d6cf16b6341ff359ed2871f9b14a50a3c79e1389f2d802b.jpg"
+        ]
+      },
+      {
+        "document": "papers/2025年数学一真题.md",
+        "reference": "images/ec1f33b0c14c291197576c603a4fcdc0f2e5a3a4f9932bebe1801c67273482c9.jpg",
+        "basename_candidates": [
+          "papers/images/2025年数学一真题/ec1f33b0c14c291197576c603a4fcdc0f2e5a3a4f9932bebe1801c67273482c9.jpg"
+        ]
+      }
+    ],
+    "links_with_local_basename_candidates": 31,
+    "scope": "Top-level year-named paper markdown; mathematical accuracy not audited"
+  },
+  "scope": "File integrity and metadata only; no OCR/retrieval benchmark or complete answer verification"
+}

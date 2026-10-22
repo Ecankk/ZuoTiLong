@@ -1,208 +1,170 @@
-"""Local PDF extraction and question segmentation for MathLens.
-
-The pipeline deliberately separates three levels of confidence:
-
-* PyMuPDF text extraction for born-digital PDFs (fast and deterministic).
-* Optional PaddleOCR for image-only pages (installed separately).
-* A review queue when neither engine can produce reliable text.
-
-It never treats OCR output as ground truth. Every extracted question keeps its
-page range, bounding box and confidence so the user can verify it against the
-original PDF before diagnosing the answer.
-"""
-
+"""Local PDF evidence extraction. OCR text is a draft, never a grading result."""
 from __future__ import annotations
 
-import bisect
+from functools import lru_cache
+import hashlib
 import json
-import re
-import unicodedata
 from pathlib import Path
+import re
+import threading
+import unicodedata
 
-
-QUESTION_START = re.compile(r"(?m)(?<!\d)(?P<number>\d{1,2})\s*[\.．、)）:]\s*")
+PIPELINE_VERSION = "regions-3-rapidocr-1.4.4"
+CACHE_ROOT = Path(__file__).resolve().parent / ".mathlens" / "ocr-cache"
+OCR_LOCK = threading.Lock()
+QUESTION_START = re.compile(r"^\s*(?:[（(]\s*(?P<bracket>\d{1,2})\s*[)）]|(?P<plain>\d{1,2})\s*[．、.]\s+(?=\D))")
 
 
 def normalize_text(value: str) -> str:
-    value = unicodedata.normalize("NFKC", value or "")
-    return re.sub(r"\s+", "", value).replace("﹒", ".")
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", value or ""))
 
 
-def _page_for(offset: int, page_offsets: list[int]) -> int:
-    return max(0, bisect.bisect_right(page_offsets, offset) - 1)
+@lru_cache(maxsize=1)
+def _ocr_engine():
+    from rapidocr_onnxruntime import RapidOCR
+    return RapidOCR(intra_op_num_threads=2, inter_op_num_threads=2)
 
 
-def _clean_stem(value: str) -> str:
-    value = re.sub(r"\[page:\d+\]", "", value)
-    value = re.sub(r"\s+", " ", value).strip(" \n\r\t")
-    return value[:6000]
+def _ocr_blocks(page, clip=None, zoom=2):
+    import pymupdf as fitz
+    rect = fitz.Rect(clip) if clip else page.rect
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=rect, alpha=False)
+    with OCR_LOCK:
+        results, _ = _ocr_engine()(pix.tobytes("png"))
+    blocks = []
+    for polygon, text, score in results or []:
+        xs = [float(p[0]) / zoom + rect.x0 for p in polygon]
+        ys = [float(p[1]) / zoom + rect.y0 for p in polygon]
+        blocks.append({"bbox": [min(xs), min(ys), max(xs), max(ys)],
+                       "text": str(text), "confidence": round(float(score), 4)})
+    return blocks
 
 
-def _union_bbox(blocks: list[dict]) -> list[float] | None:
-    if not blocks:
-        return None
-    return [
-        round(min(item["bbox"][0] for item in blocks), 2),
-        round(min(item["bbox"][1] for item in blocks), 2),
-        round(max(item["bbox"][2] for item in blocks), 2),
-        round(max(item["bbox"][3] for item in blocks), 2),
-    ]
-
-
-def _try_paddle_ocr(page, page_number: int) -> tuple[str, float, str]:
-    """Best-effort PaddleOCR adapter.
-
-    PaddleOCR changes result shapes between major versions. The adapter accepts
-    the common v3 ``predict`` response and otherwise returns a review warning;
-    the main application remains usable without PaddleOCR installed.
-    """
-    try:
-        from paddleocr import PaddleOCR  # type: ignore
-    except Exception:
-        return "", 0.0, "paddleocr_not_installed"
-
-    try:
-        import fitz  # type: ignore
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
-            image_path = Path(handle.name)
-        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-        pixmap.save(str(image_path))
+def _read_page(page, index, allow_ocr):
+    blocks = []
+    for block in page.get_text("dict")["blocks"]:
+        for line in block.get("lines", []):
+            text = "".join(span["text"] for span in line["spans"]).strip()
+            if text:
+                blocks.append({"bbox": list(line["bbox"]), "text": text, "confidence": None})
+    engine, warning = "pymupdf_text", None
+    text_layer = bool(blocks)
+    if not text_layer and allow_ocr:
         try:
-            engine = PaddleOCR(lang="ch")
-            result = engine.predict(str(image_path))
-            texts: list[str] = []
-            scores: list[float] = []
-            for item in result or []:
-                payload = item.json if hasattr(item, "json") else item
-                if isinstance(payload, str):
-                    payload = json.loads(payload)
-                if not isinstance(payload, dict):
-                    continue
-                data = payload.get("res", payload)
-                texts.extend(str(x) for x in data.get("rec_texts", []) if x)
-                scores.extend(float(x) for x in data.get("rec_scores", []) if x is not None)
-            text = "\n".join(texts).strip()
-            confidence = sum(scores) / len(scores) if scores else (0.65 if text else 0.0)
-            return text, round(confidence, 3), "paddleocr"
-        finally:
-            image_path.unlink(missing_ok=True)
-    except Exception as exc:
-        return "", 0.0, f"paddleocr_error:{type(exc).__name__}"
+            blocks = _ocr_blocks(page)
+            markers = _ocr_blocks(page, (page.rect.width * .06, 20, page.rect.width * .23, page.rect.height - 35), zoom=3)
+            for candidate in markers:
+                if QUESTION_START.match(candidate["text"]):
+                    if not any(QUESTION_START.match(b["text"]) and abs(b["bbox"][1] - candidate["bbox"][1]) < 8 for b in blocks):
+                        candidate["anchor_only"] = True
+                        blocks.append(candidate)
+            engine = "rapidocr_onnxruntime"
+        except ImportError:
+            engine, warning = "ocr_unavailable", "扫描页需要安装 requirements-ocr.txt；当前没有可用的本地 OCR"
+        except Exception as exc:
+            engine, warning = "ocr_failed", f"本地 OCR 失败：{type(exc).__name__}: {exc}"
+    if not blocks and not warning:
+        warning = "该页没有可识别文字，不能视为处理完成"
+    blocks.sort(key=lambda b: (round(b["bbox"][1] / 5), b["bbox"][0]))
+    return {"page_number": index + 1, "text": "\n".join(b["text"] for b in blocks if not b.get("anchor_only")),
+            "blocks": blocks, "width": page.rect.width, "height": page.rect.height,
+            "engine": engine, "confidence": None, "warning": warning,
+            "text_layer": text_layer}
 
 
-def extract_pdf(pdf_path: Path, allow_ocr: bool = True) -> dict:
-    """Extract page text and question candidates from a PDF."""
+def segment_pages(pages: list[dict], expected_count: int | None = None) -> tuple[list[dict], list[str]]:
+    candidates = []
+    for page in pages:
+        for block in page["blocks"]:
+            match = QUESTION_START.match(block["text"])
+            if not match or block["bbox"][0] > page["width"] * .24:
+                continue
+            number = int(match.group("bracket") or match.group("plain"))
+            if 1 <= number <= 99:
+                candidates.append({"number": number, "page": page["page_number"], "y": block["bbox"][1], "x": block["bbox"][0], "style": "bracket" if match.group("bracket") else "plain"})
+    candidates.sort(key=lambda x: (x["page"], x["y"], x["x"]))
+    anchors = []
+    for candidate in candidates:
+        if not anchors:
+            if candidate["number"] == 1:
+                anchors.append(candidate)
+        elif candidate["style"] == anchors[0]["style"] and candidate["number"] > anchors[-1]["number"] and candidate["number"] - anchors[-1]["number"] <= 3:
+            anchors.append(candidate)
+    warnings = []
+    numbers = [a["number"] for a in anchors]
+    target = expected_count or (max(numbers) if numbers else 0)
+    missing = sorted(set(range(1, target + 1)) - set(numbers))
+    if missing:
+        warnings.append("题号未完整识别：" + ",".join(map(str, missing)))
+    questions = []
+    for idx, anchor in enumerate(anchors):
+        next_anchor = anchors[idx + 1] if idx + 1 < len(anchors) else None
+        end_page = next_anchor["page"] if next_anchor else len(pages)
+        regions, text = [], []
+        for page_num in range(anchor["page"], end_page + 1):
+            page = pages[page_num - 1]
+            top = max(0, anchor["y"] - 5) if page_num == anchor["page"] else 25
+            bottom = next_anchor["y"] - 3 if next_anchor and page_num == next_anchor["page"] else page["height"] - 38
+            if bottom <= top:
+                continue
+            selected = [b for b in page["blocks"] if not b.get("anchor_only") and top <= b["bbox"][1] < bottom]
+            if page_num != anchor["page"] and not selected:
+                continue
+            regions.append({"page": page_num, "bbox": [20, round(top, 2), page["width"] - 15, round(bottom, 2)], "role": "question_and_work"})
+            text.extend(b["text"] for b in selected)
+        if regions:
+            questions.append({"number": str(anchor["number"]), "stem": "\n".join(text)[:9000],
+                              "page_start": regions[0]["page"], "page_end": regions[-1]["page"],
+                              "bbox": regions[0]["bbox"], "regions": regions,
+                              "ocr_confidence": None, "text_status": "ocr_draft"})
+    if not questions:
+        warnings.append("未得到可定位的题目；等待 Agent 阅读页图后提交切分")
+    return questions, warnings
+
+
+def extract_pdf(pdf_path: Path, allow_ocr: bool = True, expected_count: int | None = None) -> dict:
     try:
-        import fitz  # type: ignore
-    except Exception:
-        return {
-            "engine": "unavailable",
-            "message": "未安装 PyMuPDF。请运行 python -m pip install -r requirements-ocr.txt",
-            "pages": [],
-            "questions": [],
-            "warnings": ["pymupdf_not_installed"],
-        }
-
-    document = fitz.open(str(pdf_path))
-    pages: list[dict] = []
-    page_texts: list[str] = []
-    page_offsets: list[int] = []
-    warnings: list[str] = []
-    engine_names: set[str] = set()
-    cursor = 0
-    for index, page in enumerate(document):
-        blocks: list[dict] = []
-        for block in page.get_text("blocks"):
-            if len(block) < 5:
-                continue
-            text = str(block[4] or "").strip()
-            if not text:
-                continue
-            blocks.append({"bbox": [float(x) for x in block[:4]], "text": text})
-        text = page.get_text("text") or ""
-        engine = "pymupdf_text"
-        confidence = 0.98 if text.strip() else 0.0
-        if not text.strip() and allow_ocr:
-            text, confidence, engine = _try_paddle_ocr(page, index + 1)
-        if not text.strip():
-            warnings.append(f"第 {index + 1} 页没有提取到文字 ({engine})")
-        engine_names.add(engine)
-        page_offsets.append(cursor)
-        page_texts.append(text)
-        cursor += len(text) + len(f"\n[page:{index + 1}]\n")
-        pages.append({
-            "page_number": index + 1,
-            "text": text,
-            "blocks": blocks,
-            "width": round(float(page.rect.width), 2),
-            "height": round(float(page.rect.height), 2),
-            "engine": engine,
-            "confidence": confidence,
-        })
-    document.close()
-
-    joined = "".join(f"\n[page:{idx + 1}]\n{text}" for idx, text in enumerate(page_texts))
-    starts = list(QUESTION_START.finditer(joined))
-    questions: list[dict] = []
-    for index, match in enumerate(starts):
-        start = match.start()
-        end = starts[index + 1].start() if index + 1 < len(starts) else len(joined)
-        number = match.group("number")
-        stem = _clean_stem(joined[match.end():end])
-        if len(stem) < 2:
-            continue
-        page_start = _page_for(start, page_offsets) + 1
-        page_end = _page_for(max(start, end - 1), page_offsets) + 1
-        related_pages = pages[page_start - 1:page_end]
-        bbox = _union_bbox([block for page in related_pages for block in page["blocks"]])
-        confidence = min((page["confidence"] for page in related_pages), default=0.0)
-        questions.append({
-            "number": number,
-            "stem": stem,
-            "page_start": page_start,
-            "page_end": page_end,
-            "bbox": bbox,
-            "ocr_confidence": round(confidence, 3),
-        })
-
-    if not questions and any(page["text"].strip() for page in pages):
-        warnings.append("提取到文字但没有识别到标准题号，请人工确认切分")
-    if not questions and any(page["engine"] == "paddleocr_not_installed" for page in pages):
-        warnings.append("扫描页需要安装 PaddleOCR，当前仅保存了 PDF 原文件")
-    engine = "+".join(sorted(engine_names)) if engine_names else "unavailable"
-    return {"engine": engine, "message": "解析完成" if questions else "需要人工确认", "pages": pages, "questions": questions, "warnings": warnings}
+        import pymupdf as fitz
+    except ImportError:
+        return {"engine": "unavailable", "message": "请安装 requirements-ocr.txt", "pages": [], "questions": [], "warnings": ["pymupdf_not_installed"], "complete": False}
+    digest = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+    cache_file = CACHE_ROOT / digest / f"{PIPELINE_VERSION}-{'ocr' if allow_ocr else 'text'}.json"
+    if cache_file.is_file():
+        pages = json.loads(cache_file.read_text(encoding="utf-8"))["pages"]
+    else:
+        with fitz.open(str(pdf_path)) as document:
+            pages = [_read_page(page, idx, allow_ocr) for idx, page in enumerate(document)]
+        if pages and all(not p["warning"] for p in pages):
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary = cache_file.with_suffix(".tmp")
+            temporary.write_text(json.dumps({"pages": pages}, ensure_ascii=False), encoding="utf-8")
+            temporary.replace(cache_file)
+    if expected_count is None and "2026" in pdf_path.name and re.search(r"数学.?[（(]?一", pdf_path.name):
+        expected_count = 22
+    questions, warnings = segment_pages(pages, expected_count)
+    warnings.extend(f"第{p['page_number']}页：{p['warning']}" for p in pages if p["warning"])
+    complete = bool(questions) and not warnings
+    return {"engine": "+".join(sorted({p["engine"] for p in pages})),
+            "message": "题目切分完成，等待作答诊断" if complete else "切分存在疑点，等待补充识别",
+            "pages": pages, "questions": questions, "warnings": warnings, "complete": complete,
+            "source_sha256": digest, "pipeline_version": PIPELINE_VERSION}
 
 
 def _bank_score(stem: str, bank: dict) -> float:
-    query = normalize_text(stem)
-    candidate = normalize_text(bank.get("stem", ""))
+    query, candidate = normalize_text(stem), normalize_text(bank.get("stem", ""))
     if not query or not candidate:
         return 0.0
-    if candidate in query or query in candidate:
-        return 0.96
-    fingerprint = bank.get("fingerprint") or {}
-    tags = list(bank.get("tags") or []) + list(fingerprint.get("objects") or []) + list(fingerprint.get("method") or [])
-    hits = sum(1 for tag in tags if normalize_text(str(tag)) and normalize_text(str(tag)) in query)
-    # Chinese question text has no reliable word boundaries; 2-character
-    # shingles provide a conservative fallback for paraphrased questions.
-    shingles = {query[i:i + 2] for i in range(max(0, len(query) - 1))}
-    candidate_shingles = {candidate[i:i + 2] for i in range(max(0, len(candidate) - 1))}
-    overlap = len(shingles & candidate_shingles) / max(1, len(candidate_shingles))
-    return round(min(0.9, 0.25 + min(0.45, hits * 0.12) + min(0.3, overlap * 0.6)), 3)
+    if query == candidate:
+        return .99
+    a = {query[i:i+2] for i in range(len(query)-1)}
+    b = {candidate[i:i+2] for i in range(len(candidate)-1)}
+    return round(min(.8, len(a & b) / max(1, len(a | b))), 3)
 
 
 def match_bank_questions(extracted: list[dict], bank_rows: list[dict]) -> list[dict]:
     for item in extracted:
         ranked = sorted(((_bank_score(item["stem"], bank), bank) for bank in bank_rows), key=lambda pair: pair[0], reverse=True)
-        if ranked and ranked[0][0] >= 0.58:
-            score, bank = ranked[0]
-            item["match_bank_id"] = bank.get("id")
-            item["match_score"] = score
-            item["knowledge"] = "｜".join(bank.get("tags") or bank.get("fingerprint", {}).get("objects", []))
-            item["fingerprint"] = bank.get("fingerprint") or {}
-        else:
-            item["match_bank_id"] = None
-            item["match_score"] = round(ranked[0][0], 3) if ranked else 0.0
+        item["match_bank_id"] = ranked[0][1].get("id") if ranked and ranked[0][0] >= .99 else None
+        item["match_score"] = ranked[0][0] if ranked else 0.0
+        item["bank_candidates"] = [{"id": bank.get("id"), "score": score} for score, bank in ranked[:3] if score > .15]
     return extracted

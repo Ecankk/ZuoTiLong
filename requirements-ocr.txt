@@ -1,6 +1,6 @@
 # PDF text extraction and page coordinates (required for automatic digital-PDF parsing)
 PyMuPDF>=1.24,<2
 
-# Optional: OCR for image-only/scanned pages. Install separately when needed;
-# it brings a large Paddle runtime and is not required for the local app shell.
-# PaddleOCR>=3.0,<4
+# Local Chinese OCR with bundled ONNX models, tested with Python 3.12.
+# Used for question anchors and text drafts; mathematical work is reviewed by Agent.
+rapidocr-onnxruntime==1.4.4

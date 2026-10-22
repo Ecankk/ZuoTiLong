@@ -1,0 +1,215 @@
+{
+  "mathlens_revision": "47aae49d484686ced29bb6cb5ec40f6074d6bd9e",
+  "pipeline_sha256": "7f09433850258b360e47a278ad0bba742032d52ad9b4a88fdac945fd2fa4a8ae",
+  "repositories": [
+    {
+      "directory": "cuoti-zhiku",
+      "origin": "https://github.com/whz211417/cuoti-zhiku.git",
+      "commit": "12e806afba85ac272374b84981e95eca8334f81f",
+      "root_license_files": [
+        "LICENSE"
+      ]
+    },
+    {
+      "directory": "error-notebook",
+      "origin": "https://github.com/Jasmine-Coder-Dev/error-notebook.git",
+      "commit": "c343f1f2be608b17fec3997fc7838f27655f7713",
+      "root_license_files": [
+        "LICENSE"
+      ]
+    },
+    {
+      "directory": "exam-classifier",
+      "origin": "https://github.com/AdamWang72/exam_classifier.git",
+      "commit": "74070e5a678894f1c6e16eba270226d6f6f14cc1",
+      "root_license_files": [
+        "LICENSE"
+      ]
+    },
+    {
+      "directory": "kaoyan-quiz",
+      "origin": "https://github.com/roizenken-design/kaoyan-quiz.git",
+      "commit": "4412366be6c4ed4eeceffc63e733cb212cce6971",
+      "root_license_files": [
+        "LICENSE"
+      ]
+    },
+    {
+      "directory": "math-question-bank",
+      "origin": "https://github.com/justcodeit404/math-question-bank.git",
+      "commit": "0a4486ffaf140e3185f382858709e32ab84e996a",
+      "root_license_files": []
+    },
+    {
+      "directory": "zerror",
+      "origin": "https://github.com/worstwoof/Zerror.git",
+      "commit": "b0fc44a07e8f5d3075cd7fe89da2f9c56ec78303",
+      "root_license_files": []
+    }
+  ],
+  "bank_audit": [
+    {
+      "file": "1000题/questions.json",
+      "sha256": "cf488b5331f9906330d79d922cb6f9752590eed4f52e9825af8597b17401cff6",
+      "title": "张宇考研数学1000题 数学二",
+      "questions": 901,
+      "chapters": 48,
+      "duplicate_uids_within_bank": 0,
+      "nonempty_text_answers": 0,
+      "image_refs": 14,
+      "missing_image_refs": 14,
+      "answer_refs": 901,
+      "missing_answer_refs": 901,
+      "upstream_quality_claim_not_independently_verified": {
+        "total_questions": 901,
+        "verified": 901,
+        "held": 0,
+        "verification_rate": 1.0,
+        "global_issues": 0
+      }
+    },
+    {
+      "file": "660题/questions.json",
+      "sha256": "3a9e73301377275569f74a9e40dede27bf09c1c0de3247b44afae57b420b82bb",
+      "title": "数学基础过关660题·数二",
+      "questions": 660,
+      "chapters": 11,
+      "duplicate_uids_within_bank": 0,
+      "nonempty_text_answers": 0,
+      "image_refs": 645,
+      "missing_image_refs": 645,
+      "answer_refs": 660,
+      "missing_answer_refs": 660,
+      "upstream_quality_claim_not_independently_verified": {
+        "total_questions": 660,
+        "verified": 660,
+        "held": 0,
+        "verification_rate": 1.0,
+        "global_issues": 0
+      }
+    },
+    {
+      "file": "880题/questions.json",
+      "sha256": "575807208d32d35dbb80483824009b713b1c1b970e7498f18ffbe2d3468fd971",
+      "title": "李林880数二（高数+线代）",
+      "questions": 927,
+      "chapters": 12,
+      "duplicate_uids_within_bank": 0,
+      "nonempty_text_answers": 0,
+      "image_refs": 778,
+      "missing_image_refs": 778,
+      "answer_refs": 927,
+      "missing_answer_refs": 927,
+      "upstream_quality_claim_not_independently_verified": {
+        "total_questions": 927,
+        "verified": 923,
+        "held": 4,
+        "verification_rate": 0.995685,
+        "global_issues": 0
+      }
+    },
+    {
+      "file": "大学深埋/questions.json",
+      "sha256": "6ede9d8a7dfa6a210571ddc7c762065414a10842d7cc0535b89fb9a8e38bd464",
+      "title": "大学深埋（高数+线代）",
+      "questions": 412,
+      "chapters": 18,
+      "duplicate_uids_within_bank": 0,
+      "nonempty_text_answers": 0,
+      "image_refs": 144,
+      "missing_image_refs": 144,
+      "answer_refs": 412,
+      "missing_answer_refs": 412,
+      "upstream_quality_claim_not_independently_verified": {
+        "total_questions": 412,
+        "verified": 412,
+        "held": 0,
+        "verification_rate": 1.0,
+        "global_issues": 0
+      }
+    }
+  ],
+  "mathlens_probes": {
+    "scope": "Synthetic digital PDFs only; no handwriting/OCR accuracy or real-paper benchmark",
+    "pymupdf_version": "1.26.5",
+    "paddleocr_package_detected": false,
+    "segmentation_probes": [
+      {
+        "name": "decimal_numbers",
+        "expected_question_numbers": [
+          "1",
+          "2"
+        ],
+        "actual_question_numbers": [
+          "1",
+          "0",
+          "25",
+          "2"
+        ],
+        "passed": false
+      },
+      {
+        "name": "subquestion_numbers",
+        "expected_question_numbers": [
+          "1",
+          "2"
+        ],
+        "actual_question_numbers": [
+          "1",
+          "1",
+          "2",
+          "2"
+        ],
+        "passed": false
+      },
+      {
+        "name": "distinct_question_regions",
+        "actual_boxes": [
+          [
+            72.0,
+            59.1,
+            178.07,
+            125.05
+          ],
+          [
+            72.0,
+            59.1,
+            178.07,
+            125.05
+          ]
+        ],
+        "passed": false
+      },
+      {
+        "name": "page_boundary",
+        "expected_ranges": [
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            2
+          ]
+        ],
+        "actual_ranges": [
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            2
+          ]
+        ],
+        "passed": false
+      }
+    ],
+    "substring_identity_counterexample": {
+      "score": 0.96,
+      "interpretation": "Different answer constraints receive a high score; score is not identity probability"
+    },
+    "blank_page_engine": "paddleocr_not_installed",
+    "blank_page_question_count": 0
+  }
+}

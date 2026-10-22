@@ -1,24 +1,29 @@
 from __future__ import annotations
 
-import cgi
 import hashlib
 import json
+import mimetypes
 import os
 import shutil
 import sqlite3
 import uuid
+import socket
+from email.parser import BytesParser
+from email.policy import default as email_policy
 from datetime import date, datetime, timezone
+from contextlib import closing
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from pdf_pipeline import extract_pdf, match_bank_questions
+from learning_loop import init_loop, loop_snapshot, submit_probe, apply_report
 
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
-DATA = ROOT / ".mathlens"
+DATA = Path(os.environ.get("MATHLENS_DATA_DIR", str(ROOT / ".mathlens"))).resolve()
 PAPERS_DIR = DATA / "papers"
 DB_PATH = DATA / "mathlens.db"
 
@@ -133,7 +138,8 @@ def init_db() -> None:
     }.items():
         if name not in question_columns:
             conn.execute(f"ALTER TABLE questions ADD COLUMN {name} {definition}")
-    if conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0:
+    init_loop(conn)
+    if os.environ.get("MATHLENS_DEMO") == "1" and conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0:
         seed(conn)
     conn.commit()
     conn.close()
@@ -186,6 +192,7 @@ def rows(conn, sql: str, params=()):
 
 def enrich_question(item: dict) -> dict:
     item["fingerprint"] = json_load(item.pop("fingerprint_json", None), {})
+    item["regions"] = json_load(item.pop("regions_json", None), [])
     return item
 
 
@@ -199,8 +206,16 @@ def bootstrap() -> dict:
         q["fingerprint"] = json_load(q.pop("fingerprint_json", None), {})
         bank.append(q)
     profile = build_profile(conn)
+    if os.environ.get("MATHLENS_DEMO") != "1":
+        papers = [p for p in papers if not p["id"].startswith("paper-demo-")]
+        visible_ids = {p["id"] for p in papers}
+        questions = [q for q in questions if q["paper_id"] in visible_ids]
+        bank = [q for q in bank if q["source"] != "本地示例题库"]
     conn.close()
-    return {"papers": papers, "questions": questions, "bank": bank, "profile": profile}
+    conn = connect()
+    loop = loop_snapshot(conn)
+    conn.close()
+    return {"papers": papers, "questions": questions, "bank": bank, "profile": profile, "loop": loop}
 
 
 def build_profile(conn: sqlite3.Connection) -> dict:
@@ -266,6 +281,8 @@ def analyze_paper_record(conn: sqlite3.Connection, paper_id: str) -> dict:
             item["stem"],
         )
         if old and old["id"] == qid:
+            if conn.execute("SELECT question_id FROM question_diagnoses WHERE question_id=?", (qid,)).fetchone():
+                continue  # Re-extraction must not overwrite an Agent-reviewed attempt.
             conn.execute(
                 """UPDATE questions SET number=?, stem=?, fingerprint_json=?, knowledge=?, page_start=?, page_end=?,
                    bbox_json=?, ocr_confidence=?, match_bank_id=?, match_score=?, source_text=? WHERE id=?""",
@@ -280,12 +297,29 @@ def analyze_paper_record(conn: sqlite3.Connection, paper_id: str) -> dict:
                  item.get("knowledge"), values[2], item.get("page_start"), item.get("page_end"), values[6],
                  item.get("ocr_confidence", 0), item.get("match_bank_id"), item.get("match_score", 0), item["stem"], created),
             )
-    status = "analyzed" if extracted else "needs_review"
+        conn.execute("UPDATE questions SET regions_json=? WHERE id=?", (json.dumps(item.get("regions", []), ensure_ascii=False), qid))
+    has_report = conn.execute("SELECT id FROM agent_reports WHERE paper_id=?", (paper_id,)).fetchone()
+    status = "diagnosed" if has_report else "segmented" if result.get("complete") else "needs_review"
     conn.execute(
         "UPDATE papers SET import_status=?, page_count=?, analysis_engine=?, analysis_message=?, analyzed_at=? WHERE id=?",
         (status, len(result["pages"]), result["engine"], result["message"], created, paper_id),
     )
     conn.commit()
+    task_dir = DATA / "tasks" / paper_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    page_images = []
+    import pymupdf as fitz
+    with fitz.open(str(pdf_path)) as document:
+        for idx, page in enumerate(document):
+            target = task_dir / f"page-{idx+1:02d}.png"
+            if not target.is_file():
+                page.get_pixmap(matrix=fitz.Matrix(1.8,1.8), alpha=False).save(str(target))
+            page_images.append(str(target))
+    request = {"paper_id":paper_id,"source_sha256":result["source_sha256"],"source_pdf":str(pdf_path),
+               "page_images":page_images,"questions":extracted,"status":"report_available" if has_report else "awaiting_agent",
+               "instructions":"Read original pages and work, verify OCR against images. Submit evidence-backed report via scripts/agent_tasks.py apply. Do not invent probe results, scores or causes. See docs/agent-workflow.md."}
+    task_file = task_dir / "request.json"
+    task_file.write_text(json.dumps(request,ensure_ascii=False,indent=2),encoding="utf-8")
     return {
         "paper": as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone()),
         "questions": rows(conn, "SELECT * FROM questions WHERE paper_id=? ORDER BY number", (paper_id,)),
@@ -293,6 +327,7 @@ def analyze_paper_record(conn: sqlite3.Connection, paper_id: str) -> dict:
         "message": result["message"],
         "warnings": result["warnings"],
         "created_questions": len(extracted),
+        "agent_task": str(task_file),
     }
 
 
@@ -346,7 +381,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not candidate.exists() or not candidate.is_file():
             candidate = DIST / "index.html"
-        content_type = "text/html; charset=utf-8"
+        content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+        if candidate.suffix == ".html": content_type = "text/html; charset=utf-8"
         if candidate.suffix == ".css": content_type = "text/css; charset=utf-8"
         if candidate.suffix == ".js": content_type = "application/javascript; charset=utf-8"
         if candidate.suffix == ".json": content_type = "application/json; charset=utf-8"
@@ -358,6 +394,39 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def api_get(self, parsed):
+        if parsed.path.startswith("/api/questions/") and parsed.path.endswith("/evidence"):
+            import pymupdf as fitz
+            qid = parsed.path.split("/")[3]
+            with closing(connect()) as conn, conn:
+                question = as_json(conn.execute("SELECT q.*,p.source_path FROM questions q JOIN papers p ON p.id=q.paper_id WHERE q.id=?", (qid,)).fetchone())
+            if not question:
+                self.send_json({"error": "题目不存在"}, HTTPStatus.NOT_FOUND); return
+            regions = json_load(question.get("regions_json"), [])
+            try:
+                index = int(parse_qs(parsed.query).get("region", ["0"])[0])
+                region = regions[index]
+                pdf = (ROOT / question["source_path"]).resolve()
+                if PAPERS_DIR not in pdf.parents:
+                    raise ValueError("invalid file")
+                with fitz.open(str(pdf)) as document:
+                    pix = document[region["page"] - 1].get_pixmap(matrix=fitz.Matrix(2, 2), clip=fitz.Rect(region["bbox"]), alpha=False)
+                    raw = pix.tobytes("png")
+                self.send_response(200); self.send_header("Content-Type", "image/png"); self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+            except (ValueError, IndexError, KeyError):
+                self.send_json({"error": "证据区域不存在"}, HTTPStatus.NOT_FOUND)
+            return
+        if parsed.path.startswith("/api/bank/") and parsed.path.rsplit("/", 1)[-1] in ("question", "analysis", "answer"):
+            parts = parsed.path.split("/")
+            role = parts[-1]
+            with closing(connect()) as conn, conn:
+                resource = as_json(conn.execute("SELECT * FROM bank_resources WHERE bank_id=?", (parts[3],)).fetchone())
+                if role in ("analysis", "answer") and resource:
+                    conn.execute("INSERT OR IGNORE INTO bank_exposures VALUES(?,?)", (parts[3], now_iso()))
+            if resource and resource.get(role + "_path"):
+                path = (DATA / resource[role + "_path"]).resolve()
+                if (DATA / "bank-assets") in path.parents and path.is_file():
+                    self.send_file(path, "image/png"); return
+            self.send_json({"error": "题库资源缺失"}, HTTPStatus.NOT_FOUND); return
         if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/file"):
             paper_id = parsed.path.split("/")[3]
             conn = connect()
@@ -377,11 +446,13 @@ class Handler(BaseHTTPRequestHandler):
         conn = connect()
         try:
             if parsed.path == "/api/health":
-                self.send_json({"ok": True, "version": "0.1.0"})
+                self.send_json({"ok": True, "version": "0.3.0"})
             elif parsed.path == "/api/bootstrap":
                 self.send_json(bootstrap())
             elif parsed.path == "/api/profile":
                 self.send_json(build_profile(conn))
+            elif parsed.path == "/api/loop":
+                self.send_json(loop_snapshot(conn))
             elif parsed.path == "/api/papers":
                 self.send_json({"papers": rows(conn, "SELECT * FROM papers ORDER BY exam_date DESC, created_at DESC")})
             elif parsed.path == "/api/bank":
@@ -423,6 +494,15 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/analyze"):
                 paper_id = parsed.path.split("/")[3]
                 self.send_json(analyze_paper_record(conn, paper_id), HTTPStatus.CREATED)
+            elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/agent-report"):
+                paper_id = parsed.path.split("/")[3]
+                result = apply_report(conn, paper_id, self.read_json(), ROOT)
+                conn.commit()
+                self.send_json(result, HTTPStatus.CREATED)
+            elif parsed.path.startswith("/api/probes/") and parsed.path.endswith("/submit"):
+                result = submit_probe(conn, parsed.path.split("/")[3], self.read_json())
+                conn.commit()
+                self.send_json(result, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/confirm"):
                 paper_id = parsed.path.split("/")[3]
                 body = self.read_json()
@@ -461,7 +541,7 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("INSERT INTO reviews(id,question_id,bank_question_id,mode,correct,score,elapsed,confidence,error_stage,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                              (review_id, body.get("question_id"), body.get("bank_question_id"), body.get("mode") or "检验", int(bool(body.get("correct"))), float(body.get("score") or 0), int(body.get("elapsed") or 0), int(body.get("confidence") or 0), body.get("error_stage"), body.get("notes"), now_iso()))
                 if body.get("correct"):
-                    conn.execute("UPDATE questions SET review_status=? WHERE id=?", ("已掌握" if body.get("transfer") else "训练中", body.get("question_id")))
+                    conn.execute("UPDATE questions SET review_status=? WHERE id=?", ("训练中", body.get("question_id")))
                 else:
                     conn.execute("UPDATE questions SET review_status=?, error_stage=COALESCE(?, error_stage) WHERE id=?", ("不稳定", body.get("error_stage"), body.get("question_id")))
                 conn.commit()
@@ -482,6 +562,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         except (ValueError, json.JSONDecodeError) as exc:
+            conn.rollback()
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         finally:
             conn.close()
@@ -491,28 +572,47 @@ class Handler(BaseHTTPRequestHandler):
         if "multipart/form-data" not in content_type:
             self.send_json({"error": "multipart/form-data required"}, HTTPStatus.BAD_REQUEST)
             return
-        form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD":"POST", "CONTENT_TYPE":content_type})
-        upload = form["file"] if "file" in form else None
-        if upload is None or not getattr(upload, "filename", None):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > 80 * 1024 * 1024:
+            self.send_json({"error": "PDF 上传大小须为 1 字节至 80 MB"}, HTTPStatus.BAD_REQUEST); return
+        message = BytesParser(policy=email_policy).parsebytes(("Content-Type: " + content_type + "\r\nMIME-Version: 1.0\r\n\r\n").encode() + self.rfile.read(length))
+        fields, filename, content = {}, None, None
+        for part in message.iter_parts() if message.is_multipart() else []:
+            name = part.get_param("name", header="content-disposition")
+            if name == "file":
+                filename, content = part.get_filename(), part.get_payload(decode=True)
+            elif name:
+                fields[name] = (part.get_payload(decode=True) or b"").decode("utf-8", errors="replace")
+        if not filename or not content:
             self.send_json({"error": "file required"}, HTTPStatus.BAD_REQUEST)
             return
+        try:
+            import pymupdf as fitz
+            with fitz.open(stream=content, filetype="pdf") as document:
+                if document.is_encrypted or not len(document):
+                    raise ValueError("试卷无法读取")
+        except Exception:
+            self.send_json({"error": "请上传可读取、未加密的 PDF"}, HTTPStatus.BAD_REQUEST); return
+        digest = hashlib.sha256(content).hexdigest()
+        with closing(connect()) as conn, conn:
+            previous = as_json(conn.execute("SELECT * FROM papers WHERE source_sha256=? ORDER BY created_at LIMIT 1", (digest,)).fetchone())
+        if previous:
+            self.send_json({"paper": previous, "sha256": digest, "reused": True}); return
         paper_id = "paper-" + uuid.uuid4().hex[:10]
-        filename = Path(upload.filename).name
+        filename = Path(filename).name
         target_dir = PAPERS_DIR / paper_id
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / filename
-        with target.open("wb") as fh:
-            shutil.copyfileobj(upload.file, fh)
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
-        title = form.getfirst("title") or Path(filename).stem
-        exam_date = form.getfirst("exam_date") or date.today().isoformat()
+        target.write_bytes(content)
+        title = fields.get("title") or Path(filename).stem
+        exam_date = fields.get("exam_date") or date.today().isoformat()
         conn = connect()
-        conn.execute("INSERT INTO papers(id,title,exam_date,source_name,source_path,import_status,created_at) VALUES (?,?,?,?,?,?,?)",
-                     (paper_id, title, exam_date, filename, str(target.relative_to(ROOT)), "needs_review", now_iso()))
+        conn.execute("INSERT INTO papers(id,title,exam_date,source_name,source_path,source_sha256,import_status,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                     (paper_id, title, exam_date, filename, str(target.relative_to(ROOT)), digest, "needs_review", now_iso()))
         conn.commit()
         paper = as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())
         conn.close()
-        self.send_json({"paper": paper, "sha256": digest, "next": "确认题目切分并录入得分"}, HTTPStatus.CREATED)
+        self.send_json({"paper": paper, "sha256": digest, "next": "自动切题，然后交给工作目录中的 Agent 阅读作答"}, HTTPStatus.CREATED)
 
 
 def main():
@@ -522,7 +622,12 @@ def main():
     parser.add_argument("--port", type=int, default=4173)
     args = parser.parse_args()
     init_db()
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server = ThreadingHTTPServer((args.host, args.port), Handler, bind_and_activate=False)
+    if os.name == "nt":
+        server.allow_reuse_address = False
+        server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    server.server_bind()
+    server.server_activate()
     print(f"MathLens running at http://{args.host}:{args.port}/")
     print(f"Data directory: {DATA}")
     try:

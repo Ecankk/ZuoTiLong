@@ -3,11 +3,13 @@ import { postJson } from './api'
 import { MathText } from './LearningWorkspace'
 import type { Question, VisibleContext } from './types'
 import { useAnswerImages, AnswerImagePicker, SubmittedImages } from './AnswerImages'
+import {useDraft} from './drafts'
 
 type AgentRequest = { id: string; method: string; params: { command?: string; reason?: string; questions?: { id: string; question: string; options?: { label: string; description: string }[]; isSecret?: boolean }[]; [key: string]: unknown } }
 export type AgentState = {
   revision: number; connected: boolean; can_submit: boolean; input_locked: boolean; session_id?: string;
   status: string; activity: string; error?: string; connection_notice?: string; active_request?: string; requests: AgentRequest[];
+  learning_tools_version?:number;
   turns: { request_id: string; text: string; status: string; image_ids?:string[]; context: { paper_id?: string; question_id?: string }; messages: { id: string; text: string; phase?: string; complete: boolean }[] }[]
 }
 
@@ -35,7 +37,7 @@ export function AgentPanel({ agent, questions, visibleContext, onReload }: {
   agent: ReturnType<typeof useAgentState>; questions: Question[]; visibleContext: VisibleContext; onReload: () => Promise<void>
 }) {
   const { state, reachable } = agent
-  const [text, setText] = useState('')
+  const [text, setText] = useDraft('agent:text','')
   const photos = useAnswerImages()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -44,6 +46,7 @@ export function AgentPanel({ agent, questions, visibleContext, onReload }: {
   const followLatest = useRef(true)
   const lastCompleted = useRef('')
   const last = state?.turns.at(-1)
+  useEffect(()=>{const discuss=(event:Event)=>setText(old=>(old?old+'\n\n':'')+(event as CustomEvent<string>).detail);window.addEventListener('mathlens:discuss',discuss);return()=>window.removeEventListener('mathlens:discuss',discuss)},[])
   useEffect(() => {
     if (last?.status === 'completed' && lastCompleted.current !== last.request_id) {
       lastCompleted.current = last.request_id; onReload()
@@ -77,9 +80,11 @@ export function AgentPanel({ agent, questions, visibleContext, onReload }: {
     <div className="panel-head"><div><div className="eyebrow">本机 Codex 登录 · 固定学习会话</div><h2>与 Codex 讨论</h2></div><span className="status pending" role="status">{reachable ? labels[state?.status || 'disconnected'] : '正在确认连接'}</span></div>
     <p className="muted">发送时附上当前页面与题目，等待完整反馈后继续。</p>
     <div className="agent-visible-context"><span>当前正在看</span><strong title={visibleContext.label}><MathText text={visibleContext.label}/></strong><small>{visibleContext.view}{visibleContext.section ? ` · ${visibleContext.section}` : ''}</small></div>
+    {visibleContext.question_id&&<details><summary>当前原卷缩略图</summary><img className="evidence-image" src={`/api/questions/${visibleContext.question_id}/evidence`} alt="当前题目原卷区域"/><p>图片为原卷证据；OCR 仅作定位草稿。</p></details>}
     {state?.session_id && <details><summary>当前会话</summary><code>{state.session_id}</code><p>重启后继续使用此会话。请在这里提交学习消息，避免同时在 CLI/Desktop 向该会话发消息。</p></details>}
     {state?.connection_notice&&<p className="notice" role="status">{state.connection_notice}</p>}
     {!state?.connected && <button className="primary" disabled={busy || state?.status === 'connecting' || !reachable} onClick={() => action('connect')}>{state?.session_id ? '重新连接原会话' : '连接 Codex'}</button>}
+    {state?.session_id&&state.learning_tools_version!==1&&!state.input_locked&&<button className="small-action" disabled={busy} onClick={()=>{if(window.confirm('启用支持内置学习工具的新会话？旧消息和个人资料仍保留，新的对话从本地学习记录恢复。'))action('upgrade-tools',{confirmed:true})}}>启用内置学习工具…</button>}
     {!!state?.turns.length && <div className="agent-transcript" ref={transcript} aria-live="polite" onScroll={e => { const n=e.currentTarget; followLatest.current=n.scrollHeight-n.scrollTop-n.clientHeight<100 }}>{state.turns.map(turn => <article className="agent-turn" key={turn.request_id}>
       <div className="agent-user"><small>你 {turn.context.question_id ? `· 第${questions.find(q => q.id === turn.context.question_id)?.number || '?'}题` : ''}</small><MathText text={turn.text}/><SubmittedImages ids={turn.image_ids}/></div>
       {turn.messages.map(message => <div key={message.id} className={`agent-answer ${message.phase === 'commentary' ? 'agent-progress' : ''}`}><small>{message.phase === 'commentary' ? '处理进展' : 'Codex'}</small><MathText text={message.text}/></div>)}
@@ -90,6 +95,7 @@ export function AgentPanel({ agent, questions, visibleContext, onReload }: {
     {state?.input_locked && <div className="agent-controls"><strong>等待 Agent 完整反馈，当前不能输入下一步内容。</strong>
       {state.connected && ['running', 'waiting_user'].includes(state.status) && <button className="small-action" disabled={busy} onClick={() => action('interrupt')}>停止本轮</button>}
       {state.connected && ['failed', 'interrupted'].includes(state.status) && <button className="primary" disabled={busy} onClick={() => action('retry')}>重试原请求</button>}
+      {state.connected&&['failed','interrupted'].includes(state.status)&&<button className="small-action" disabled={busy} onClick={()=>{if(window.confirm('确认放弃已停止的本轮？原输入和作答仍保留，不会伪造完成。'))action('abandon',{confirmed:true})}}>放弃本轮并保留记录</button>}
     </div>}
     <fieldset className="agent-composer" disabled={disabled}>
       <textarea aria-label="给 Codex 的内容" value={text} onChange={e => setText(e.target.value)} onPaste={e=>{if(e.clipboardData.files.length){e.preventDefault();photos.addFiles(Array.from(e.clipboardData.files))}}} placeholder="写下思路，或上传手写作答照片；也可直接粘贴截图。" maxLength={16000}/>

@@ -5,9 +5,9 @@ description: 在 MathLens 本地题库中为某个错误原因寻找检验题，
 
 # 检验题检索
 
-先明确来自哪个 paper_id/question_id、要检验什么微技能、竞争解释是什么。读取个人检索范围和确认记录；配置尚未实现或缺失时，不假定任何年份可展示。
+先明确 paper_id/question_id、待检验的微技能和竞争解释。通过 `mathlens` 的 context 读取用户 study_type、reserved 和确认记录，不自行指定预留年份。
 
-当前 `scripts/agent_tasks.py catalog --topic <分类> --limit 30` 可浏览目录，`--id <bank_id>` 返回资源路径。当前适配器仅导入数学一；数二、三扩展和统一访问限制尚待实现。命令成功不代表资源可向学生展示。
+优先用 `catalog`（topics、math_types、years、exclude_years、bank_id、offset、limit）浏览，再用 `read_bank` 直接阅读原图和相关解析。三类题库统一支持，显式预留卷在目录和图片接口中禁止读取。独立 CLI 对应 `scripts/agent_tasks.py catalog --math-type 2 --topic <分类>`。目录分类和图片完整不等于数学结论已核验。
 
 检索范围与学习类别分开：候选目标覆盖数一、二、三，跨类别仍须检查目标环节是否适合当前学生，不向其强加额外前置内容。
 
@@ -15,4 +15,6 @@ description: 在 MathLens 本地题库中为某个错误原因寻找检验题，
 
 在用户允许的范围内阅读原题及相关解析，核对目标结论。以自然语言解释每道候选针对的原因、所需前提和可取的回答范围；不使用固定相似度/排名替代判断。没有合适的题就记录缺口。
 
-个人阅读笔记放 `.mathlens/memory/bank/`，包含 bank_id、来源、图像散列、核对范围与未决问题。路径列表不算已阅读，源分类与上游解析也不算已独立核验。
+跨类别经阅读确认不存在本类别同题时，用 `review_cross` 保存 bank_id、reason 和 distinct=true；发现同题则附 other_id、distinct=false 建立关联。没有证据不能核准。同像素图片自动关联，不能据此假定其他不同裁图都不是同题；不确定时保持隐藏。
+
+用 memory_write 保存 `bank/<bank_id>.json` 阅读笔记，包含 ID、来源、图像散列、核对范围与未决问题。路径列表不算已阅读。不要把内部候选正文写进最终回复。

@@ -14,6 +14,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from answer_images import init_answer_images, image_records
+from bank_access import init_access, register_identity, access, require_access, aliases
 
 
 def stamp():
@@ -60,17 +61,34 @@ def init_loop(conn):
     acols = {r[1] for r in conn.execute("PRAGMA table_info(probe_attempts)")}
     if "images_json" not in acols:
         conn.execute("ALTER TABLE probe_attempts ADD COLUMN images_json TEXT NOT NULL DEFAULT '[]'")
+    init_access(conn)
+    conn.executescript('''CREATE TABLE IF NOT EXISTS record_versions(
+      id TEXT PRIMARY KEY,kind TEXT,record_id TEXT,payload TEXT,reason TEXT,created_at TEXT);
+    CREATE TABLE IF NOT EXISTS retired_probes(probe_id TEXT PRIMARY KEY,reason TEXT,created_at TEXT);''')
 
 
-def import_image_bank(conn, source: Path, data_root: Path):
+def import_image_bank(conn, source: Path, data_root: Path, math_types=(1,2,3)):
     """Copy a user's external local bank. No resource is added to Git."""
-    group = source / "kaoyan_math_images" / "数学一"
+    groups={1:'数学一',2:'数学二',3:'数学三'}
+    result={'imported':0,'missing':[],'by_type':{}}
+    for math_type in math_types:
+        if math_type not in groups:raise ValueError('题库类别不合法')
+        group=source/'kaoyan_math_images'/groups[math_type]
+        if not (group/'answers.json').is_file():
+            result['missing'].append(groups[math_type]+'/answers.json');continue
+        part=_import_group(conn,group,data_root,math_type,groups[math_type])
+        result['imported']+=part['imported'];result['missing']+=part['missing'];result['by_type'][str(math_type)]=part['imported']
+    conn.execute('DELETE FROM bank_cross_reviews')
+    return result
+
+
+def _import_group(conn,group,data_root,math_type,label):
     records = json.loads((group / "answers.json").read_text(encoding="utf-8"))
     destination = data_root / "bank-assets"
     imported, missing = 0, []
     for key, q in records.items():
-        bid = "math1-" + q["paper"] + f"-{q['index']:02d}"
-        stem = f"{q['paper']} 数学一 第{q['index']}题 · {q.get('knowledge_point') or '待提取'}"
+        bid = f"math{math_type}-" + q["paper"] + f"-{q['index']:02d}"
+        stem = f"{q['paper']} {label} 第{q['index']}题 · {q.get('knowledge_point') or '待提取'}"
         prefix = f"Q{q['index']:02d}_id{q['question_id']}"
         base = group / q["paper"]
         paths = {}
@@ -88,14 +106,15 @@ def import_image_bank(conn, source: Path, data_root: Path):
             continue
         conn.execute("""INSERT INTO bank_questions(id,source,source_ref,stem,answer,explanation,tags_json,fingerprint_json,difficulty,created_at)
           VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET stem=excluded.stem,tags_json=excluded.tags_json""",
-                     (bid, "数学一真题图片库", key, stem, q.get("answer"), "参考解析见原图",
+                     (bid, label+"真题图片库", key, stem, q.get("answer"), "参考解析见原图",
                       dump([q.get("knowledge_point") or "待提取"]), dump({"objects": [q.get("knowledge_point")]}), 3, stamp()))
         conn.execute("""INSERT INTO bank_resources VALUES(?,?,?,?,?) ON CONFLICT(bank_id) DO UPDATE SET
           metadata_json=excluded.metadata_json,question_path=excluded.question_path,
           analysis_path=excluded.analysis_path,answer_path=excluded.answer_path""",
-                     (bid, dump({**q, "source_url": "https://github.com/lx-ruc/kaoyanshuxue",
+                     (bid, dump({**q, 'math_type':math_type, 'question_sha256':hashlib.sha256((data_root/paths['question']).read_bytes()).hexdigest(), "source_url": "https://github.com/lx-ruc/kaoyanshuxue",
                                  "rights": "外部个人资料导入；第三方题目与解析不随应用分发"}),
                       paths["question"], paths.get("analysis"), paths.get("answer")))
+        register_identity(conn,bid,math_type,q['paper'],q['index'],data_root/paths['question'])
         imported += 1
     return {"imported": imported, "missing": missing}
 
@@ -163,6 +182,8 @@ def apply_report(conn, paper_id, report, root):
         q = conn.execute("SELECT id FROM questions WHERE paper_id=? AND number=?", (paper_id, str(probe["question_number"]))).fetchone()
         if not q or not conn.execute("SELECT bank_id FROM bank_resources WHERE bank_id=?", (probe["bank_id"],)).fetchone():
             raise ValueError("检验题缺少原题或本地题库资源")
+        # The Agent may propose a hidden candidate, but explicitly reserved papers are excluded.
+        require_access(conn,probe['bank_id'],internal=True)
         pid = f"{paper_id}-{probe['id']}"
         conn.execute("INSERT INTO diagnostic_probes VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
                      (pid, paper_id, q[0], probe["bank_id"], probe["skill_id"], dump(probe), "awaiting_response", stamp()))
@@ -196,16 +217,20 @@ def skill_profile(conn):
 def probe_payload(conn, row):
     item = {**dict(row), **json.loads(row["payload_json"])}
     item["id"] = row["id"]
+    state=access(conn,row['bank_id'])
     attempts = [dict(r) for r in conn.execute("SELECT * FROM probe_attempts WHERE probe_id=? ORDER BY created_at", (row["id"],))]
     for attempt in attempts:
         attempt["assessment"] = json.loads(attempt["assessment_json"]) if attempt["assessment_json"] else None
         attempt["image_ids"] = json.loads(attempt.pop("images_json", "[]"))
     item["attempts"] = attempts
     item["bank_exposed"] = bool(conn.execute("SELECT bank_id FROM bank_exposures WHERE bank_id=?", (row["bank_id"],)).fetchone())
+    item['access']=state
+    if not state['can_view']:
+        return {k:item[k] for k in ('id','paper_id','question_id','bank_id','priority','status','access','attempts')}
     item["question_image"] = f"/api/bank/{row['bank_id']}/question"
-    item["analysis_image"] = f"/api/bank/{row['bank_id']}/analysis"
+    if state['analysis_allowed']:item["analysis_image"] = f"/api/bank/{row['bank_id']}/analysis"
     # Reference answers are revealed only after the user has submitted.
-    if not attempts:
+    if not attempts or not state['analysis_allowed']:
         for field in ("expected", "accepted", "rubric", "solution_note"):
             item.pop(field, None)
     item.pop("payload_json", None)
@@ -226,7 +251,7 @@ def loop_snapshot(conn):
     diagnoses = {}
     for row in conn.execute("SELECT * FROM question_diagnoses"):
         diagnoses[row["question_id"]] = json.loads(row["diagnosis_json"])
-    probes = [probe_payload(conn, row) for row in conn.execute("SELECT * FROM diagnostic_probes ORDER BY created_at,id")]
+    probes = [probe_payload(conn, row) for row in conn.execute("SELECT * FROM diagnostic_probes WHERE id NOT IN (SELECT probe_id FROM retired_probes) ORDER BY created_at,id")]
     return {"reports": reports, "diagnoses": diagnoses, "probes": probes, "skills": skill_profile(conn)}
 
 
@@ -238,6 +263,8 @@ def submit_probe(conn, probe_id, body):
     row = conn.execute("SELECT * FROM diagnostic_probes WHERE id=?", (probe_id,)).fetchone()
     if not row:
         raise ValueError("检验任务不存在")
+    require_access(conn,row['bank_id'])
+    if conn.execute('SELECT 1 FROM retired_probes WHERE probe_id=?',(probe_id,)).fetchone():raise ValueError('检验已被替换，请打开新的检验')
     response = str(body.get("response", "")).strip()
     image_ids = [r['id'] for r in image_records(conn, body.get('image_ids', []))]
     if not response and not image_ids:
@@ -245,7 +272,7 @@ def submit_probe(conn, probe_id, body):
     if len(response) > 16000:
         raise ValueError("作答过长")
     payload = json.loads(row["payload_json"])
-    exposed = bool(body.get("answer_exposed")) or bool(conn.execute("SELECT bank_id FROM bank_exposures WHERE bank_id=?", (row["bank_id"],)).fetchone())
+    exposed = bool(body.get("answer_exposed")) or any(conn.execute("SELECT bank_id FROM bank_exposures WHERE bank_id=?", (bid,)).fetchone() for bid in aliases(conn,row['bank_id']))
     elapsed = body.get("elapsed_seconds")
     if elapsed is not None and (not isinstance(elapsed, (int, float)) or not 0 <= elapsed <= 86400):
         raise ValueError("用时不合法")
@@ -279,14 +306,61 @@ def assess_attempt(conn, attempt_id, assessment):
         raise ValueError("作答不存在")
     if row["assessment_json"]:
         raise ValueError("作答已评价；更正需要显式撤销原事件，不能重复累计")
-    if type(assessment.get("correct")) is not bool or not assessment.get("feedback") or not assessment.get("author"):
+    if 'correct' not in assessment or (assessment['correct'] is not None and type(assessment['correct']) is not bool) or not assessment.get("feedback") or not assessment.get("author"):
         raise ValueError("评价需要明确正误、理由和作者")
     payload = json.loads(row["payload_json"])
     assessment["method"] = "agent_review"
     conn.execute("UPDATE probe_attempts SET assessment_json=? WHERE id=?", (dump(assessment), attempt_id))
-    conn.execute("UPDATE diagnostic_probes SET status='assessed' WHERE id=?", (row["probe_id"],))
+    conn.execute("UPDATE diagnostic_probes SET status=? WHERE id=?", ('needs_supplement' if assessment.get('correct') is None else 'assessed',row["probe_id"]))
+    if assessment.get('correct') is None:return {'attempt_id':attempt_id,'assessment':assessment,'needs_supplement':True}
     conn.execute("INSERT INTO learning_events VALUES(?,?,?,?,?,?,?,?,?)",
                  ("event-"+uuid.uuid4().hex,row["paper_id"],row["question_id"],row["probe_id"],row["skill_id"],payload["skill_label"],
                   "probe_success" if assessment["correct"] else "probe_failure",
                   dump({"attempt_id":attempt_id,"independent":not bool(row["answer_exposed"]),"author":assessment["author"]}),stamp()))
     return {"attempt_id":attempt_id,"assessment":assessment}
+
+
+def save_version(conn,kind,record_id,payload,reason):
+    if not isinstance(reason,str) or not reason.strip():raise ValueError('更正需要说明原因')
+    conn.execute('INSERT INTO record_versions VALUES(?,?,?,?,?,?)',('version-'+uuid.uuid4().hex,kind,record_id,dump(payload),reason,stamp()))
+
+
+def clear_attempt_assessment(conn,row,reason):
+    save_version(conn,'attempt',row['id'],dict(row),reason)
+    conn.execute("DELETE FROM learning_events WHERE probe_id=? AND json_extract(detail_json,'$.attempt_id')=?",(row['probe_id'],row['id']))
+    conn.execute('UPDATE probe_attempts SET assessment_json=NULL WHERE id=?',(row['id'],))
+    conn.execute("UPDATE diagnostic_probes SET status='awaiting_assessment' WHERE id=?",(row['probe_id'],))
+
+
+def revise_assessment(conn,attempt_id,assessment,reason):
+    row=conn.execute('SELECT * FROM probe_attempts WHERE id=?',(attempt_id,)).fetchone()
+    if not row:raise ValueError('作答不存在')
+    clear_attempt_assessment(conn,row,reason)
+    return assess_attempt(conn,attempt_id,assessment)
+
+
+def supplement_attempt(conn,attempt_id,body):
+    row=conn.execute('SELECT * FROM probe_attempts WHERE id=?',(attempt_id,)).fetchone()
+    if not row:raise ValueError('作答不存在')
+    images=list(dict.fromkeys(json.loads(row['images_json'])+[r['id'] for r in image_records(conn,body.get('image_ids',[]))]))
+    if len(images)>4:raise ValueError('同一次作答累计最多 4 张照片，请新建复测')
+    addition=str(body.get('response','')).strip()
+    if not addition and images==json.loads(row['images_json']):raise ValueError('请补充思路或照片')
+    if len(addition)>16000:raise ValueError('补充文字过长')
+    clear_attempt_assessment(conn,row,body.get('reason') or '用户补充手写步骤')
+    conn.execute('UPDATE probe_attempts SET response=?,images_json=? WHERE id=?',(row['response']+('\n\n补充：'+addition if addition else ''),dump(images),attempt_id))
+    return {'attempt_id':attempt_id,'status':'awaiting_assessment'}
+
+
+def replace_probe(conn,probe_id,body):
+    row=conn.execute('SELECT * FROM diagnostic_probes WHERE id=?',(probe_id,)).fetchone()
+    if not row:raise ValueError('检验不存在')
+    reason=body.get('reason');save_version(conn,'probe',probe_id,dict(row),reason)
+    payload=json.loads(row['payload_json']);payload.update(body.get('changes',{}))
+    for field in ('bank_id','skill_id','skill_label','prompt','discriminates'):
+        if not payload.get(field):raise ValueError('新检验缺少 '+field)
+    require_access(conn,payload['bank_id'],internal=True)
+    pid=row['paper_id']+'-probe-'+uuid.uuid4().hex[:12]
+    conn.execute('INSERT INTO diagnostic_probes VALUES(?,?,?,?,?,?,?,?)',(pid,row['paper_id'],row['question_id'],payload['bank_id'],payload['skill_id'],dump(payload),'awaiting_response',stamp()))
+    conn.execute('INSERT OR IGNORE INTO retired_probes VALUES(?,?,?)',(probe_id,reason,stamp()))
+    return {'probe_id':pid,'replaces':probe_id}

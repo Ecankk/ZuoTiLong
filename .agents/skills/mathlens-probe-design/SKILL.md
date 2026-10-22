@@ -5,12 +5,12 @@ description: 使用已经允许展示且核对过的题库原题，为一个待�
 
 # 分环节检验
 
-输入原卷观察、竞争原因和已经通过展示限制的 bank_id。没有确认记录或候选题未核对时，回到检索阶段，不直接发送题干。
+输入原卷观察、竞争原因和已核对的 bank_id。可先把未确认候选保存为检验任务，网页会隐藏内容并等待用户确认；此时聊天只给年份题号。不能直接发送隐藏题干或泄露目标考点。
 
 保留原题条件，按诊断目的选择切入、建模/建系、求导/积分/换元计算或最终处理中的一个环节。明确需要回答什么，以及为何这一回答能区分竞争解释。只改变回答范围，不能悄悄改条件再称为原题。
 
 定义正确、错误或不知道时各支持/削弱哪些解释；写清提示、前提和答案暴露。若同时检验多个环节，说明如何区分，避免失败后仍无法定位。
 
-按 `docs/agent-workflow.md` 的 probes 契约写回，引用原卷 question_id 和来源 bank_id。现有 apply 不覆盖相同 probe ID；修订用新 ID 并保留原作答，不能声称撤回能力已实现。
+用 apply_report 的 probes 写回：id、question_number、bank_id、skill_id、skill_label、targets、prompt、discriminates、expected、priority；accepted 仅用于简单无歧义的纯文字答案。discriminates 写清为何选题和怎样区分原因。apply 不覆盖同 ID；用 replace_probe（probe_id、reason、changes）显式替换，保留旧作答与修订版本。
 
 学生提交前不展示预期答案和解析；不要把尚未作答的任务记作失败。优先少量有区分价值的检验，等反馈后再增加。

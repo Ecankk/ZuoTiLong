@@ -8,6 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from agent_workspace import bank_catalog, topic_audit
+from bank_access import init_access
 
 
 class AgentWorkspaceTests(unittest.TestCase):
@@ -25,6 +26,7 @@ class AgentWorkspaceTests(unittest.TestCase):
         for bid, topic in [("a", "第二类曲面积分"), ("b", "第二类曲线积分"), ("c", "二次型")]:
             self.conn.execute("INSERT INTO bank_questions VALUES(?,?,?)", (bid, "metadata only", '{"objects":["topic"]}'))
             self.conn.execute("INSERT INTO bank_resources VALUES(?,?,?,?,?)", (bid, json.dumps({"knowledge_point":topic}), "question.png", "missing-analysis.png", None))
+        init_access(self.conn)
 
     def tearDown(self):
         self.conn.close()

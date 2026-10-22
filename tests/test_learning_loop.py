@@ -14,8 +14,9 @@ from urllib.parse import urlparse
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import server
-from learning_loop import apply_report, assess_attempt, loop_snapshot, submit_probe
+from learning_loop import apply_report, assess_attempt, loop_snapshot, submit_probe, revise_assessment, supplement_attempt, replace_probe
 from answer_images import save_answer_image
+from bank_access import init_access,reveal
 from pdf_pipeline import extract_pdf, segment_pages, _bank_score
 import pymupdf as fitz
 
@@ -35,6 +36,7 @@ class LearningLoopTests(unittest.TestCase):
         self.conn.execute("INSERT INTO papers(id,title,source_path,created_at) VALUES(?,?,?,?)",('paper-test','test',str(self.pdf.relative_to(ROOT)),'now'))
         self.conn.execute("INSERT INTO bank_questions(id,source,stem,created_at) VALUES('bank-test','test','question','now')")
         self.conn.execute("INSERT INTO bank_resources VALUES('bank-test','{}','unused.png',NULL,NULL)")
+        init_access(self.conn);reveal(self.conn,'bank-test','question',True)
         self.conn.commit()
         self.report={'author':'test-agent','method':'test evidence','source_sha256':self.digest,'expected_count':2,
             'questions':[{'number':n,'stem':f'Question {n}','regions':[{'page':1,'bbox':[20,30+n*80,550,100+n*80],'role':'question_and_work'}],
@@ -102,6 +104,29 @@ class LearningLoopTests(unittest.TestCase):
         assess_attempt(self.conn,result['attempt_id'],{'correct':True,'feedback':'equivalent','author':'test-agent'})
         self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_success'").fetchone()[0],1)
 
+    def test_assessment_revision_and_supplement_keep_audit_history(self):
+        self.apply()
+        attempt = submit_probe(self.conn, 'paper-test-probe-test', {'response': 'uncertain'})['attempt_id']
+        assess_attempt(self.conn, attempt, {'correct': False, 'feedback': '边界条件遗漏', 'author': 'agent'})
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_failure'").fetchone()[0], 1)
+        revise_assessment(self.conn, attempt, {'correct': True, 'feedback': '补充后条件完整', 'author': 'agent'}, '重新核对了手写步骤')
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_failure'").fetchone()[0], 0)
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_success'").fetchone()[0], 1)
+        supplement_attempt(self.conn, attempt, {'response': '补充边界说明', 'reason': '用户补充遗漏步骤'})
+        self.assertIsNone(self.conn.execute('SELECT assessment_json FROM probe_attempts WHERE id=?', (attempt,)).fetchone()[0])
+        self.assertGreaterEqual(self.conn.execute('SELECT count(*) FROM record_versions').fetchone()[0], 2)
+
+    def test_replacing_probe_retires_old_task(self):
+        self.apply()
+        result = replace_probe(self.conn, 'paper-test-probe-test', {
+            'reason': '原题未能区分建模环节，需要换成更合适的检验',
+            'changes': {'skill_id': 'entry', 'skill_label': 'entry', 'prompt': '先写出切入关系', 'discriminates': '能否从条件选方法'},
+        })
+        self.assertNotEqual(result['probe_id'], 'paper-test-probe-test')
+        self.assertTrue(self.conn.execute('SELECT 1 FROM retired_probes WHERE probe_id=?', ('paper-test-probe-test',)).fetchone())
+        self.assertEqual(len(loop_snapshot(self.conn)['probes']), 1)
+        self.assertEqual(loop_snapshot(self.conn)['probes'][0]['id'], result['probe_id'])
+
     def test_uploaded_photo_http_roundtrip_and_invalid_file_rollback(self):
         from PIL import Image
         raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
@@ -136,7 +161,7 @@ class LearningLoopTests(unittest.TestCase):
         self.apply();pid='paper-test-probe-test'
         attempt=submit_probe(self.conn,pid,{'response':'','image_ids':[asset['id']]})
         self.conn.commit()
-        bridge=Mock(connected=True);handler=server.Handler.__new__(server.Handler)
+        bridge=Mock(connected=True);bridge.snapshot.return_value={'turns':[]};handler=server.Handler.__new__(server.Handler)
         with patch.object(server,'BRIDGE',bridge):
             handler.request_probe_feedback(self.conn,pid,attempt['attempt_id'])
             first=bridge.submit.call_args.args

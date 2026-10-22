@@ -144,10 +144,14 @@ class CodexBridgeTests(unittest.TestCase):
             doc.save(pdf)
             doc[0].get_pixmap().save(self.data / "probe.png")
         with closing(sqlite3.connect(self.data / "mathlens.db")) as conn, conn:
+            conn.row_factory=sqlite3.Row
             conn.executescript("CREATE TABLE papers(id TEXT,source_path TEXT); CREATE TABLE questions(id TEXT,paper_id TEXT,regions_json TEXT); CREATE TABLE diagnostic_probes(id TEXT,paper_id TEXT,question_id TEXT,bank_id TEXT); CREATE TABLE bank_resources(bank_id TEXT,question_path TEXT);")
             conn.execute("INSERT INTO papers VALUES('paper',?)", (str(pdf),))
             conn.execute("INSERT INTO diagnostic_probes VALUES('probe','paper','q1','bank')")
             conn.execute("INSERT INTO bank_resources VALUES('bank','probe.png')")
+            from bank_access import init_access,reveal
+            conn.execute('CREATE TABLE bank_questions(id TEXT)');conn.execute("INSERT INTO bank_questions VALUES('bank')")
+            conn.execute('CREATE TABLE bank_exposures(bank_id TEXT,created_at TEXT)');init_access(conn);reveal(conn,'bank','question',True)
             for index in (1, 2):
                 conn.execute("INSERT INTO questions VALUES(?, 'paper', ?)", (f"q{index}", json.dumps([{"page": index, "bbox": [0,0,100,100]}])))
         images = []

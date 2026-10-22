@@ -1,4 +1,4 @@
-export type View = 'home' | 'papers' | 'queue' | 'bank' | 'profile'
+export type View = 'paper' | 'papers' | 'bank' | 'profile' | 'settings'
 
 export type VisibleContext = {
   view: string; label: string; paper_id?: string; question_id?: string;
@@ -46,10 +46,8 @@ export type Question = {
 
 export type BankQuestion = {
   id: string
-  source: string
-  stem: string
-  difficulty: number
-  tags: string[]
+  math_type: number; year: string; number: number; can_view: boolean; reserved: boolean; reason: string; analysis_allowed: boolean;
+  stem?: string; tags?: string[]; question_image?: string; analysis_image?: string
   fingerprint?: { objects?: string[]; method?: string[]; stages?: string[] }
 }
 
@@ -58,4 +56,5 @@ export type Profile = {
   repeated_errors: Array<{ label: string; count: number }>
 }
 
-export type Bootstrap = { papers: Paper[]; questions: Question[]; bank: BankQuestion[]; profile: Profile; loop: import('./LearningWorkspace').Loop }
+export type Preferences = {study_type:number;reserved:{math_type:number;year:string}[]}
+export type Bootstrap = { papers: Paper[]; questions: Question[]; bank: BankQuestion[]; profile: Profile; loop: import('./LearningWorkspace').Loop; preferences:Preferences }

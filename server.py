@@ -18,9 +18,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from pdf_pipeline import extract_pdf, match_bank_questions
-from learning_loop import init_loop, loop_snapshot, submit_probe, apply_report
+from learning_loop import init_loop, loop_snapshot, submit_probe, apply_report, supplement_attempt, revise_assessment, replace_probe
+from bank_access import preferences, save_preferences, public_bank, require_access, reveal, init_access
 from codex_bridge import CodexBridge, BridgeConflict
 from answer_images import save_answer_image, image_records, image_path
+from local_maintenance import backup,cleanup_images,restore
+from mobile_upload import MobileInbox
+from contextlib import contextmanager
 
 
 ROOT = Path(__file__).resolve().parent
@@ -29,6 +33,14 @@ DATA = Path(os.environ.get("MATHLENS_DATA_DIR", str(ROOT / ".mathlens"))).resolv
 PAPERS_DIR = DATA / "papers"
 DB_PATH = DATA / "mathlens.db"
 BRIDGE = None
+MOBILE = None
+
+@contextmanager
+def mobile_guard():
+    if BRIDGE:
+        with BRIDGE.lock:
+            BRIDGE.assert_user_write_allowed();yield
+    else:yield
 
 
 def now_iso() -> str:
@@ -203,22 +215,18 @@ def bootstrap() -> dict:
     conn = connect()
     papers = rows(conn, "SELECT * FROM papers ORDER BY exam_date DESC, created_at DESC")
     questions = [enrich_question(q) for q in rows(conn, "SELECT * FROM questions ORDER BY created_at DESC")]
-    bank = []
-    for q in rows(conn, "SELECT * FROM bank_questions ORDER BY created_at DESC"):
-        q["tags"] = json_load(q.pop("tags_json", None), [])
-        q["fingerprint"] = json_load(q.pop("fingerprint_json", None), {})
-        bank.append(q)
+    bank = [public_bank(conn,r[0]) for r in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id")]
+    settings=preferences(conn)
     profile = build_profile(conn)
     if os.environ.get("MATHLENS_DEMO") != "1":
         papers = [p for p in papers if not p["id"].startswith("paper-demo-")]
         visible_ids = {p["id"] for p in papers}
         questions = [q for q in questions if q["paper_id"] in visible_ids]
-        bank = [q for q in bank if q["source"] != "本地示例题库"]
     conn.close()
     conn = connect()
     loop = loop_snapshot(conn)
     conn.close()
-    return {"papers": papers, "questions": questions, "bank": bank, "profile": profile, "loop": loop}
+    return {"papers": papers, "questions": questions, "bank": bank, "profile": profile, "loop": loop,'preferences':settings}
 
 
 def build_profile(conn: sqlite3.Connection) -> dict:
@@ -380,6 +388,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if parsed.path.startswith("/api/agent/"):
                     self.agent_post(parsed)
+                elif parsed.path in ('/api/screen','/api/drafts','/api/mobile-upload/stop') or parsed.path.endswith('/reveal'):
+                    self.api_post(parsed)
                 elif BRIDGE:
                     with BRIDGE.lock:
                         BRIDGE.assert_user_write_allowed()
@@ -450,9 +460,10 @@ class Handler(BaseHTTPRequestHandler):
             parts = parsed.path.split("/")
             role = parts[-1]
             with closing(connect()) as conn, conn:
+                try:require_access(conn,parts[3],role)
+                except ValueError as exc:
+                    self.send_json({'error':str(exc)},403);return
                 resource = as_json(conn.execute("SELECT * FROM bank_resources WHERE bank_id=?", (parts[3],)).fetchone())
-                if role in ("analysis", "answer") and resource:
-                    conn.execute("INSERT OR IGNORE INTO bank_exposures VALUES(?,?)", (parts[3], now_iso()))
             if resource and resource.get(role + "_path"):
                 path = (DATA / resource[role + "_path"]).resolve()
                 if (DATA / "bank-assets") in path.parents and path.is_file():
@@ -477,7 +488,7 @@ class Handler(BaseHTTPRequestHandler):
         conn = connect()
         try:
             if parsed.path == "/api/health":
-                self.send_json({"ok": True, "version": "0.4.2"})
+                self.send_json({"ok": True, "version": "0.5.0"})
             elif parsed.path == "/api/bootstrap":
                 self.send_json(bootstrap())
             elif parsed.path == "/api/profile":
@@ -487,23 +498,19 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/papers":
                 self.send_json({"papers": rows(conn, "SELECT * FROM papers ORDER BY exam_date DESC, created_at DESC")})
             elif parsed.path == "/api/bank":
-                query = parse_qs(parsed.query)
-                text = (query.get("q", [""])[0] or "").strip().lower()
-                stage = (query.get("stage", [""])[0] or "").strip()
-                bank = []
-                for q in rows(conn, "SELECT * FROM bank_questions ORDER BY difficulty, created_at DESC"):
-                    tags = json_load(q["tags_json"], [])
-                    fp = json_load(q["fingerprint_json"], {})
-                    blob = " ".join([q["stem"], q["source"], " ".join(tags), json.dumps(fp, ensure_ascii=False)]).lower()
-                    if text and text not in blob:
-                        continue
-                    if stage and stage not in fp.get("stages", []):
-                        continue
-                    q["tags"] = tags
-                    q["fingerprint"] = fp
-                    q.pop("tags_json", None); q.pop("fingerprint_json", None)
-                    bank.append(q)
-                self.send_json({"bank": bank[:30]})
+                query=parse_qs(parsed.query);category=query.get('math_type',[''])[0];year=query.get('year',[''])[0]
+                bank=[public_bank(conn,r[0]) for r in conn.execute('SELECT id FROM bank_questions ORDER BY id')]
+                self.send_json({'bank':[b for b in bank if (not category or str(b['math_type'])==category) and (not year or b['year']==year)]})
+            elif parsed.path=='/api/versions':
+                self.send_json({'versions':rows(conn,'SELECT * FROM record_versions ORDER BY created_at DESC LIMIT 100'),'reports':rows(conn,'SELECT id,paper_id,created_at FROM agent_reports ORDER BY created_at DESC LIMIT 100')})
+            elif parsed.path=='/api/screen':
+                path=DATA/'screen.json';self.send_json(json_load(path.read_text(encoding='utf8'),{}) if path.is_file() else {})
+            elif parsed.path=='/api/drafts':
+                key=parse_qs(parsed.query).get('key',[''])[0];path=DATA/'drafts'/(hashlib.sha256(key.encode()).hexdigest()+'.json')
+                self.send_json(json_load(path.read_text(encoding='utf8'),{}) if path.is_file() else {})
+            elif parsed.path=='/api/mobile-upload/state':self.send_json(MOBILE.state() if MOBILE else {'active':False,'images':[]})
+            elif parsed.path=='/api/maintenance/backups':
+                self.send_json({'backups':[{'name':p.name,'bytes':p.stat().st_size} for p in sorted((DATA/'backups').glob('*.zip'),reverse=True)]})
             else:
                 self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         finally:
@@ -526,6 +533,9 @@ class Handler(BaseHTTPRequestHandler):
             result = BRIDGE.respond(str(body.get("request_id")), body)
         elif action == "retry":
             result = BRIDGE.retry()
+        elif action=='abandon':
+            result=BRIDGE.abandon(body.get('confirmed'))
+        elif action=='upgrade-tools':result=BRIDGE.upgrade_tools(body.get('confirmed'))
         elif action == "interrupt":
             result = BRIDGE.interrupt()
         else:
@@ -542,7 +552,49 @@ class Handler(BaseHTTPRequestHandler):
             return
         conn = connect()
         try:
-            if parsed.path == "/api/papers":
+            if parsed.path=='/api/mobile-upload/start':
+                body=self.read_json()
+                if body.get('confirmed') is not True:raise ValueError('请确认仅在可信局域网临时接收照片')
+                global MOBILE
+                if MOBILE is None:MOBILE=MobileInbox(connect,DATA,mobile_guard)
+                self.send_json(MOBILE.start(body.get('target')))
+            elif parsed.path=='/api/mobile-upload/stop':self.send_json(MOBILE.stop() if MOBILE else {'active':False})
+            elif parsed.path=='/api/drafts':
+                body=self.read_json();key=body.get('key');value=body.get('value')
+                if not isinstance(key,str) or len(key)>300 or len(json.dumps(value))>120000:raise ValueError('草稿过长或标识不合法')
+                folder=DATA/'drafts';folder.mkdir(exist_ok=True);path=folder/(hashlib.sha256(key.encode()).hexdigest()+'.json');temporary=folder/(uuid.uuid4().hex+'.tmp')
+                temporary.write_text(json.dumps({'key':key,'value':value},ensure_ascii=False),encoding='utf8');temporary.replace(path);self.send_json({'ok':True})
+            elif parsed.path=='/api/maintenance/backup':self.send_json(backup(DATA,ROOT))
+            elif parsed.path=='/api/maintenance/cleanup':
+                result=cleanup_images(conn,DATA);conn.commit();self.send_json(result)
+            elif parsed.path=='/api/maintenance/restore':
+                body=self.read_json();name=Path(body.get('name','')).name
+                archive=DATA/'backups'/name
+                if archive.parent.resolve()!=(DATA/'backups').resolve() or not archive.is_file() or archive.suffix!='.zip':raise ValueError('本地备份不存在')
+                self.send_json(restore(archive,DATA.parent/('mathlens-restored-'+uuid.uuid4().hex[:8])))
+            elif parsed.path=='/api/screen':
+                body=self.read_json()
+                if len(json.dumps(body))>6000:raise ValueError('页面上下文过长')
+                (DATA/'screen.json').write_text(json.dumps(body,ensure_ascii=False),encoding='utf8');self.send_json({'ok':True})
+            elif parsed.path=='/api/preferences':
+                value=save_preferences(conn,self.read_json());conn.commit();self.send_json(value)
+            elif parsed.path.startswith('/api/bank/') and parsed.path.endswith('/reveal'):
+                body=self.read_json();result=reveal(conn,parsed.path.split('/')[3],body.get('role','question'),body.get('confirmed'));conn.commit();self.send_json(result)
+            elif parsed.path.startswith('/api/attempts/') and parsed.path.endswith('/supplement'):
+                aid=parsed.path.split('/')[3];result=supplement_attempt(conn,aid,self.read_json());conn.commit()
+                pid=conn.execute('SELECT probe_id FROM probe_attempts WHERE id=?',(aid,)).fetchone()[0]
+                if BRIDGE and BRIDGE.connected:self.request_probe_feedback(conn,pid,aid)
+                self.send_json(result)
+            elif parsed.path.startswith('/api/attempts/') and parsed.path.endswith('/revise'):
+                body=self.read_json();result=revise_assessment(conn,parsed.path.split('/')[3],body.get('assessment',{}),body.get('reason'));conn.commit();self.send_json(result)
+            elif parsed.path.startswith('/api/probes/') and parsed.path.endswith('/replace'):
+                result=replace_probe(conn,parsed.path.split('/')[3],self.read_json());conn.commit();self.send_json(result)
+            elif parsed.path.startswith('/api/reports/') and parsed.path.endswith('/restore'):
+                body=self.read_json();row=conn.execute('SELECT * FROM agent_reports WHERE id=?',(parsed.path.split('/')[3],)).fetchone()
+                if not row or not body.get('reason'):raise ValueError('报告不存在或缺少恢复原因')
+                report=json.loads(row['report_json']);report['revision_reason']=body['reason'];report['restored_at']=now_iso()
+                result=apply_report(conn,row['paper_id'],report,ROOT);conn.commit();self.send_json(result)
+            elif parsed.path == "/api/papers":
                 body = self.read_json()
                 paper_id = "paper-" + uuid.uuid4().hex[:10]
                 conn.execute("INSERT INTO papers(id,title,exam_date,score,total_score,duration,source_name,import_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -567,7 +619,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = submit_probe(conn, parsed.path.split("/")[3], body)
                 conn.commit()
                 if BRIDGE:
-                    self.request_probe_feedback(conn, parsed.path.split('/')[3],result['attempt_id'])
+                    try:self.request_probe_feedback(conn, parsed.path.split('/')[3],result['attempt_id'])
+                    except (ValueError,RuntimeError) as exc:result['agent_error']=str(exc)
                 self.send_json(result, HTTPStatus.CREATED)
             elif parsed.path.startswith('/api/probes/') and parsed.path.endswith('/feedback'):
                 body = self.read_json()
@@ -628,6 +681,7 @@ class Handler(BaseHTTPRequestHandler):
                                  (qid, item.get("source") or "本地题库", item.get("source_ref") or item.get("uid") or item.get("id"), stem, item.get("answer") or item.get("solution"), item.get("explanation") or item.get("analysis"), json.dumps(tags, ensure_ascii=False), json.dumps(item.get("fingerprint", {}), ensure_ascii=False), int(item.get("difficulty") or 3), now_iso()))
                     count += 1
                 conn.commit()
+                init_access(conn);conn.commit()
                 self.send_json({"imported": count}, HTTPStatus.CREATED)
             else:
                 self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -640,13 +694,17 @@ class Handler(BaseHTTPRequestHandler):
     def request_probe_feedback(self, conn, probe_id, attempt_id):
         if not BRIDGE or not BRIDGE.connected:
             raise ValueError('请先连接 Codex，作答已保留，可连接后重发核对')
-        attempt = conn.execute('''SELECT a.images_json,p.paper_id,p.question_id,p.bank_id FROM probe_attempts a
+        attempt = conn.execute('''SELECT a.images_json,a.response,p.paper_id,p.question_id,p.bank_id FROM probe_attempts a
           JOIN diagnostic_probes p ON a.probe_id=p.id WHERE a.id=? AND p.id=?''',(attempt_id,probe_id)).fetchone()
         if not attempt:
             raise ValueError('作答与检验题不一致')
         probe = {k:attempt[k] for k in ('paper_id','question_id','bank_id')}
         context = {"paper_id":probe['paper_id'],"question_id":probe['question_id'],"screen":{**probe,"probe_id":probe_id,"view":"针对性检验","label":"已提交的真实作答"}}
-        return BRIDGE.submit(f"检验作答已保存，attempt_id={attempt_id}。请读取实际回答、核对并评价，再反馈下一步。已有评价时不要重复写入。",str(uuid.uuid5(uuid.NAMESPACE_URL,'mathlens:attempt:'+attempt_id)),context,json.loads(attempt['images_json']))
+        version=hashlib.sha256((attempt['response']+attempt['images_json']).encode()).hexdigest()[:12]
+        # Repeat after a completed but unassessed reply must start a new evaluation, not reuse that reply.
+        revision=conn.execute('SELECT count(*) FROM record_versions WHERE record_id=?',(attempt_id,)).fetchone()[0]
+        completed=sum(t['status']=='completed' and t.get('context',{}).get('screen',{}).get('probe_id')==probe_id for t in BRIDGE.snapshot().get('turns',[]))
+        return BRIDGE.submit(f"检验作答已保存，attempt_id={attempt_id}。请用 mathlens 工具读取真实回答和作答照片、核对并通过 assess 写回评价，再反馈下一步。看不清时 correct=null 并指出需补拍区域。已有评价时不要重复写入。",str(uuid.uuid5(uuid.NAMESPACE_URL,f'mathlens:attempt:{attempt_id}:{version}:{revision}:{completed}')),context,json.loads(attempt['images_json']))
 
     def upload_answer_images(self):
         content_type = self.headers.get('Content-Type','')
@@ -701,12 +759,20 @@ class Handler(BaseHTTPRequestHandler):
         title = fields.get("title") or Path(filename).stem
         exam_date = fields.get("exam_date") or date.today().isoformat()
         conn = connect()
+        relative_source = str(target.relative_to(ROOT))
         conn.execute("INSERT INTO papers(id,title,exam_date,source_name,source_path,source_sha256,import_status,created_at) VALUES (?,?,?,?,?,?,?,?)",
-                     (paper_id, title, exam_date, filename, str(target.relative_to(ROOT)), digest, "needs_review", now_iso()))
+                     (paper_id, title, exam_date, filename, relative_source, digest, "needs_review", now_iso()))
         conn.commit()
         paper = as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())
         conn.close()
-        self.send_json({"paper": paper, "sha256": digest, "next": "自动切题，然后交给工作目录中的 Agent 阅读作答"}, HTTPStatus.CREATED)
+        result={'paper':paper,'sha256':digest}
+        try:
+            with closing(connect()) as conn, conn:
+                analysis=analyze_paper_record(conn,paper_id)
+                result.update(paper=analysis['paper'],created_questions=analysis['created_questions'],warnings=analysis['warnings'])
+            if BRIDGE and BRIDGE.connected:BRIDGE.submit('新试卷已自动切分，请用内置学习工具读取本卷和原图，诊断作答并写回完整报告。',str(uuid.uuid5(uuid.NAMESPACE_URL,'mathlens:paper:'+digest)),{'paper_id':paper_id})
+        except (ValueError,RuntimeError,ImportError) as exc:result['analysis_warning']=str(exc)
+        self.send_json(result,HTTPStatus.CREATED)
 
 
 def main():

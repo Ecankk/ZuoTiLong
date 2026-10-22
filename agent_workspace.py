@@ -10,9 +10,10 @@ import json
 from pathlib import Path
 
 from learning_loop import loop_snapshot
+from bank_access import require_access, access, preferences
 
 
-def bank_catalog(conn, data_root: Path, *, topics=(), bank_id=None, offset=0, limit=30):
+def bank_catalog(conn, data_root: Path, *, topics=(), bank_id=None, offset=0, limit=30,math_types=(),years=(),exclude_years=()):
     if offset < 0 or not 1 <= limit <= 100:
         raise ValueError("offset 必须非负，limit 必须在 1 到 100 之间")
     entries = []
@@ -22,6 +23,8 @@ def bank_catalog(conn, data_root: Path, *, topics=(), bank_id=None, offset=0, li
         topic = metadata.get("knowledge_point") or "待分类"
         if bank_id and row["id"] != bank_id:
             continue
+        state=access(conn,row['id'])
+        if state['reserved'] or math_types and state['math_type'] not in math_types or years and state['year'] not in years or state['year'] in exclude_years:continue
         if topics and not any(t.casefold() in topic.casefold() for t in topics):
             continue
         resources = {}
@@ -37,6 +40,7 @@ def bank_catalog(conn, data_root: Path, *, topics=(), bank_id=None, offset=0, li
         note = (data_root / "memory" / "bank" / (row["id"] + ".json")).resolve()
         reading_note = str(note) if note.is_relative_to(data_root.resolve()) and note.is_file() else None
         entries.append({"id": row["id"], "year": metadata.get("paper"),
+                        'math_type':state['math_type'],'student_access':state,
                         "number": metadata.get("index"), "source_topic": topic,
                         "source_url": metadata.get("source_url"), "resources": resources,
                         "fingerprint": json.loads(row["fingerprint_json"] or "{}"),
@@ -85,6 +89,7 @@ def workspace_context(conn, data_root: Path, paper_id=None):
     qids = {q["id"] for q in questions}
     memory = data_root / "memory"
     return {
+        'preferences':preferences(conn),
         "purpose": "恢复本地事实和待办，不依赖模型自动记住历史；网页会话状态另由 /api/agent/state 提供。",
         "papers": papers,
         "task_files": [str(p.resolve()) for p in (data_root / "tasks").glob("*/request.json") if p.parent.name in ids],

@@ -25,6 +25,8 @@ def main():
     p=sub.add_parser("catalog",help="浏览题库目录和原图路径，由 Agent 自行阅读选择")
     p.add_argument("--topic",action="append",default=[],help="可重复，任一分类包含关键词即可；不是匹配规则")
     p.add_argument("--id",dest="bank_id")
+    p.add_argument('--math-type',type=int,choices=(1,2,3),action='append',default=[])
+    p.add_argument('--year',action='append',default=[]);p.add_argument('--exclude-year',action='append',default=[])
     p.add_argument("--offset",type=int,default=0);p.add_argument("--limit",type=int,default=30)
     p=sub.add_parser("context",help="恢复个人历史、最新诊断、真实作答和记忆文件入口")
     p.add_argument("--paper",dest="paper_id")
@@ -67,13 +69,13 @@ def main():
         elif args.command=="assess":
             print(json.dumps(assess_attempt(conn,args.attempt_id,json.loads(args.assessment.read_text(encoding="utf-8"))),ensure_ascii=False));conn.commit()
         elif args.command=="catalog":
-            print(json.dumps(bank_catalog(conn,server.DATA,topics=args.topic,bank_id=args.bank_id,offset=args.offset,limit=args.limit),ensure_ascii=False,indent=2))
+            print(json.dumps(bank_catalog(conn,server.DATA,topics=args.topic,bank_id=args.bank_id,offset=args.offset,limit=args.limit,math_types=args.math_type,years=args.year,exclude_years=args.exclude_year),ensure_ascii=False,indent=2))
         elif args.command=="context":
             print(json.dumps(workspace_context(conn,server.DATA,args.paper_id),ensure_ascii=False,indent=2))
         else:
             snapshot=loop_snapshot(conn)
             tasks=[str(p) for p in (server.DATA/"tasks").glob("*/request.json") if not conn.execute('SELECT id FROM agent_reports WHERE paper_id=?',(p.parent.name,)).fetchone()]
-            attempts=[{"probe_id":p["id"],"prompt":p["prompt"],"attempts":p["attempts"]} for p in snapshot["probes"] if p["status"]=="awaiting_assessment"]
+            attempts=[{"probe_id":p["id"],"prompt":p.get("prompt"),"attempts":p["attempts"]} for p in snapshot["probes"] if p["status"] in ("awaiting_assessment","needs_supplement")]
             print(json.dumps({"tasks":tasks,"awaiting_assessment":attempts},ensure_ascii=False,indent=2))
     except Exception:
         conn.rollback();raise

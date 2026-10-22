@@ -25,7 +25,7 @@
 .\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py prepare "C:\path\completed-paper.pdf"
 
 # 首次导入个人已有的外部题库资源；后续不必重复
-.\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py import-bank "F:\kaoyan\references\kaoyanshuxue"
+.\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py import-bank "<your-local-bank-directory>"
 
 # 查看任务包和等待评价的真实作答
 .\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py pending

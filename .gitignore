@@ -1,4 +1,5 @@
 .mathlens/
+.openai/
 __pycache__/
 *.pyc
 node_modules/
@@ -6,3 +7,26 @@ node_modules/
 *.zip
 .venv/
 tmp/
+
+# Local source material and generated personal data
+backups/
+references/
+papers/
+bank-assets/
+ocr-cache/
+agent-input/
+reports/
+memory/
+*.pdf
+*.PDF
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Local credentials and machine configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key

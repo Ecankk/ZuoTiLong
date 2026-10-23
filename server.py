@@ -24,6 +24,7 @@ from codex_bridge import CodexBridge, BridgeConflict
 from answer_images import save_answer_image, image_records, image_path
 from local_maintenance import backup,cleanup_images,restore
 from mobile_upload import MobileInbox
+from server_runtime import VERSION, data_identity, bind_server, publish_address, clear_address
 from contextlib import contextmanager
 
 
@@ -488,7 +489,7 @@ class Handler(BaseHTTPRequestHandler):
         conn = connect()
         try:
             if parsed.path == "/api/health":
-                self.send_json({"ok": True, "version": "0.5.0"})
+                self.send_json({"ok": True, "app": "mathlens", "version": VERSION, "data_id": data_identity(DATA)})
             elif parsed.path == "/api/bootstrap":
                 self.send_json(bootstrap())
             elif parsed.path == "/api/profile":
@@ -781,23 +782,26 @@ def main():
     parser = argparse.ArgumentParser(description="MathLens local-first paper diagnosis server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=4173)
+    parser.add_argument("--auto-port", action="store_true", help="Fall back to a free local port when the preferred port is blocked")
     args = parser.parse_args()
     init_db()
-    server = ThreadingHTTPServer((args.host, args.port), Handler, bind_and_activate=False)
-    if os.name == "nt":
-        server.allow_reuse_address = False
-        server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-    server.server_bind()
-    server.server_activate()
-    BRIDGE = CodexBridge(ROOT, DATA)
-    print(f"MathLens running at http://{args.host}:{args.port}/")
-    print(f"Data directory: {DATA}")
     try:
+        server, failures = bind_server(Handler, args.host, args.port, args.auto_port)
+    except RuntimeError as exc:
+        parser.exit(1, f'MathLens: {exc}\n')
+    try:
+        BRIDGE = CodexBridge(ROOT, DATA)
+        address = publish_address(DATA, server)
+        for failure in failures:
+            print(f"Port {failure['port']} unavailable (error {failure['code']}); selected another local port.")
+        print(f"MathLens running at {address['url']}")
+        print(f"Data directory: {DATA}")
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopped")
     finally:
-        BRIDGE.close()
+        if BRIDGE: BRIDGE.close()
+        clear_address(DATA, os.getpid())
         server.server_close()
 
 

@@ -6,14 +6,16 @@
 
 ## 本地使用
 
-Windows 首次安装需要 Python 3.11 或 3.12，双击 `setup_mathlens.bat` 安装项目虚拟环境与本地 OCR 依赖。随后双击 `start_mathlens.bat`，打开 <http://127.0.0.1:4173/>。
+Windows 首次安装需要 Python 3.11 或 3.12，双击 `setup_mathlens.bat` 安装项目虚拟环境与本地 OCR 依赖。随后双击 `start_mathlens.bat`，启动器自动打开本地页面。
+
+v0.5.1：优先使用 4173；如果端口被 Windows 保留或被占用，自动尝试 8765，再由系统分配空闲端口。实际地址写入 `.mathlens/server.json` 并显示在启动器中，重复双击会复用同一服务。以自动打开的地址为准，不必修改系统保留端口、防火墙或使用管理员身份启动。日志与启动终端统一使用 UTF-8。
 
 已经配置好环境的机器可直接启动。启动器在后台运行服务，输出日志保存在 `.mathlens/server.stdout.log` 与 `.mathlens/server.stderr.log`；终端不再需要停留在服务进程中。重复启动复用健康的当前版本服务。前端已构建到 `dist/`，普通使用无需安装 Node.js。
 
 若手动启动：
 
 ```powershell
-.\.venv\Scripts\python.exe server.py --host 127.0.0.1 --port 4173
+.\.venv\Scripts\python.exe -X utf8 server.py --host 127.0.0.1 --port 4173 --auto-port
 ```
 
 页面中“今日工作”展示原卷与诊断、针对性检验和初始画像。先做优先检验，每题可以只回答入手、参数范围或某一步计算。已看过解析的练习会记录答案暴露情况，不计入独立检验成功。

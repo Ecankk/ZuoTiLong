@@ -21,6 +21,10 @@ def stamp():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def touch_paper(conn,paper_id):
+    conn.execute('UPDATE papers SET updated_at=? WHERE id=?',(stamp(),paper_id))
+
+
 def dump(value):
     return json.dumps(value, ensure_ascii=False)
 
@@ -123,6 +127,7 @@ def apply_report(conn, paper_id, report, root):
     paper = conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone()
     if not paper:
         raise ValueError("试卷不存在")
+    if paper['archived_at']:raise ValueError('请先恢复已归档试卷')
     pdf = (root / paper["source_path"]).resolve()
     digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
     if report.get("source_sha256") != digest:
@@ -187,18 +192,27 @@ def apply_report(conn, paper_id, report, root):
         pid = f"{paper_id}-{probe['id']}"
         conn.execute("INSERT INTO diagnostic_probes VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
                      (pid, paper_id, q[0], probe["bank_id"], probe["skill_id"], dump(probe), "awaiting_response", stamp()))
-    conn.execute("UPDATE papers SET import_status='diagnosed',source_sha256=?,analysis_message=?,analyzed_at=? WHERE id=?",
-                 (digest, report.get("summary", "初始诊断已就绪，等待针对性检验"), stamp(), paper_id))
+    created=stamp()
+    conn.execute("UPDATE papers SET import_status='diagnosed',source_sha256=?,analysis_message=?,analyzed_at=?,updated_at=? WHERE id=?",
+                 (digest, report.get("summary", "初始诊断已就绪，等待针对性检验"), created, created, paper_id))
     return {"report_id": rid, "questions": len(questions), "probes": len(report.get("probes", []))}
 
 
 def skill_profile(conn):
     grouped = {}
-    for row in conn.execute("SELECT * FROM learning_events ORDER BY created_at"):
+    for row in conn.execute("SELECT e.* FROM learning_events e JOIN papers p ON p.id=e.paper_id WHERE p.archived_at IS NULL ORDER BY e.created_at,e.rowid"):
         item = grouped.setdefault(row["skill_id"], {"skill_id": row["skill_id"], "label": row["label"], "events": []})
         item["events"].append({**dict(row), "detail": json.loads(row["detail_json"])})
+    probe_ids={}
+    for row in conn.execute('''SELECT d.id,d.skill_id,d.payload_json FROM diagnostic_probes d
+      JOIN papers p ON p.id=d.paper_id WHERE p.archived_at IS NULL
+      AND d.id NOT IN (SELECT probe_id FROM retired_probes)'''):
+        payload=json.loads(row['payload_json'])
+        grouped.setdefault(row['skill_id'],{'skill_id':row['skill_id'],'label':payload.get('skill_label') or row['skill_id'],'events':[]})
+        probe_ids.setdefault(row['skill_id'],[]).append(row['id'])
     for skill in grouped.values():
         events = skill["events"]
+        skill['probe_ids']=probe_ids.get(skill['skill_id'],[])
         skill["failures"] = sum(e["kind"] in ("exam_error", "probe_failure") for e in events)
         skill["successes"] = sum(e["kind"] in ("exam_success", "probe_success") for e in events)
         skill["pending"] = sum(e["kind"] in ("hypothesis", "incomplete") for e in events)
@@ -263,6 +277,7 @@ def submit_probe(conn, probe_id, body):
     row = conn.execute("SELECT * FROM diagnostic_probes WHERE id=?", (probe_id,)).fetchone()
     if not row:
         raise ValueError("检验任务不存在")
+    require_active_probe(conn,probe_id)
     require_access(conn,row['bank_id'])
     if conn.execute('SELECT 1 FROM retired_probes WHERE probe_id=?',(probe_id,)).fetchone():raise ValueError('检验已被替换，请打开新的检验')
     response = str(body.get("response", "")).strip()
@@ -296,6 +311,7 @@ def submit_probe(conn, probe_id, body):
         conn.execute("INSERT INTO learning_events VALUES(?,?,?,?,?,?,?,?,?)",
                      ("event-"+uuid.uuid4().hex, row["paper_id"], row["question_id"], probe_id, row["skill_id"], payload["skill_label"],
                       "probe_success", dump({"attempt_id": aid, "independent": not exposed, "answer_exposed": exposed}), stamp()))
+    touch_paper(conn,row['paper_id'])
     return {"attempt_id": aid, "status": "assessed" if matched else "awaiting_assessment", "assessment": assessment}
 
 
@@ -304,6 +320,7 @@ def assess_attempt(conn, attempt_id, assessment):
       JOIN diagnostic_probes p ON p.id=a.probe_id WHERE a.id=?""", (attempt_id,)).fetchone()
     if not row:
         raise ValueError("作答不存在")
+    require_active_probe(conn,row['probe_id'])
     if row["assessment_json"]:
         raise ValueError("作答已评价；更正需要显式撤销原事件，不能重复累计")
     if 'correct' not in assessment or (assessment['correct'] is not None and type(assessment['correct']) is not bool) or not assessment.get("feedback") or not assessment.get("author"):
@@ -312,6 +329,7 @@ def assess_attempt(conn, attempt_id, assessment):
     assessment["method"] = "agent_review"
     conn.execute("UPDATE probe_attempts SET assessment_json=? WHERE id=?", (dump(assessment), attempt_id))
     conn.execute("UPDATE diagnostic_probes SET status=? WHERE id=?", ('needs_supplement' if assessment.get('correct') is None else 'assessed',row["probe_id"]))
+    touch_paper(conn,row['paper_id'])
     if assessment.get('correct') is None:return {'attempt_id':attempt_id,'assessment':assessment,'needs_supplement':True}
     conn.execute("INSERT INTO learning_events VALUES(?,?,?,?,?,?,?,?,?)",
                  ("event-"+uuid.uuid4().hex,row["paper_id"],row["question_id"],row["probe_id"],row["skill_id"],payload["skill_label"],
@@ -325,11 +343,20 @@ def save_version(conn,kind,record_id,payload,reason):
     conn.execute('INSERT INTO record_versions VALUES(?,?,?,?,?,?)',('version-'+uuid.uuid4().hex,kind,record_id,dump(payload),reason,stamp()))
 
 
+def require_active_probe(conn,probe_id):
+    row=conn.execute('SELECT p.archived_at FROM diagnostic_probes d JOIN papers p ON p.id=d.paper_id WHERE d.id=?',(probe_id,)).fetchone()
+    if not row:raise ValueError('检验任务不存在')
+    if row[0]:raise ValueError('请先恢复已归档试卷')
+
+
 def clear_attempt_assessment(conn,row,reason):
+    require_active_probe(conn,row['probe_id'])
     save_version(conn,'attempt',row['id'],dict(row),reason)
     conn.execute("DELETE FROM learning_events WHERE probe_id=? AND json_extract(detail_json,'$.attempt_id')=?",(row['probe_id'],row['id']))
     conn.execute('UPDATE probe_attempts SET assessment_json=NULL WHERE id=?',(row['id'],))
     conn.execute("UPDATE diagnostic_probes SET status='awaiting_assessment' WHERE id=?",(row['probe_id'],))
+    paper=conn.execute('SELECT paper_id FROM diagnostic_probes WHERE id=?',(row['probe_id'],)).fetchone()
+    touch_paper(conn,paper[0])
 
 
 def revise_assessment(conn,attempt_id,assessment,reason):
@@ -355,6 +382,7 @@ def supplement_attempt(conn,attempt_id,body):
 def replace_probe(conn,probe_id,body):
     row=conn.execute('SELECT * FROM diagnostic_probes WHERE id=?',(probe_id,)).fetchone()
     if not row:raise ValueError('检验不存在')
+    require_active_probe(conn,probe_id)
     reason=body.get('reason');save_version(conn,'probe',probe_id,dict(row),reason)
     payload=json.loads(row['payload_json']);payload.update(body.get('changes',{}))
     for field in ('bank_id','skill_id','skill_label','prompt','discriminates'):
@@ -363,4 +391,5 @@ def replace_probe(conn,probe_id,body):
     pid=row['paper_id']+'-probe-'+uuid.uuid4().hex[:12]
     conn.execute('INSERT INTO diagnostic_probes VALUES(?,?,?,?,?,?,?,?)',(pid,row['paper_id'],row['question_id'],payload['bank_id'],payload['skill_id'],dump(payload),'awaiting_response',stamp()))
     conn.execute('INSERT OR IGNORE INTO retired_probes VALUES(?,?,?)',(probe_id,reason,stamp()))
+    touch_paper(conn,row['paper_id'])
     return {'probe_id':pid,'replaces':probe_id}

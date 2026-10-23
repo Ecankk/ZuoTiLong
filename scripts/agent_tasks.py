@@ -74,8 +74,9 @@ def main():
             print(json.dumps(workspace_context(conn,server.DATA,args.paper_id),ensure_ascii=False,indent=2))
         else:
             snapshot=loop_snapshot(conn)
-            tasks=[str(p) for p in (server.DATA/"tasks").glob("*/request.json") if not conn.execute('SELECT id FROM agent_reports WHERE paper_id=?',(p.parent.name,)).fetchone()]
-            attempts=[{"probe_id":p["id"],"prompt":p.get("prompt"),"attempts":p["attempts"]} for p in snapshot["probes"] if p["status"] in ("awaiting_assessment","needs_supplement")]
+            active={r[0] for r in conn.execute('SELECT id FROM papers WHERE archived_at IS NULL')}
+            tasks=[str(p) for p in (server.DATA/"tasks").glob("*/request.json") if p.parent.name in active and not conn.execute('SELECT id FROM agent_reports WHERE paper_id=?',(p.parent.name,)).fetchone()]
+            attempts=[{"probe_id":p["id"],"prompt":p.get("prompt"),"attempts":p["attempts"]} for p in snapshot["probes"] if p['paper_id'] in active and p["status"] in ("awaiting_assessment","needs_supplement")]
             print(json.dumps({"tasks":tasks,"awaiting_assessment":attempts},ensure_ascii=False,indent=2))
     except Exception:
         conn.rollback();raise

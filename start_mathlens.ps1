@@ -51,7 +51,7 @@ try {
     $saved = Read-Address
     $health = if ($saved) { Read-Health $saved.url } else { $null }
     if (Is-OwnHealth $health) {
-        if ($health.version -ne '0.5.2') { Stop-OldServer ([int]$saved.pid); $health = $null }
+        if ($health.version -ne '0.5.3') { Stop-OldServer ([int]$saved.pid); $health = $null }
     } else { $health = $null }
     # Recognise managed releases that predate the address file.
     if (-not $health) {
@@ -74,7 +74,7 @@ try {
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $saved = Read-Address
             $health = if ($saved) { Read-Health $saved.url } else { $null }
-            if ((Is-OwnHealth $health) -and $health.version -eq '0.5.2') { break }
+            if ((Is-OwnHealth $health) -and $health.version -eq '0.5.3') { break }
             $health = $null
             $process.Refresh()
             if ($process.HasExited) {

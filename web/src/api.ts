@@ -1,4 +1,4 @@
-import type { Bootstrap, Profile } from './types'
+import type { Bootstrap, Profile, Paper } from './types'
 
 export async function getBootstrap(): Promise<Bootstrap> {
   const response = await fetch('/api/bootstrap')
@@ -29,6 +29,18 @@ export async function uploadPaper(file: File, title: string, examDate: string) {
 
 export async function analyzePaper(id: string) {
   return postJson<{ created_questions: number; engine: string; message: string; warnings: string[] }>(`/api/papers/${id}/analyze`, {})
+}
+
+export async function archivePaper(id: string) {
+  return postJson<{ paper_id: string; archived: boolean; updated_at: string }>(`/api/papers/${id}/archive`, { confirmed: true })
+}
+
+export async function restorePaper(id: string) {
+  return postJson<{ paper_id: string; archived: boolean; updated_at: string }>(`/api/papers/${id}/restore`, { confirmed: true })
+}
+
+export async function resummarizePaper(id: string) {
+  return postJson<{ paper: Paper; previous_reports: number; agent_submitted: boolean }>(`/api/papers/${id}/resummarize`, { confirmed: true })
 }
 
 export function paperFileUrl(id: string, page?: number) {

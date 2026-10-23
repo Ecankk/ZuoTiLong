@@ -18,6 +18,11 @@ export type Paper = {
   analysis_engine?: string
   analysis_message?: string
   analyzed_at?: string
+  created_at?: string
+  updated_at?: string
+  archived_at?: string
+  score_confirmed_at?: string
+  math_type?: number
 }
 
 export type Question = {

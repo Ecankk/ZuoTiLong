@@ -79,7 +79,7 @@ def topic_audit(conn):
 
 def workspace_context(conn, data_root: Path, paper_id=None):
     snapshot = loop_snapshot(conn)
-    papers = [dict(r) for r in conn.execute("SELECT id,title,import_status FROM papers WHERE source_sha256 IS NOT NULL ORDER BY created_at DESC")]
+    papers = [dict(r) for r in conn.execute("SELECT id,title,import_status,created_at,updated_at FROM papers WHERE source_sha256 IS NOT NULL AND archived_at IS NULL ORDER BY created_at DESC")]
     if paper_id:
         papers = [p for p in papers if p["id"] == paper_id]
         if not papers:
@@ -92,11 +92,12 @@ def workspace_context(conn, data_root: Path, paper_id=None):
         'preferences':preferences(conn),
         "purpose": "恢复本地事实和待办，不依赖模型自动记住历史；网页会话状态另由 /api/agent/state 提供。",
         "papers": papers,
+        "archived_paper_ids": [r[0] for r in conn.execute('SELECT id FROM papers WHERE archived_at IS NOT NULL')],
         "task_files": [str(p.resolve()) for p in (data_root / "tasks").glob("*/request.json") if p.parent.name in ids],
         "reports": [r for r in snapshot["reports"] if r["paper_id"] in ids],
         "diagnoses": {k: v for k, v in snapshot["diagnoses"].items() if k in qids},
         "probes": [p for p in snapshot["probes"] if p["paper_id"] in ids],
-        "profile_scope": "个人全部试卷的证据汇总；即使指定单卷，也保留跨卷背景",
+        "profile_scope": "个人未归档试卷的证据汇总；指定单卷仍保留跨卷背景。旧记忆涉及已归档卷时，不纳入当前判断。",
         "profile": snapshot["skills"],
         "memory_files": [str(p.resolve()) for p in sorted(memory.rglob("*.md"))] if memory.exists() else [],
         "bank_reading_note_files": [str(p.resolve()) for p in sorted((memory / "bank").glob("*.json"))] if memory.exists() else [],

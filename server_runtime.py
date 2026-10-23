@@ -6,7 +6,7 @@ import json
 import os
 import socket
 
-VERSION = '0.5.2'
+VERSION = '0.5.3'
 
 
 def data_identity(data):

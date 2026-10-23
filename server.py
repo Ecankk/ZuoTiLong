@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+import math
 import os
 import shutil
 import sqlite3
@@ -82,7 +83,9 @@ def init_db() -> None:
             source_name TEXT,
             source_path TEXT,
             import_status TEXT DEFAULT 'needs_review',
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            archived_at TEXT
         );
         CREATE TABLE IF NOT EXISTS questions (
             id TEXT PRIMARY KEY,
@@ -139,9 +142,18 @@ def init_db() -> None:
         "analysis_engine": "TEXT",
         "analysis_message": "TEXT",
         "analyzed_at": "TEXT",
+        "updated_at": "TEXT",
+        "archived_at": "TEXT",
+        "score_confirmed_at": "TEXT",
+        "math_type": "INTEGER",
     }.items():
         if name not in columns:
             conn.execute(f"ALTER TABLE papers ADD COLUMN {name} {definition}")
+    # Existing databases predate lifecycle timestamps. Keep the original
+    # creation time as the initial update time and leave archived_at empty.
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(papers)")}
+    if "updated_at" in columns:
+        conn.execute("UPDATE papers SET updated_at=created_at WHERE updated_at IS NULL")
     question_columns = {row["name"] for row in conn.execute("PRAGMA table_info(questions)")}
     for name, definition in {
         "page_start": "INTEGER",
@@ -168,8 +180,8 @@ def seed(conn: sqlite3.Connection) -> None:
         ("paper-demo-2021", "真题 2021（示例）", "2026-10-17", 96, 150, 142, "真题2021.pdf", "analyzed"),
     ]
     conn.executemany(
-        "INSERT INTO papers(id,title,exam_date,score,total_score,duration,source_name,import_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-        [p + (created,) for p in papers],
+        "INSERT INTO papers(id,title,exam_date,score,total_score,duration,source_name,import_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [p + (created, created) for p in papers],
     )
     questions = [
         ("q-demo-01", "paper-demo-2022", "18", "高数", "含参数定积分的换元与上下限处理", 4, 5, "partial", "待诊断", None, None, "定积分｜换元｜上下限联动", json.dumps({"objects":["定积分"],"entry_cues":["复合函数"],"method":["换元积分"],"operations":["上下限同步变换"],"final_checks":["符号","上下限"]}, ensure_ascii=False), "做出了主体步骤，但换元后上下限漏改", created),
@@ -214,7 +226,7 @@ def enrich_question(item: dict) -> dict:
 
 def bootstrap() -> dict:
     conn = connect()
-    papers = rows(conn, "SELECT * FROM papers ORDER BY exam_date DESC, created_at DESC")
+    papers = rows(conn, "SELECT * FROM papers ORDER BY COALESCE(exam_date, created_at) DESC, created_at DESC")
     questions = [enrich_question(q) for q in rows(conn, "SELECT * FROM questions ORDER BY created_at DESC")]
     bank = [public_bank(conn,r[0],view='library') for r in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id")]
     settings=preferences(conn)
@@ -230,10 +242,56 @@ def bootstrap() -> dict:
     return {"papers": papers, "questions": questions, "bank": bank, "profile": profile, "loop": loop,'preferences':settings}
 
 
+def set_paper_archive(conn: sqlite3.Connection, paper_id: str, archived: bool, confirmed: bool) -> dict:
+    """Archive or restore a paper without deleting evidence.
+
+    The HTTP layer requires an explicit confirmation flag. Archive is the
+    default lifecycle action; reports, answers and learning events remain
+    addressable so a later restore can recover the same paper workspace.
+    """
+    if confirmed is not True:
+        raise ValueError("需要二次确认后才能改变试卷归档状态")
+    row = conn.execute("SELECT id, archived_at FROM papers WHERE id=?", (paper_id,)).fetchone()
+    if not row:
+        raise ValueError("试卷不存在")
+    if bool(row['archived_at']) == archived:
+        return {"paper_id": paper_id, "archived": archived, "reused": True}
+    stamp = now_iso()
+    conn.execute('INSERT INTO record_versions VALUES(?,?,?,?,?,?)',
+                 ('version-'+uuid.uuid4().hex,'paper_archive',paper_id,json.dumps(dict(row)),
+                  '用户确认归档' if archived else '用户确认恢复',stamp))
+    conn.execute("UPDATE papers SET archived_at=?, updated_at=? WHERE id=?", (stamp if archived else None, stamp, paper_id))
+    return {"paper_id": paper_id, "archived": archived, "updated_at": stamp}
+
+
+def require_active_question(conn,question_id):
+    row=conn.execute('SELECT p.archived_at FROM questions q JOIN papers p ON p.id=q.paper_id WHERE q.id=?',(question_id,)).fetchone()
+    if not row:raise ValueError('题目不存在')
+    if row[0]:raise ValueError('请先恢复已归档试卷')
+
+
+def confirm_paper_score(conn, paper_id, body):
+    paper=conn.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()
+    if not paper:raise ValueError('试卷不存在')
+    if paper['archived_at']:raise ValueError('请先恢复已归档试卷')
+    if body.get('confirmed') is not True:raise ValueError('请确认本卷核定分数')
+    score,total,category=body.get('score'),body.get('total_score',150),body.get('math_type')
+    if type(score) not in (int,float) or type(total) not in (int,float) or not math.isfinite(score) or not math.isfinite(total) or not 0<total<=1000 or not 0<=score<=total:
+        raise ValueError('分数必须为有效数字且在满分范围内')
+    if type(category) is not int or category not in (1,2,3):raise ValueError('请选择本卷数学类别')
+    created=now_iso()
+    conn.execute('INSERT INTO record_versions VALUES(?,?,?,?,?,?)',
+                 ('version-'+uuid.uuid4().hex,'paper_score',paper_id,json.dumps(dict(paper)),
+                  '用户核定总分',created))
+    conn.execute('UPDATE papers SET score=?,total_score=?,math_type=?,score_confirmed_at=?,updated_at=? WHERE id=?',
+                 (score,total,category,created,created,paper_id))
+    return {'paper_id':paper_id,'score':score,'total_score':total,'score_confirmed_at':created}
+
+
 def build_profile(conn: sqlite3.Connection) -> dict:
     stage_names = ["题目切入", "建模与路径", "中间计算", "最终处理", "时间与审题"]
     stage = {name: {"state": "未验证", "evidence": 0, "failures": 0, "successes": 0} for name in stage_names}
-    for q in rows(conn, "SELECT error_stage, review_status, correctness FROM questions"):
+    for q in rows(conn, "SELECT q.error_stage,q.review_status,q.correctness FROM questions q JOIN papers p ON p.id=q.paper_id WHERE p.archived_at IS NULL"):
         if q["error_stage"]:
             stage[q["error_stage"]] = stage.get(q["error_stage"], {"state":"未验证","evidence":0,"failures":0,"successes":0})
             stage[q["error_stage"]]["evidence"] += 1
@@ -248,9 +306,9 @@ def build_profile(conn: sqlite3.Connection) -> dict:
             info["state"] = "不稳定"
         elif info["successes"]:
             info["state"] = "基本掌握"
-    repeated = rows(conn, """SELECT error_type AS label, COUNT(*) AS count FROM questions
-                            WHERE error_type IS NOT NULL AND error_type != ''
-                            GROUP BY error_type ORDER BY count DESC LIMIT 5""")
+    repeated = rows(conn, """SELECT q.error_type AS label, COUNT(*) AS count FROM questions q JOIN papers p ON p.id=q.paper_id
+                            WHERE p.archived_at IS NULL AND q.error_type IS NOT NULL AND q.error_type != ''
+                            GROUP BY q.error_type ORDER BY count DESC LIMIT 5""")
     return {"stages": stage, "repeated_errors": repeated}
 
 
@@ -258,6 +316,7 @@ def analyze_paper_record(conn: sqlite3.Connection, paper_id: str) -> dict:
     paper = as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())
     if not paper:
         raise ValueError("试卷不存在")
+    if paper.get('archived_at'):raise ValueError('请先恢复已归档试卷')
     source_path = paper.get("source_path")
     if not source_path:
         raise ValueError("这张试卷没有本地 PDF 文件")
@@ -313,8 +372,8 @@ def analyze_paper_record(conn: sqlite3.Connection, paper_id: str) -> dict:
     has_report = conn.execute("SELECT id FROM agent_reports WHERE paper_id=?", (paper_id,)).fetchone()
     status = "diagnosed" if has_report else "segmented" if result.get("complete") else "needs_review"
     conn.execute(
-        "UPDATE papers SET import_status=?, page_count=?, analysis_engine=?, analysis_message=?, analyzed_at=? WHERE id=?",
-        (status, len(result["pages"]), result["engine"], result["message"], created, paper_id),
+        "UPDATE papers SET import_status=?, page_count=?, analysis_engine=?, analysis_message=?, analyzed_at=?, updated_at=? WHERE id=?",
+        (status, len(result["pages"]), result["engine"], result["message"], created, created, paper_id),
     )
     conn.commit()
     task_dir = DATA / "tasks" / paper_id
@@ -501,7 +560,14 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/loop":
                 self.send_json(loop_snapshot(conn))
             elif parsed.path == "/api/papers":
-                self.send_json({"papers": rows(conn, "SELECT * FROM papers ORDER BY exam_date DESC, created_at DESC")})
+                archived = parse_qs(parsed.query).get('archived', ['0'])[0]
+                if archived == '1':
+                    sql = "SELECT * FROM papers WHERE archived_at IS NOT NULL ORDER BY archived_at DESC"
+                elif archived == 'all':
+                    sql = "SELECT * FROM papers ORDER BY COALESCE(exam_date, created_at) DESC, created_at DESC"
+                else:
+                    sql = "SELECT * FROM papers WHERE archived_at IS NULL ORDER BY COALESCE(exam_date, created_at) DESC, created_at DESC"
+                self.send_json({"papers": rows(conn, sql)})
             elif parsed.path == "/api/bank":
                 query=parse_qs(parsed.query);category=query.get('math_type',[''])[0];year=query.get('year',[''])[0]
                 bank=[public_bank(conn,r[0],view='library') for r in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id")]
@@ -583,6 +649,17 @@ class Handler(BaseHTTPRequestHandler):
                 (DATA/'screen.json').write_text(json.dumps(body,ensure_ascii=False),encoding='utf8');self.send_json({'ok':True})
             elif parsed.path=='/api/preferences':
                 value=save_preferences(conn,self.read_json());conn.commit();self.send_json(value)
+            elif parsed.path.startswith('/api/papers/') and parsed.path.endswith('/archive'):
+                paper_id=parsed.path.split('/')[3]
+                result=set_paper_archive(conn,paper_id,True,self.read_json().get('confirmed'))
+                conn.commit();self.send_json(result)
+            elif parsed.path.startswith('/api/papers/') and parsed.path.endswith('/restore'):
+                paper_id=parsed.path.split('/')[3]
+                result=set_paper_archive(conn,paper_id,False,self.read_json().get('confirmed'))
+                conn.commit();self.send_json(result)
+            elif parsed.path.startswith('/api/papers/') and parsed.path.endswith('/score'):
+                result=confirm_paper_score(conn,parsed.path.split('/')[3],self.read_json())
+                conn.commit();self.send_json(result)
             elif parsed.path.startswith('/api/bank/') and parsed.path.endswith('/reveal'):
                 body=self.read_json();result=reveal(conn,parsed.path.split('/')[3],body.get('role','question'),body.get('confirmed'));conn.commit();self.send_json(result)
             elif parsed.path.startswith('/api/attempts/') and parsed.path.endswith('/supplement'):
@@ -602,8 +679,9 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/papers":
                 body = self.read_json()
                 paper_id = "paper-" + uuid.uuid4().hex[:10]
-                conn.execute("INSERT INTO papers(id,title,exam_date,score,total_score,duration,source_name,import_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                             (paper_id, body.get("title") or "未命名试卷", body.get("exam_date"), float(body.get("score") or 0), float(body.get("total_score") or 150), int(body.get("duration") or 0), body.get("source_name"), "needs_review", now_iso()))
+                created=now_iso()
+                conn.execute("INSERT INTO papers(id,title,exam_date,score,total_score,duration,source_name,import_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                             (paper_id, body.get("title") or "未命名试卷", body.get("exam_date"), float(body.get("score") or 0), float(body.get("total_score") or 150), int(body.get("duration") or 0), body.get("source_name"), "needs_review", created, created))
                 conn.commit()
                 self.send_json({"paper": as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())}, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/analyze"):
@@ -611,6 +689,22 @@ class Handler(BaseHTTPRequestHandler):
                 result = analyze_paper_record(conn, paper_id)
                 if BRIDGE and BRIDGE.connected:
                     BRIDGE.submit("这份已完成试卷已完成初步切分，请读取任务包与原图，分析作答并反馈；已有报告时先核对是否需要增量修订。", str(uuid.uuid4()), {"paper_id": paper_id})
+                self.send_json(result, HTTPStatus.CREATED)
+            elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/resummarize"):
+                paper_id = parsed.path.split("/")[3]
+                body = self.read_json()
+                if body.get('confirmed') is not True:
+                    raise ValueError('重新总结会生成新的当前报告版本，需要二次确认')
+                if not BRIDGE or not BRIDGE.connected:
+                    raise ValueError('请先连接 Codex，再重新总结本卷')
+                result = analyze_paper_record(conn, paper_id)
+                result['previous_reports'] = conn.execute('SELECT COUNT(*) FROM agent_reports WHERE paper_id=?',(paper_id,)).fetchone()[0]
+                if BRIDGE and BRIDGE.connected:
+                    BRIDGE.submit('请重新总结这份试卷。保留既有报告和真实作答，先读取当前卷与历史报告，再提交完整报告。报告加入 revision_reason="用户要求重新总结" 和本次 generated_at，使新版本可追溯；修订当前诊断时不要删除学生作答或伪造新作答。', str(uuid.uuid4()), {'paper_id': paper_id})
+                    result['agent_submitted'] = True
+                else:
+                    result['agent_submitted'] = False
+                conn.commit()
                 self.send_json(result, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/papers/") and parsed.path.endswith("/agent-report"):
                 paper_id = parsed.path.split("/")[3]
@@ -651,11 +745,12 @@ class Handler(BaseHTTPRequestHandler):
                     qid = f"{paper_id}-q-{idx+1:02d}"
                     conn.execute("INSERT INTO questions(id,paper_id,number,subject,stem,max_score,correctness,review_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
                                  (qid, paper_id, number, body.get("subject") or "数学一", f"第 {number} 题（待补充题干）", max_score, "unknown", "待诊断", created))
-                conn.execute("UPDATE papers SET import_status='analyzed' WHERE id=?", (paper_id,))
+                conn.execute("UPDATE papers SET import_status='analyzed', updated_at=? WHERE id=?", (now_iso(), paper_id))
                 conn.commit()
                 self.send_json({"paper_id": paper_id, "created_questions": len(numbers), "status": "analyzed"}, HTTPStatus.CREATED)
             elif parsed.path.startswith("/api/questions/") and parsed.path.endswith("/diagnose"):
                 question_id = parsed.path.split("/")[3]
+                require_active_question(conn,question_id)
                 body = self.read_json()
                 fields = {k: body.get(k) for k in ["review_status","error_stage","error_type","knowledge","notes"] if k in body}
                 if fields:
@@ -665,6 +760,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"question": as_json(conn.execute("SELECT * FROM questions WHERE id=?", (question_id,)).fetchone()), "profile": build_profile(conn)})
             elif parsed.path == "/api/reviews":
                 body = self.read_json()
+                require_active_question(conn,body.get('question_id'))
                 review_id = "review-" + uuid.uuid4().hex[:10]
                 conn.execute("INSERT INTO reviews(id,question_id,bank_question_id,mode,correct,score,elapsed,confidence,error_stage,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                              (review_id, body.get("question_id"), body.get("bank_question_id"), body.get("mode") or "检验", int(bool(body.get("correct"))), float(body.get("score") or 0), int(body.get("elapsed") or 0), int(body.get("confidence") or 0), body.get("error_stage"), body.get("notes"), now_iso()))
@@ -703,6 +799,7 @@ class Handler(BaseHTTPRequestHandler):
           JOIN diagnostic_probes p ON a.probe_id=p.id WHERE a.id=? AND p.id=?''',(attempt_id,probe_id)).fetchone()
         if not attempt:
             raise ValueError('作答与检验题不一致')
+        require_active_question(conn,attempt['question_id'])
         probe = {k:attempt[k] for k in ('paper_id','question_id','bank_id')}
         context = {"paper_id":probe['paper_id'],"question_id":probe['question_id'],"screen":{**probe,"probe_id":probe_id,"view":"针对性检验","label":"已提交的真实作答"}}
         version=hashlib.sha256((attempt['response']+attempt['images_json']).encode()).hexdigest()[:12]
@@ -765,8 +862,9 @@ class Handler(BaseHTTPRequestHandler):
         exam_date = fields.get("exam_date") or date.today().isoformat()
         conn = connect()
         relative_source = str(target.relative_to(ROOT))
-        conn.execute("INSERT INTO papers(id,title,exam_date,source_name,source_path,source_sha256,import_status,created_at) VALUES (?,?,?,?,?,?,?,?)",
-                     (paper_id, title, exam_date, filename, relative_source, digest, "needs_review", now_iso()))
+        created=now_iso()
+        conn.execute("INSERT INTO papers(id,title,exam_date,source_name,source_path,source_sha256,import_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                     (paper_id, title, exam_date, filename, relative_source, digest, "needs_review", created, created))
         conn.commit()
         paper = as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())
         conn.close()

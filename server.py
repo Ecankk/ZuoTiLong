@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from pdf_pipeline import extract_pdf, match_bank_questions
 from learning_loop import init_loop, loop_snapshot, submit_probe, apply_report, supplement_attempt, revise_assessment, replace_probe
-from bank_access import preferences, save_preferences, public_bank, require_access, reveal, init_access
+from bank_access import preferences, save_preferences, public_bank, require_access, reveal, init_access, record_view
 from codex_bridge import CodexBridge, BridgeConflict
 from answer_images import save_answer_image, image_records, image_path
 from local_maintenance import backup,cleanup_images,restore
@@ -216,7 +216,7 @@ def bootstrap() -> dict:
     conn = connect()
     papers = rows(conn, "SELECT * FROM papers ORDER BY exam_date DESC, created_at DESC")
     questions = [enrich_question(q) for q in rows(conn, "SELECT * FROM questions ORDER BY created_at DESC")]
-    bank = [public_bank(conn,r[0]) for r in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id")]
+    bank = [public_bank(conn,r[0],view='library') for r in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id")]
     settings=preferences(conn)
     profile = build_profile(conn)
     if os.environ.get("MATHLENS_DEMO") != "1":
@@ -460,15 +460,19 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/api/bank/") and parsed.path.rsplit("/", 1)[-1] in ("question", "analysis", "answer"):
             parts = parsed.path.split("/")
             role = parts[-1]
+            library = parse_qs(parsed.query).get('view',['probe'])[0]=='library'
             with closing(connect()) as conn, conn:
-                try:require_access(conn,parts[3],role)
+                try:
+                    if not library:require_access(conn,parts[3],role)
                 except ValueError as exc:
                     self.send_json({'error':str(exc)},403);return
                 resource = as_json(conn.execute("SELECT * FROM bank_resources WHERE bank_id=?", (parts[3],)).fetchone())
-            if resource and resource.get(role + "_path"):
-                path = (DATA / resource[role + "_path"]).resolve()
-                if (DATA / "bank-assets") in path.parents and path.is_file():
-                    self.send_file(path, "image/png"); return
+                if resource and resource.get(role + "_path"):
+                    path = (DATA / resource[role + "_path"]).resolve()
+                    if (DATA / "bank-assets") in path.parents and path.is_file():
+                        record_view(conn,parts[3],role)
+                        conn.commit()
+                        self.send_file(path, "image/png"); return
             self.send_json({"error": "题库资源缺失"}, HTTPStatus.NOT_FOUND); return
         if parsed.path.startswith("/api/papers/") and parsed.path.endswith("/file"):
             paper_id = parsed.path.split("/")[3]
@@ -500,7 +504,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"papers": rows(conn, "SELECT * FROM papers ORDER BY exam_date DESC, created_at DESC")})
             elif parsed.path == "/api/bank":
                 query=parse_qs(parsed.query);category=query.get('math_type',[''])[0];year=query.get('year',[''])[0]
-                bank=[public_bank(conn,r[0]) for r in conn.execute('SELECT id FROM bank_questions ORDER BY id')]
+                bank=[public_bank(conn,r[0],view='library') for r in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id")]
                 self.send_json({'bank':[b for b in bank if (not category or str(b['math_type'])==category) and (not year or b['year']==year)]})
             elif parsed.path=='/api/versions':
                 self.send_json({'versions':rows(conn,'SELECT * FROM record_versions ORDER BY created_at DESC LIMIT 100'),'reports':rows(conn,'SELECT id,paper_id,created_at FROM agent_reports ORDER BY created_at DESC LIMIT 100')})

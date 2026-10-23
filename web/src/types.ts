@@ -56,5 +56,5 @@ export type Profile = {
   repeated_errors: Array<{ label: string; count: number }>
 }
 
-export type Preferences = {study_type:number;reserved:{math_type:number;year:string}[]}
+export type Preferences = {study_type:number;mask_same_type:boolean;reserved:{math_type:number;year:string}[]}
 export type Bootstrap = { papers: Paper[]; questions: Question[]; bank: BankQuestion[]; profile: Profile; loop: import('./LearningWorkspace').Loop; preferences:Preferences }

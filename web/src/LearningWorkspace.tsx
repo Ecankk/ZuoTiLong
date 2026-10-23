@@ -68,7 +68,7 @@ export function LearningWorkspace({ loop, questions, papers, onReload, paperId, 
         {probes.some(p=>p.question_id===selected.id)&&<button className="primary full" onClick={()=>setTab('probes')}>进入针对性检验</button>}
       </section></div>}
     </>}
-    {tab==='probes'&&<><section className="panel"><h2>每次检验一个明确环节</h2><p>先查看选题依据，再提交思路或手写照片。未确认的真题不加载题干；解析另行确认并记录。</p></section><div className="probe-list">{probes.map(p=><ProbeCard key={p.id} probe={p} locked={locked} onReload={onReload} onSelect={()=>setActiveProbe(p.id)} onAnalysis={open=>toggle(`${currentQuestion?.id}:检验解析`,open)}/>)}</div></>}
+    {tab==='probes'&&<><section className="panel"><h2>每次检验一个明确环节</h2><p>按设置隐藏当前备考类别的检验题，点击确认后查看；其他类别直接显示。解析另行展开并记录。</p></section><div className="probe-list">{probes.map(p=><ProbeCard key={p.id} probe={p} locked={locked} onReload={onReload} onSelect={()=>setActiveProbe(p.id)} onAnalysis={open=>toggle(`${currentQuestion?.id}:检验解析`,open)}/>)}</div></>}
     {tab==='profile'&&<EvidenceProfile skills={loop.skills}/>}
     <details className="panel limitations" onToggle={e=>toggle('本轮识别边界与来源',e.currentTarget.open)}><summary>本轮识别边界与来源</summary><p>{report.author} · {report.method}</p>{report.limitations.map((x,i)=><p key={i}><MathText text={x}/></p>)}</details>
   </div>

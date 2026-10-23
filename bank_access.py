@@ -24,17 +24,19 @@ def init_access(conn):
 
 
 def preferences(conn):
-    return json.loads(conn.execute('SELECT payload FROM preferences WHERE id=1').fetchone()[0])
+    return {'mask_same_type': True, **json.loads(conn.execute('SELECT payload FROM preferences WHERE id=1').fetchone()[0])}
 
 
 def save_preferences(conn, body):
     if body.get('study_type') not in (1,2,3):raise ValueError('请选择数学一、二或三')
+    mask_same_type = body.get('mask_same_type', preferences(conn)['mask_same_type'])
+    if type(mask_same_type) is not bool:raise ValueError('检验题隐藏选项需要是开关值')
     reserved=body.get('reserved',[])
     if not isinstance(reserved,list) or len(reserved)>150:raise ValueError('预留范围格式不合法')
     for item in reserved:
         if not isinstance(item,dict) or set(item)!={'math_type','year'} or item['math_type'] not in (1,2,3) or not re.fullmatch(r'\d{4}',str(item['year'])):
             raise ValueError('预留卷需要数学类别和四位年份')
-    value={'study_type':body['study_type'],'reserved':[{'math_type':v['math_type'],'year':str(v['year'])} for v in reserved]}
+    value={'study_type':body['study_type'],'mask_same_type':mask_same_type,'reserved':[{'math_type':v['math_type'],'year':str(v['year'])} for v in reserved]}
     conn.execute('UPDATE preferences SET payload=? WHERE id=1',(json.dumps(value),))
     return value
 
@@ -72,11 +74,12 @@ def access(conn,bid):
     confirmed=any(v['role']=='question' for v in views)
     reviewed=conn.execute('SELECT sha256 FROM bank_cross_reviews WHERE bank_id=? AND study_type=?',(bid,policy['study_type'])).fetchone()
     cross_safe=bool(meta['math_type'] and meta['math_type']!=policy['study_type'] and reviewed and reviewed[0] and reviewed[0]==meta['sha256'] and not any(r['math_type']==policy['study_type'] for r in related))
-    allowed=not reserved and (confirmed or cross_safe)
+    masked=policy['mask_same_type'] and meta['math_type']==policy['study_type']
+    allowed=not reserved and (not masked or confirmed)
     return {'id':bid,'math_type':meta['math_type'],'year':meta['year'],'number':meta['number'],
-            'reserved':reserved,'can_view':allowed,'confirmed':confirmed,'cross_checked':cross_safe,
+            'reserved':reserved,'can_view':allowed,'confirmed':confirmed,'cross_checked':cross_safe,'masked':masked,
             'analysis_allowed':allowed and any(v['role']=='analysis' for v in views),
-            'reason':'用户预留整卷，禁止检索或展示' if reserved else '' if allowed else '同类别真题，确认后查看' if meta['math_type']==policy['study_type'] else '跨类别同题尚未核对，确认后查看'}
+            'reason':'用户预留整卷，不用于针对性检验' if reserved else '' if allowed else '当前备考类别的检验题已隐藏，确认后查看'}
 
 
 def require_access(conn,bid,role='question',internal=False):
@@ -90,11 +93,6 @@ def reveal(conn,bid,role,confirmed):
     if confirmed is not True or role not in ('question','analysis'):raise ValueError('需要手动确认查看')
     state=access(conn,bid)
     if state['reserved']:raise ValueError(state['reason'])
-    # A cross-category question needs an explicit Agent/user review before
-    # its content is exposed.  The metadata endpoint intentionally remains
-    # useful while the actual image/text stays hidden.
-    if role=='question' and state['math_type'] in (1,2,3) and state['math_type'] != preferences(conn)['study_type'] and not state['cross_checked']:
-        raise ValueError('请先完成跨类别题目的核对')
     if role=='question' and state['math_type'] == preferences(conn)['study_type'] and state['confirmed']:
         return state
     if role=='analysis' and not state['can_view']:raise ValueError('请先确认查看题干')
@@ -104,7 +102,23 @@ def reveal(conn,bid,role,confirmed):
     return access(conn,bid)
 
 
-def public_bank(conn,bid):
+def record_view(conn,bid,role):
+    """Track actual image loads without granting probe reveal permission."""
+    if role not in ('question','analysis','answer'):raise ValueError('资源类别不合法')
+    if not conn.execute('SELECT bank_id FROM bank_identity WHERE bank_id=?',(bid,)).fetchone():raise ValueError('题库题目不存在')
+    for item in aliases(conn,bid):
+        conn.execute('INSERT OR IGNORE INTO bank_views VALUES(?,?,?)',(item,'seen_question' if role=='question' else 'analysis',now()))
+        if role!='question':conn.execute('INSERT OR IGNORE INTO bank_exposures VALUES(?,?)',(item,now()))
+
+
+def public_bank(conn,bid,view='probe'):
+    if view=='library':
+        row=conn.execute('SELECT b.*,i.math_type,i.year,i.number FROM bank_questions b JOIN bank_identity i ON i.bank_id=b.id WHERE b.id=?',(bid,)).fetchone()
+        if not row:raise ValueError('题库题目不存在')
+        return {'id':bid,'math_type':row['math_type'],'year':row['year'],'number':row['number'],
+                'can_view':True,'reserved':{'math_type':row['math_type'],'year':row['year']} in preferences(conn)['reserved'],
+                'reason':'','analysis_allowed':True,'stem':row['stem'],'tags':json.loads(row['tags_json'] or '[]'),
+                'question_image':f'/api/bank/{bid}/question?view=library','analysis_image':f'/api/bank/{bid}/analysis?view=library'}
     state=access(conn,bid)
     if not state['can_view']:return state
     row=conn.execute('SELECT * FROM bank_questions WHERE id=?',(bid,)).fetchone()

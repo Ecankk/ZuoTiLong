@@ -32,7 +32,12 @@ function Is-OwnHealth($Value) { return ($Value -and $Value.ok -and $Value.app -e
 function Stop-OldServer([int]$OwnedPid) {
     $ownedProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$OwnedPid"
     $expectedPython = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '.venv/Scripts/python.exe'))
-    if (-not $ownedProcess -or $ownedProcess.ExecutablePath -ne $expectedPython -or $ownedProcess.CommandLine -notmatch 'server\.py.*--port\s+\d+') {
+    $allowedPython = @($expectedPython)
+    if (Test-Path -LiteralPath $expectedPython) {
+        $basePython = & $expectedPython -c "import sys; print(sys._base_executable)"
+        if ($LASTEXITCODE -eq 0) { $allowedPython += $basePython.Trim() }
+    }
+    if (-not $ownedProcess -or $ownedProcess.ExecutablePath -notin $allowedPython -or $ownedProcess.CommandLine -notmatch 'server\.py.*--port\s+\d+') {
         throw 'An older MathLens is running. Its saved PID cannot be verified; stop that MathLens service before launching.'
     }
     $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$OwnedPid" | Where-Object { $_.CommandLine -match 'server\.py.*--port\s+\d+' }
@@ -46,7 +51,7 @@ try {
     $saved = Read-Address
     $health = if ($saved) { Read-Health $saved.url } else { $null }
     if (Is-OwnHealth $health) {
-        if ($health.version -ne '0.5.1') { Stop-OldServer ([int]$saved.pid); $health = $null }
+        if ($health.version -ne '0.5.2') { Stop-OldServer ([int]$saved.pid); $health = $null }
     } else { $health = $null }
     # Recognise managed releases that predate the address file.
     if (-not $health) {
@@ -69,7 +74,7 @@ try {
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $saved = Read-Address
             $health = if ($saved) { Read-Health $saved.url } else { $null }
-            if ((Is-OwnHealth $health) -and $health.version -eq '0.5.1') { break }
+            if ((Is-OwnHealth $health) -and $health.version -eq '0.5.2') { break }
             $health = $null
             $process.Refresh()
             if ($process.HasExited) {

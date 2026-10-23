@@ -77,7 +77,9 @@ def execute(root,data,action,payload):
             row=conn.execute('SELECT * FROM bank_resources WHERE bank_id=?',(bid,)).fetchone()
             if not row or not row[role+'_path']:raise ValueError('题库图片缺失')
             images.append(image_content(data/row[role+'_path'],data))
-            result={'bank_id':bid,'student_access':state,'internal_only':not state['can_view'],'policy':preferences(conn),'instruction':'内部读图选题，不把未确认候选的考点、条件、题干或答案回显到聊天；让用户在网页确认。'}
+            visible=state['can_view'] if role=='question' else state['analysis_allowed']
+            result={'bank_id':bid,'student_access':state,'internal_only':not visible,'policy':preferences(conn),
+                    'instruction':('该检验题干可直接展示，不需要跨类别核准；解析另行由用户选择查看。' if visible and role=='question' else '当前资源仅内部阅读；仍隐藏的题干只给年份题号，未展示的解析不提前公布。' if not visible else '用户已选择查看解析，可结合实际作答讲解。')}
         elif action=='read_attempt':
             row=conn.execute('SELECT a.*,p.payload_json,p.paper_id,p.bank_id FROM probe_attempts a JOIN diagnostic_probes p ON p.id=a.probe_id WHERE a.id=?',(payload['attempt_id'],)).fetchone()
             if not row:raise ValueError('真实作答不存在')

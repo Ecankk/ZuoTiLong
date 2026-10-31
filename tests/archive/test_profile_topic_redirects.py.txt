@@ -1,0 +1,82 @@
+"""Profile navigation aliases must not alter mathematical task identities."""
+import copy
+import unittest
+from unittest.mock import patch
+
+from app.knowledge import catalog
+from app.knowledge.index import snapshot, catalog as learning_catalog
+from app.learning.tasks import capture_input, digest
+
+
+class ProfileTopicRedirectTests(unittest.TestCase):
+    def setUp(self):
+        from test_knowledge_catalog import KnowledgeCatalogTests
+        self.f = KnowledgeCatalogTests(); self.f.setUp(); self.addCleanup(self.f.tearDown)
+        self.conn = self.f.conn
+        self.first = self.f.publish()
+
+    def merge(self, target):
+        doc = copy.deepcopy(catalog.document(self.conn)['document'])
+        old_id = doc['nodes'][-1]['id']
+        doc['nodes'][-1]['id'] = target
+        for row in doc['redirects']:
+            if row['target_id'] == old_id: row['target_id'] = target
+        doc['redirects'].append({'old_id': old_id, 'target_id': target, 'reason': '同一知识的规范ID，保留历史。'})
+        for source in doc['source_resolutions']:
+            source['node_ids'] = [target if nid == old_id else nid for nid in source['node_ids']]
+        self.f.publish(doc)
+        return old_id
+
+    def test_current_profile_lists_all_previous_ids_once_without_copying_nodes_or_alias_names(self):
+        before = learning_catalog(self.conn)[-1]
+        self.merge('canonical.chain-rule')
+        self.merge('canonical.chain-rule.v2')
+        value = snapshot(self.conn)
+        node = next(n for n in value['nodes'] if n['skill_id'] == 'canonical.chain-rule.v2')
+        self.assertEqual(node['previous_ids'], ['GS-04-001', 'canonical.chain-rule'])
+        self.assertEqual(node['aliases'], before['aliases'])
+        self.assertEqual(node['origin']['definition'], before['origin']['definition'])
+        self.assertNotIn('GS-04-001', [n['skill_id'] for n in value['nodes']])
+        self.assertEqual(node['events'], [])
+        self.assertEqual(node['state'], '未覆盖')
+
+    def test_profile_reads_do_not_change_frozen_task_material_or_register_definition_reads(self):
+        self.merge('canonical.chain-rule')
+        scope = {'source_version_id': self.f.sid, 'source_ids': ['GS-04-001']}
+        before = capture_input(self.conn, self.f.config.root, self.f.data, 'maintain_catalog', None, task_scope=scope)
+        changes = self.conn.total_changes
+        snapshot(self.conn); snapshot(self.conn)
+        after = capture_input(self.conn, self.f.config.root, self.f.data, 'maintain_catalog', None, task_scope=scope)
+        self.assertEqual(digest(before), digest(after))
+        self.assertEqual(changes, self.conn.total_changes)
+        self.assertFalse(any('previous_ids' in n for n in learning_catalog(self.conn)))
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM task_reads').fetchone()[0], 0)
+
+    def test_only_the_current_release_contributes_navigation_ids(self):
+        self.merge('canonical.chain-rule')
+        self.assertEqual(next(n for n in snapshot(self.conn)['nodes'] if n['skill_id'] == 'canonical.chain-rule')['previous_ids'], ['GS-04-001'])
+        # A fixture-only historical switch proves rows from other releases do
+        # not leak into the projection; no personal database is involved.
+        self.conn.execute('UPDATE knowledge_catalog_state SET release_id=? WHERE singleton=1', (self.first['id'],))
+        self.assertTrue(all(n['previous_ids'] == [] for n in snapshot(self.conn)['nodes']))
+        self.assertIn('GS-04-001', [n['skill_id'] for n in snapshot(self.conn)['nodes']])
+
+    def test_legacy_outline_without_a_published_catalogue_keeps_normal_navigation(self):
+        self.conn.execute('DELETE FROM knowledge_catalog_state')
+        value = snapshot(self.conn)
+        self.assertTrue(value['nodes'])
+        self.assertTrue(all(n['previous_ids'] == [] for n in value['nodes']))
+
+    def test_navigation_uses_the_same_release_as_the_nodes_if_a_new_catalogue_is_published_between_reads(self):
+        self.merge('canonical.chain-rule')
+        captured_nodes = learning_catalog(self.conn)
+        doc = copy.deepcopy(catalog.document(self.conn)['document'])
+        doc['redirects'].append({'old_id': 'external.historical-id', 'target_id': 'canonical.chain-rule',
+                                 'reason': '较晚版本补登记的历史ID，仅用于验证版本边界。'})
+        self.f.publish(doc)
+        with patch('app.knowledge.index.catalog', return_value=captured_nodes):
+            projected = snapshot(self.conn)
+        node = next(n for n in projected['nodes'] if n['skill_id'] == 'canonical.chain-rule')
+        self.assertEqual(node['previous_ids'], ['GS-04-001'])
+        current = next(n for n in snapshot(self.conn)['nodes'] if n['skill_id'] == 'canonical.chain-rule')
+        self.assertEqual(current['previous_ids'], ['GS-04-001', 'external.historical-id'])

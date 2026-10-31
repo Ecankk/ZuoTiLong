@@ -1,0 +1,1 @@
+"""MathLens application package."""

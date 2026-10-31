@@ -1,78 +1,143 @@
-# MathLens
+<p align="center">
+  <img src="web/public/brand/logo-wordmark.png" alt="做题龙 ZuoTiLong 项目标识" width="300" />
+</p>
 
-本地考研数学一试卷诊断工具：上传已完成试卷，保留原卷作答证据，分析可能的错误原因，从现有题库选择分环节检验，再按真实作答更新个人画像。
+# 做题龙 · ZuoTiLong
 
-产品定位是 **Agent 的可视化数学诊断工作台**：Agent 阅读原卷和题库，讨论、选题并讲解；程序负责裁切、保存与展示。分类仅供浏览，不用代码相似度替代教学判断。项目工作约定见 [AGENTS.md](AGENTS.md)，持续网页会话的实现边界见 [交互设计](docs/agent-first-design.md)。
+基于已做试卷的考研数学复习工作台：上传、逐题分析、合并薄弱考点、少量补强练习、手写批改，再逐步积累学习画像。
 
-## 本地使用
+**当前版本：v0.10.0 · Preview。** 面向个人本地使用，当前主要验证Windows。适合开始试用和反馈；完整的结束/续做流程、额外教材接入及部分性能优化仍在开发中。
 
-Windows 首次安装需要 Python 3.11 或 3.12，双击 `setup_mathlens.bat` 安装项目虚拟环境与本地 OCR 依赖。随后双击 `start_mathlens.bat`，启动器自动打开本地页面。
+**原创代码许可证：[MIT](LICENSE)。** 第三方依赖和题目资料保留各自许可，特别是PyMuPDF的AGPL／商业许可；详见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
-当前启动器（v0.5.3）：优先使用 4173；如果端口被 Windows 保留或被占用，自动尝试 8765，再由系统分配空闲端口。实际地址写入 `.mathlens/server.json` 并显示在启动器中，重复双击会复用同一服务。以自动打开的地址为准，不必修改系统保留端口、防火墙或使用管理员身份启动。日志与启动终端统一使用 UTF-8。
+## 它能做什么
 
-已经配置好环境的机器可直接启动。启动器在后台运行服务，输出日志保存在 `.mathlens/server.stdout.log` 与 `.mathlens/server.stderr.log`；终端不再需要停留在服务进程中。重复启动复用健康的当前版本服务。前端已构建到 `dist/`，普通使用无需安装 Node.js。
+- 保存已做PDF，辅助识别/切题；Agent解释每题切入点、推导、注意事项，并区分可见错误和可能原因。
+- 用统一原子考点关联题目；程序快速召回数学一/二/三题库，Agent判断本次补强的适配性，合并目标、控制题量。
+- 按考点进入练习，上传手写照片或文字，明确提交后批改；区分独立完成与查看解析后的完成。
+- 在考点树切换“已完成题目／全部题库”，由标签返回考点；画像可追溯到原卷和作答证据。
+- 通用资料与个人工作区使用独立数据库、资源目录；支持资料导入/导出、个人归档及本地备份恢复。
 
-若手动启动：
+所有可读原题都分析，但不为每道错题机械增加练习；未知不当薄弱，AI的可能原因不当确定结论。详细行为见[产品流程](docs/paper-review-workflow.md)。
 
-```powershell
-.\.venv\Scripts\python.exe -X utf8 server.py --host 127.0.0.1 --port 4173 --auto-port
+## 安装与启动
+
+准备Python **3.11或3.12**（推荐3.12）、能在终端调用且已登录的 **Codex CLI**。使用仓库附带的dist时无需Node.js，也无需在网页填写AI URL或API key。安装、模型调用需要网络；AI分析由Codex发送本轮材料到所选模型，页面和数据库在本机。
+
+可选择下面任意一种安装方式。Python和Codex CLI的安装、登录要求见[配置教程第1节](docs/setup.md#1-检查环境)；Codex遵循[官方CLI文档](https://learn.chatgpt.com/docs/codex/cli)与[认证说明](https://learn.chatgpt.com/docs/auth)。
+
+### 方法一：手动安装
+
+1. 下载本仓库ZIP并解压，或克隆：
+
+   ```powershell
+   git clone https://github.com/Ecankk/ZuoTiLong.git
+   cd ZuoTiLong
+   ```
+
+2. 在项目目录打开终端，执行`python --version`、`codex --version`和`codex login status`确认环境；尚未登录时执行`codex login`，由本人完成授权。
+3. 首次双击`setup_mathlens.bat`安装依赖，看到`Setup complete`后双击`start_mathlens.bat`。
+4. 浏览器自动打开实际本地地址；端口自动回退，重复启动复用已有服务。以后直接双击`start_mathlens.bat`即可。
+5. 按下节[首次资料准备](#首次使用需要哪些资料)导入题库、考点目录和标注，然后开始复习。
+
+完整命令、数据位置和排错见 **[配置与首次使用](docs/setup.md)**。
+
+### 方法二：让Agent安装
+
+先按方法一的第1步获取仓库，在项目根目录打开Codex或其他代码Agent，发送以下内容：
+
+```text
+请阅读 docs/setup.md，按其中的安装步骤和配置Agent执行边界配置并运行本项目：
+1. 检查 Python 3.11/3.12、Codex CLI 和登录状态；复用可用环境，安装缺少的项目依赖。
+2. 保留已有数据，用 start_mathlens.ps1 -NoBrowser 启动。
+3. 用实际地址的 /api/health 和首页验证启动，告诉我访问地址。
+4. 检查题库、考点目录和标注是否就绪；有我提供的资料就按教程导入，缺少则列明。
+登录授权由我完成；不要发起学习任务、从头重标题库或提交/推送代码。
 ```
 
-从试卷列表进入单卷工作区，查看原卷、逐题诊断与本卷针对性检验；个人画像汇总跨卷证据。每题可以只回答入手、参数范围或某一步计算。题干与解析曝光分别记录；独立证据目前仍有已知缺口：提交后查看解析再补充作答，补充部分尚未正确继承曝光状态，不能据此认定独立掌握。
+Agent完成后，在浏览器打开它给出的地址；以后仍双击`start_mathlens.bat`启动。两种安装方式使用相同的应用和资料配置，不需要安装两遍。
 
-v0.5.3：试卷作为一份可管理的学习记录，显示作答日期、导入和更新时间。归档/恢复、重新总结均需二次确认；归档保留全部材料并暂时排除当前画像，恢复后重新纳入。重新总结需连接 Codex，保留历史报告与真实作答。高级永久删除暂未提供。试卷卡片可核定总分和数学类别，成绩趋势只比较同类别、同满分的核定成绩。画像知识点可展开来源试卷和题库检验，区分已完成、待作答、待评价和需补充；同类别未确认真题沿用隐藏规则。题库按数学一/二/三按钮浏览。
+配置用聊天与应用专用的学习会话分别使用。实际复习由网页按钮派发任务，应用持续复用本人的学习会话，不要求用户用聊天指令串流程。运行期间不要同时从Desktop/CLI控制该学习会话。
 
-v0.5.0：在右侧 Agent 工作区点击“连接 Codex”，使用本机已登录的 Codex CLI（找不到时可通过 `MATHLENS_CODEX_BIN` 指定可执行文件）。自动建立并复用一个学习专用会话，并向新会话注册受限的 `mathlens` 工具：Agent 可读取当前试卷、图片题库、真实作答和项目 skills，再通过结构化报告/评价写回。主区选择的试卷/题目直接作为讨论上下文，随消息附上发送时的页面快照和原卷区域图。发送后输入锁定，等完整反馈结束再继续；失败或中断后可重试原轮次，也可确认放弃已停止的轮次并保留记录，不能在运行中绕过输入门槛。刷新网页不会丢失已提交的消息和作答；文字与照片草稿也有本地保存，多标签页及跨题恢复仍需完整验收。
+三类Agent的指令入口分别维护：
 
-v0.5.2：本地题库按数学一、二、三和年份直接浏览，不隐藏题干。设置中的“当前备考类别”和“隐藏同类别检验题”只作用于试卷的针对性检验：例如备考数学一时，数一候选先显示年份题号、确认后查看，数二/三直接显示；可关闭隐藏开关。跨类别阅读不再需要事先核准。额外预留整卷只排除 Agent 选题；用户仍可自主浏览题库。实际看过题干/解析另行记录，不把浏览算成作答成功。报告、评价、补充照片和替换检验均保留修订记录。
+| 用途 | 指令入口 |
+| --- | --- |
+| 安装配置：检查环境、安装依赖、启动和导入资料 | [docs/setup.md](docs/setup.md) |
+| 应用内学习：分析、选题、批改、总结 | 后端下发的任务提示和JSON Schema，以及通过`read_skill`读取的[项目Skill](.agents/skills/)；机制见[学习Agent协议](docs/agent-workflow.md) |
+| 代码开发：修改代码、选择测试、维护文档 | [项目架构](docs/backend-architecture.md)与[开发验收](docs/full-loop-test-checklist.md)；维护者的本机开发约定不随仓库发布 |
 
-连接路径为“网页 → 本地 Python 服务 → 本机 Codex app-server → 一个固定学习会话”，不是读取当前 Desktop 聊天。首次需要安装 Codex 并完成 `codex login`；不需要在网页另填模型 URL 或 API key。会话记录保存在 `.mathlens/agent-session.db`，Codex 的诊断日志在 `.mathlens/codex.stderr.log`。连接或恢复失败时网页显示原因。有历史消息或未完成请求的会话不会被自动替换；唯一恢复例外是从未发送消息、且 Codex 明确报告没有保存的空会话，此时显式提示重新建立。新会话立即命名并保存，以避免空会话重启丢失。
+## 首次使用需要哪些资料
 
-手写解答可在右侧讨论或“针对性检验”中选择照片，也可粘贴截图；允许只传图片、不填文字。每次最多 4 张，每张不超过 8 MB，支持 JPG、PNG、WebP（HEIC 请先转换），预览时可调整顺序或移除。图片保存在本机，提交后随题目上下文送给 Codex 直接阅读。上传照片不会自动判为正确，也不会仅凭上传更新熟练程度。若作答已经保存但发送中断，可点击“请 Agent 核对已保存作答”，不重复创建作答。
+**项目提供程序、学习Skill、纯净考点目录和题目标注索引；用户自备题目材料、已做试卷、手写作答和Codex账号。** 仓库不附带维护者的运行数据库或个人学习记录，题目原图也不捆绑分发。
 
-原图在 `.mathlens/answer-images/` 保留；发给模型的是校正 EXIF 方向、去除元数据的版本，不缩小或裁切手写内容。模型处理仍使用 Codex 服务，并非离线 AI。主服务默认仅监听电脑回环地址；照片控件可显式开启短时局域网手机上传链接，10分钟后失效。尚无二维码，手机实机、网络兼容性和到期恢复仍待完整验收，也可将照片先传到电脑后上传。
+| 资料 | 用途 | 谁提供／如何获取 |
+| --- | --- | --- |
+| 本地题库及参考 | 练习题干、答案、解析 | 用户自行准备；当前支持S01数一/二/三真题导入，见[题源目录](docs/question-sources.md) |
+| 通用考点目录JSON包 | 统一的学科/章节/原子目录与定义 | 项目提供[resources/shared/catalog.json](resources/shared/catalog.json)，在设置预览并导入 |
+| 题目标注索引JSON包 | 考点与题目关联、就绪召回 | 项目提供[resources/shared/question-index.json](resources/shared/question-index.json)，准备匹配版本的题库和目录后导入 |
+| 已做试卷PDF、本人手写照片或解题文字 | 诊断与后续批改 | 用户提供，仅保存在本人的工作区 |
+| Codex CLI与登录账号 | 执行分析、选题、批改 | 用户自行安装和登录；不随项目提供凭据或模型额度 |
 
-若 Windows 沙箱拒绝启动工具，Codex 可能申请单次授权；网页会显示实际命令与原因，由用户允许或拒绝。应用不会自动批准，也不会关闭沙箱来消除提示。
+按[配置教程第3节](docs/setup.md#3-配置题库考点和标注)依次准备。包的覆盖、散列与固定题源版本见[通用资料说明](resources/shared/README.md)。题目材料必须由用户导入，下载项目不会自动获得完整题库；不要让Agent为安装而从头重建整库。S02/S03教辅资料目前仍未正式接入。
 
-## 当前能力与边界
+资料来源、版本和边界统一见[题源目录](docs/question-sources.md)，不把题目正文随代码打包。
 
-- React + TypeScript + Vite 前端，Python HTTP 服务，SQLite；只监听本机，不依赖线上演示站点。
-- 数字 PDF 提取文字与坐标；扫描件通过 RapidOCR/ONNX 在本地识别题号和文字草稿，并做题号区域补识别。按文件 hash 与管线版本缓存。
-- 逐题支持多个页内证据区域，保留题干、手写作答与批改；不把 OCR 草稿当标准答案，也不把文字识别分数当准确率。
-- Agent 在项目文件夹中读取页图、核对题目与学生作答、提出原因假设、选择已有检验题，通过受校验的结构化报告写回应用。用户连接后由本机 Codex 处理网页输入。
-- 网页无需另填模型 API key。CLI 所用模型仍需用户自己的登录或服务能力。具体流程和命令见 [Agent 工作流](docs/agent-workflow.md)。
-- 支持从个人本地 `lx-ruc/kaoyanshuxue` 目录导入数学一、二、三的题图、解析及元数据；重复导入会补齐图片散列并保留 Agent 阅读指纹、作答与曝光记录。外部题目资源放在 `.mathlens/bank-assets/`，不随代码分发。
-- 检验作答实际保存。明确简单的允许答案可自动核对；其他表达等待 Agent 评价。不会将未识别表达自动判错，或将一次答对标记为稳定掌握。
-- 画像按原卷与检验事件累计，保留错误、成功、未展示及原因待查状态；单卷不能推断长期稳定性、心态或耗时。
-- 报告检查文件 hash、题号与区域边界；重复报告及带请求标识的重复提交不重复累计。整卷契约仍有缺口：遗漏 `expected_count` 可绕过完整题号检查，报告“已就绪”不能直接证明全卷分析完成。重新提取不覆盖 Agent 已审阅的诊断。
+## 日常复习
 
-首次真实样本已经完成 4 页、22 题的自动定位与 Agent 视觉核对。它是个案验证，不能据此宣称对所有卷型、手写或公式都达到同样准确率。旧版本纯正则切题的缺陷已修正并纳入回归测试。
+1. 在设置选择备考数学一/二/三、真题显示保护和笔迹约定。
+2. 上传一份已完成的试卷PDF，等待本地识别/切题；在网页连接Codex，逐题分析后自动分阶段整理考点、筛选补强题。
+3. 按考点打开少量练习，做完后上传手写照片或输入解题内容，点击“提交作答并批改”。
+4. 查看批改反馈、考点树和学习画像；需要时追加练习或手动生成整卷总结。
 
-## 数据与个人资料
+分析、整理、选题、批改各自分阶段执行；用户不维护JSON或逐项确认错因。默认黑字为考试作答，红字为事后批改，可在设置修改。照片先暂存，提交才批改；已有练习可追加。同类别真题按设置确认后展示，本地题库可直接浏览，预留卷排除日常选题。
 
-原始试卷、题库图片、SQLite、报告、任务及本地备份都保存在 `.mathlens/`，已从 Git 排除。`tmp/` 中的隔离测试数据也不进入仓库。现有数据库自动增加字段和表；默认不再向新库填入示例数据，旧示例在正常界面隐藏，设置 `MATHLENS_DEMO=1` 可启用示例模式。
+学习会话首次默认请求`gpt-6-luna / xhigh`，之后沿用保存的设置；模型须由账号实际提供。模型切换、会话释放/恢复及结果契约见[Agent协议](docs/agent-workflow.md)。
 
-应用代码与第三方题目内容的授权分别处理。KaTeX 的 MIT 许可随离线公式排版资源保留。
+## 数据与隐私
 
-## 开发与验证
+默认运行数据放在源码外的`%LOCALAPPDATA%/ZuoTiLong/`：
 
-```powershell
-# 后端与数据事件测试（独立临时数据库）
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-
-# 前端
-cd web
-npm install
-npm test
-npm run build
+```text
+library/library.db                   通用考点、题库、标注和出处
+library/bank-assets/                  本地题干、答案和解析
+workspaces/default/learning.db        本人的试卷、练习、作答和画像
+workspaces/default/agent-session.db   本人的会话状态
 ```
 
-`scripts/verify_local_loop.py` 对已导入的首个真实报告执行只读 HTTP 验收，不写入检验作答。浏览器提交测试采用独立的 `tmp/browser-fixture`，不能把模拟回答写进个人数据库。
+学习连接只读通用库、写个人工作区；资料更新使用独立维护入口。新工作区能复用通用资料，学习记录从零开始。旧项目.mathlens首次默认启动时复制迁移并保留原目录。Windows打包应用可能映射AppData路径，实际配置查询和干净重测见[配置教程第5节](docs/setup.md#5-数据位置与干净重测)。
 
-- [Agent 任务、报告契约与检验评价](docs/agent-workflow.md)
-- [题目来源目录](docs/question-sources.md)：当前来源、潜在题源、版次、真实文件核查范围与接入状态。
-- [首次完整回归测试](docs/full-loop-test-checklist.md)：从上传试卷到 Agent 诊断、检验、照片作答、评价、画像和恢复的验收顺序。
-- [参考项目源码审查](docs/reference-source-review.md)：记录改造前的基线缺陷，不代表当前代码仍全部存在这些问题。
-- [资料库候选与完整性检查](docs/question-bank-options.md)
-- [现有68类考点的粒度审查](docs/bank-topic-review.md)
-- `scripts/audit_references.py`、`scripts/audit_candidate_banks.py`：可重复的数据与管线检查。历史结果文件记录的是当时版本。
+应用内学习Agent的任务指令由后端和[.agents/skills/](.agents/skills/)维护，随项目同步。维护者本机的`AGENTS.md`是私人开发约定，保留在本地并由Git忽略，不是安装或学习任务的必备文件；个人全局Agent配置和登录凭据也不发布。
+
+Git同步源码、上述Agent约定与Skill、测试、公开文档、依赖/启动脚本及免Node启动所需的dist。运行双库、个人工作区、原题资源、会话、日志、备份、临时文件和docs/local均不提交，规则见[.gitignore](.gitignore)。完整本地备份含个人内容，不能作为共享资料或发行包；共享只使用核对过的纯净导出包。
+
+## 当前限制
+
+- 复杂手写、跨页/多栏切题和数学判断仍可能有误；材料不清时需要必要补图，真实效果按试用反馈完善。
+- 总结目前手动触发；“结束本轮→未做题统一留存→下次续做”的完整入口尚未实现。
+- 考点及题目准备已有首轮核对，仍保留争议/缺口，不宣称全库数学零错误或当年官方考纲完整认证。
+- 考点关联页面加载偏慢待优化；Desktop同时接管学习会话、跨机和其他平台尚未完整验收。
+- 已提供纯净考点和标注包；安装/导入的开发验证不代替本人自然学习体验，首次使用按[人工清单](docs/manual-test-checklist.md)完成一轮，不把本机运行等同于所有用户环境已验收。
+
+这些边界不阻止已有功能独立试用；首次体验用一份已做卷和一道本人手写即可，见[人工清单](docs/manual-test-checklist.md)。
+
+## 开发与项目结构
+
+前端为React 19 / TypeScript / Vite 7 / 本地KaTeX；后端为FastAPI / Uvicorn / SQLite。浏览器通过HTTP与后端通信，后端通过本机`codex app-server`及固定任务契约接入学习Agent；当前用HTTP轮询同步状态。
+
+```text
+app/                后端：api、services、learning、knowledge、bank、storage等
+web/                前端源码；dist/为预构建页面
+.agents/skills/     学习任务的方法与交付说明
+scripts/、tests/    资料工具、有效测试；archive为历史文本
+```
+
+修改前端时，使用满足web依赖要求的Node.js，在web目录执行`npm ci`、`npm run dev`或`npm run build`；Vite开发代理读取实际后端地址。修改后端从[项目架构](docs/backend-architecture.md)及受影响代码开始，按[开发验收](docs/full-loop-test-checklist.md)选择验证，不默认重跑模型或全库审查。
+
+[文档导航](docs/README.md) · [配置教程](docs/setup.md) · [后端结构](docs/backend-architecture.md) · [题源接口](docs/bank-source-interface.md)
+
+## 参考与致谢
+
+感谢[11408Advance-mcp](https://github.com/hanserdesu/11408Advance-mcp)的数学考点资料、[kaoyanshuxue](https://github.com/lx-ruc/kaoyanshuxue)的真题资料结构，以及[AI错题本error-notebook](https://github.com/Jasmine-Coder-Dev/error-notebook)、[kaoyan-quiz](https://github.com/roizenken-design/kaoyan-quiz)、[math-question-bank](https://github.com/justcodeit404/math-question-bank)的产品或题库组织参考。
+
+题源接入、目录资料来源与设计借鉴分别记录；致谢不表示全部项目已经接入，也不替代原始内容授权。具体用途、作者链、依赖许可及S02/S03状态见[第三方声明](THIRD_PARTY_NOTICES.md)和[题源目录](docs/question-sources.md)。

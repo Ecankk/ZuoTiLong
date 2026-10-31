@@ -9,9 +9,14 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import server
-from learning_loop import apply_report, assess_attempt, import_image_bank, loop_snapshot
-from agent_workspace import bank_catalog, workspace_context
+from app.config import AppConfig
+from app.storage.database import Database
+from app.services.papers import PaperService
+from app.common import now_iso
+config=AppConfig.from_env(ROOT)
+database=Database(config)
+from app.learning.loop import import_image_bank, loop_snapshot
+from app.agent.workspace import bank_catalog, workspace_context
 
 
 def main():
@@ -20,6 +25,8 @@ def main():
     p=sub.add_parser("prepare");p.add_argument("pdf",type=Path);p.add_argument("--bank",type=Path)
     p=sub.add_parser("apply");p.add_argument("paper_id");p.add_argument("report",type=Path)
     p=sub.add_parser("assess");p.add_argument("attempt_id");p.add_argument("assessment",type=Path)
+    p=sub.add_parser("deliver",help="按当前任务执行身份提交固定契约结果")
+    p.add_argument("result",type=Path);p.add_argument("--ticket",type=Path,required=True)
     p=sub.add_parser("import-bank");p.add_argument("directory",type=Path)
     sub.add_parser("pending")
     p=sub.add_parser("catalog",help="浏览题库目录和原图路径，由 Agent 自行阅读选择")
@@ -31,12 +38,30 @@ def main():
     p=sub.add_parser("context",help="恢复个人历史、最新诊断、真实作答和记忆文件入口")
     p.add_argument("--paper",dest="paper_id")
     args=parser.parse_args()
+    if args.command=="deliver":
+        from app.learning.tasks import deliver
+        ticket=json.loads(args.ticket.read_text(encoding='utf8'))
+        payload=json.loads(args.result.read_text(encoding='utf8'))
+        with database.session(write=True,library_write=payload['kind'] in ('maintain_catalog','annotate_questions')) as task_conn:
+            task_conn.row_factory=sqlite3.Row;task_conn.execute('PRAGMA foreign_keys=ON')
+            result=deliver(task_conn,ROOT,config.data,payload,ticket)
+        print(json.dumps(result,ensure_ascii=False));return
+    if args.command in ('prepare','import-bank','apply','assess'):
+        session=config.data/'agent-session.db'
+        if session.is_file():
+            with sqlite3.connect(session.as_uri()+'?mode=ro',uri=True) as guard_conn:
+                row=guard_conn.execute('SELECT payload FROM session WHERE id=1').fetchone()
+            state=json.loads(row[0]) if row else {}
+            if state.get('active_request') or state.get('external_control') or state.get('status')=='connecting':
+                raise ValueError('学习任务/外部会话正在使用资料；旧CLI不能额外写入。当前任务交付请使用deliver及原任务write_ticket。')
+        if args.command in ('apply','assess'):
+            raise ValueError('旧CLI直接报告写入已停用；请由网页发起任务，再用deliver和context.learning_task.write_ticket交付。')
     if args.command in ("catalog", "context"):
-        conn=sqlite3.connect(server.DB_PATH.resolve().as_uri()+"?mode=ro",uri=True)
+        conn=database.connect(readonly=True)
         conn.row_factory=sqlite3.Row
     else:
-        server.init_db()
-        conn=server.connect()
+        database.initialize()
+        conn=database.connect(library_write=args.command in ('import-bank','prepare'))
     try:
         if args.command=="prepare":
             source=args.pdf.resolve();digest=hashlib.sha256(source.read_bytes()).hexdigest()
@@ -48,34 +73,24 @@ def main():
             if old:
                 pid=old["id"]
             else:
-                pid="paper-"+digest[:14];target=server.PAPERS_DIR/pid/source.name
+                pid="paper-"+digest[:14];target=config.papers/pid/source.name
                 target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
                 conn.execute("INSERT INTO papers(id,title,source_name,source_path,source_sha256,import_status,created_at) VALUES(?,?,?,?,?,?,?)",
-                             (pid,source.stem,source.name,str(target.relative_to(ROOT)),digest,"needs_review",server.now_iso()))
+                             (pid,source.stem,source.name,str(target.resolve()),digest,"needs_review",now_iso()))
             if args.bank:
-                print(json.dumps(import_image_bank(conn,args.bank,server.DATA),ensure_ascii=False))
-            conn.commit();result=server.analyze_paper_record(conn,pid)
+                print(json.dumps(import_image_bank(conn,args.bank,config.data),ensure_ascii=False))
+            conn.commit();result=PaperService(config,database).analyze(conn,pid)
             print(json.dumps({"paper_id":pid,"questions":result["created_questions"],"warnings":result["warnings"],"task":result.get("agent_task")},ensure_ascii=False))
         elif args.command=="import-bank":
-            print(json.dumps(import_image_bank(conn,args.directory,server.DATA),ensure_ascii=False));conn.commit()
-        elif args.command=="apply":
-            report=json.loads(args.report.read_text(encoding="utf-8"))
-            applied=apply_report(conn,args.paper_id,report,ROOT);conn.commit()
-            task_file=server.DATA/'tasks'/args.paper_id/'request.json'
-            if task_file.is_file():
-                task=json.loads(task_file.read_text(encoding='utf-8'));task.update(status='report_available',report_id=applied['report_id'])
-                task_file.write_text(json.dumps(task,ensure_ascii=False,indent=2),encoding='utf-8')
-            print(json.dumps(applied,ensure_ascii=False))
-        elif args.command=="assess":
-            print(json.dumps(assess_attempt(conn,args.attempt_id,json.loads(args.assessment.read_text(encoding="utf-8"))),ensure_ascii=False));conn.commit()
+            print(json.dumps(import_image_bank(conn,args.directory,config.data),ensure_ascii=False));conn.commit()
         elif args.command=="catalog":
-            print(json.dumps(bank_catalog(conn,server.DATA,topics=args.topic,bank_id=args.bank_id,offset=args.offset,limit=args.limit,math_types=args.math_type,years=args.year,exclude_years=args.exclude_year),ensure_ascii=False,indent=2))
+            print(json.dumps(bank_catalog(conn,config.data,topics=args.topic,bank_id=args.bank_id,offset=args.offset,limit=args.limit,math_types=args.math_type,years=args.year,exclude_years=args.exclude_year),ensure_ascii=False,indent=2))
         elif args.command=="context":
-            print(json.dumps(workspace_context(conn,server.DATA,args.paper_id),ensure_ascii=False,indent=2))
+            print(json.dumps(workspace_context(conn,config.data,args.paper_id),ensure_ascii=False,indent=2))
         else:
             snapshot=loop_snapshot(conn)
             active={r[0] for r in conn.execute('SELECT id FROM papers WHERE archived_at IS NULL')}
-            tasks=[str(p) for p in (server.DATA/"tasks").glob("*/request.json") if p.parent.name in active and not conn.execute('SELECT id FROM agent_reports WHERE paper_id=?',(p.parent.name,)).fetchone()]
+            tasks=[str(p) for p in (config.data/"tasks").glob("*/request.json") if p.parent.name in active and not conn.execute('SELECT id FROM agent_reports WHERE paper_id=?',(p.parent.name,)).fetchone()]
             attempts=[{"probe_id":p["id"],"prompt":p.get("prompt"),"attempts":p["attempts"]} for p in snapshot["probes"] if p['paper_id'] in active and p["status"] in ("awaiting_assessment","needs_supplement")]
             print(json.dumps({"tasks":tasks,"awaiting_assessment":attempts},ensure_ascii=False,indent=2))
     except Exception:

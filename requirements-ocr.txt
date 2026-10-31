@@ -5,3 +5,11 @@ Pillow>=10,<13
 # Local Chinese OCR with bundled ONNX models, tested with Python 3.12.
 # Used for question anchors and text drafts; mathematical work is reviewed by Agent.
 rapidocr-onnxruntime==1.4.4
+
+# Validate versioned Agent results before saving learning evidence.
+jsonschema>=4.23,<5
+
+# Local API and application lifecycle.
+fastapi>=0.162,<0.163
+uvicorn>=0.54,<0.55
+python-multipart>=0.0.32,<0.1

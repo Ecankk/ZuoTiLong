@@ -1,0 +1,52 @@
+"""Published knowledge kinds constrain mastery even when old scope hints differ."""
+import copy
+import unittest
+from app.knowledge.index import snapshot
+from app.knowledge.profile import aggregate
+
+
+class ProfileNodeKindTests(unittest.TestCase):
+    def evidence(self, scope='concept', kind=None):
+        return {'scope_level': scope, 'origin': {} if kind is None else {'node_kind': kind},
+            'events': [{'id': f'e-{i}', 'question_id': f'q-{i}', 'paper_id': f'p-{i}',
+                        'created_at': f'2026-10-{20+i}', 'source': 'exam',
+                        'kind': 'exam_success', 'verified': True} for i in (1, 2)],
+            'question_ids': ['q-1', 'q-2'], 'probe_ids': [], 'scopes': [{'paper_id': 'p-1'}, {'paper_id': 'p-2'}]}
+
+    def test_authoritative_kind_prevents_topic_or_parent_mastery_from_two_local_successes(self):
+        for kind in ('topic', 'chapter', 'subject'):
+            with self.subTest(kind=kind):
+                item = self.evidence(kind=kind)
+                aggregate(item)
+                self.assertEqual(item['state'], '巩固中')
+                self.assertIn('整个范围', item['state_reason'])
+
+    def test_published_atom_and_legacy_scope_keep_their_compatible_rules(self):
+        cases = [('chapter', 'atom', '初步掌握'), ('concept', None, '初步掌握'), ('chapter', None, '巩固中')]
+        for scope, kind, expected in cases:
+            with self.subTest(scope=scope, kind=kind):
+                item = self.evidence(scope, kind)
+                aggregate(item)
+                self.assertEqual(item['state'], expected)
+
+    def test_actual_published_tree_preserves_topic_scope_and_never_mutates_evidence(self):
+        from test_knowledge_catalog import KnowledgeCatalogTests
+        fixture = KnowledgeCatalogTests()
+        fixture.setUp()
+        self.addCleanup(fixture.tearDown)
+        value = fixture.value()
+        atom = value['nodes'][-1]
+        parent = copy.deepcopy(atom)
+        parent.update(id='project.composite-differentiation', kind='topic', name='复合函数求导综合范围',
+                      aliases=[], source_refs=[])
+        atom['parent_id'] = parent['id']
+        value['nodes'].append(parent)
+        fixture.publish(value)
+        before = fixture.conn.total_changes
+        first = snapshot(fixture.conn)
+        nodes = {n['skill_id']: n for n in first['nodes']}
+        self.assertEqual(nodes[parent['id']]['scope_level'], 'topic')
+        self.assertEqual(nodes[atom['id']]['scope_level'], 'concept')
+        self.assertEqual(nodes[parent['id']]['state'], '未覆盖')
+        self.assertEqual(first, snapshot(fixture.conn))
+        self.assertEqual(before, fixture.conn.total_changes)

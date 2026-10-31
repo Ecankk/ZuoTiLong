@@ -13,11 +13,11 @@ from urllib.parse import urlparse
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-import server
-from learning_loop import apply_report, assess_attempt, loop_snapshot, submit_probe, revise_assessment, supplement_attempt, replace_probe
-from answer_images import save_answer_image
-from bank_access import init_access,reveal
-from pdf_pipeline import extract_pdf, segment_pages, _bank_score
+import database_fixture as server
+from app.learning.loop import apply_report, assess_attempt, loop_snapshot, submit_probe, revise_assessment, supplement_attempt, replace_probe
+from app.storage.images import save_answer_image
+from app.bank.access import init_access, reveal
+from app.documents.pdf import extract_pdf, segment_pages, _bank_score
 import pymupdf as fitz
 
 
@@ -39,7 +39,8 @@ class LearningLoopTests(unittest.TestCase):
         init_access(self.conn);reveal(self.conn,'bank-test','question',True)
         self.conn.commit()
         self.report={'author':'test-agent','method':'test evidence','source_sha256':self.digest,'expected_count':2,
-            'questions':[{'number':n,'stem':f'Question {n}','regions':[{'page':1,'bbox':[20,30+n*80,550,100+n*80],'role':'question_and_work'}],
+            'summary':'Synthetic fixture observations','score_status':'unknown','priorities':[],'limitations':[],
+            'questions':[{'number':n,'subject':'数学一','stem':f'Question {n}','max_score':None,'score_earned':None,'fingerprint':{},'reference_answer':'','reference_reasoning':'','regions':[{'page':1,'bbox':[20,30+n*80,550,100+n*80],'role':'question_and_work'}],
                           'correctness':'wrong','observation':'visible mistake','hypotheses':[],
                           'skill_events':[{'skill_id':'bounds','label':'bounds','kind':'exam_error'}]} for n in [1,2]],
             'probes':[{'id':'probe-test','question_number':1,'bank_id':'bank-test','skill_id':'bounds','skill_label':'bounds',
@@ -97,6 +98,26 @@ class LearningLoopTests(unittest.TestCase):
         self.assertIsNone(another['assessment'])
         self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_success'").fetchone()[0],0)
 
+    def test_external_reference_is_durable_but_cannot_be_graded_as_student_work(self):
+        from PIL import Image
+        raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
+        asset=save_answer_image(self.conn,self.root,raw.getvalue());self.apply()
+        aid=submit_probe(self.conn,'paper-test-probe-test',{'image_ids':[asset['id']],
+                         'image_roles':{asset['id']:'external_solution'}})['attempt_id']
+        public=loop_snapshot(self.conn)['probes'][0]['attempts'][0]
+        self.assertEqual(public['image_roles'][asset['id']],'external_solution')
+        self.assertTrue(public['answer_exposed'])
+        with self.assertRaisesRegex(ValueError,'外部解析'):
+            assess_attempt(self.conn,aid,{'correct':True,'feedback':'copied result','author':'agent'})
+        self.assertIsNone(self.conn.execute('SELECT assessment_json FROM probe_attempts WHERE id=?',(aid,)).fetchone()[0])
+        assess_attempt(self.conn,aid,{'correct':None,'feedback':'Please supply your own steps.','author':'agent'})
+        supplement_attempt(self.conn,aid,{'response':'My own derivation after reading the solution.'})
+        assess_attempt(self.conn,aid,{'correct':True,'feedback':'assisted derivation is valid','author':'agent'})
+        profile=loop_snapshot(self.conn)['skills'][0]
+        self.assertEqual(profile['independent_probe_successes'],0)
+        self.assertEqual(profile['assisted_successes'],1)
+        self.assertEqual(profile['attempt_count'],1)
+
     def test_unknown_expression_waits_for_agent_not_marked_wrong(self):
         self.apply();result=submit_probe(self.conn,'paper-test-probe-test',{'response':'an equivalent expression'})
         self.assertEqual(result['status'],'awaiting_assessment')
@@ -129,50 +150,44 @@ class LearningLoopTests(unittest.TestCase):
 
     def test_uploaded_photo_http_roundtrip_and_invalid_file_rollback(self):
         from PIL import Image
+        from http_support import client
         raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
-        def upload(contents):
-            boundary='photo-upload-test'
-            parts=[(f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="../../private.png"\r\nContent-Type: image/png\r\n\r\n').encode()+data+b'\r\n' for data in contents]
-            body=b''.join(parts)+f'--{boundary}--\r\n'.encode()
-            handler=server.Handler.__new__(server.Handler)
-            handler.headers=Message();handler.headers['Content-Type']=f'multipart/form-data; boundary={boundary}';handler.headers['Content-Length']=str(len(body))
-            handler.rfile=BytesIO(body);result={}
-            handler.send_json=lambda payload,status=200:result.update(payload=payload,status=int(status))
-            handler.upload_answer_images()
-            return handler,result
-        with self.assertRaises(ValueError):upload([raw.getvalue(),b'invalid'])
-        self.assertEqual(self.conn.execute('SELECT count(*) FROM answer_images').fetchone()[0],0)
-        handler,result=upload([raw.getvalue()])
-        self.assertEqual(result['status'],201)
-        image=result['payload']['images'][0];served=[]
-        handler.send_file=lambda path,mime:served.append((path,mime))
-        handler.api_get(urlparse(image['url']))
-        self.assertTrue(served[0][0].is_relative_to(self.root/'answer-images'))
-        self.assertEqual(served[0][1],'image/jpeg')
-        self.assertNotIn('path',image)
-        handler.api_get(urlparse('/api/answer-images/image-'+'0'*32))
-        self.assertEqual(result['status'],404)
+        self.conn.commit()
+        with client() as http:
+            invalid=http.post('/api/answer-images',files=[('files',('photo.png',raw.getvalue(),'image/png')),('files',('bad.png',b'invalid','image/png'))])
+            self.assertEqual(invalid.status_code,400)
+            self.assertEqual(self.conn.execute('SELECT count(*) FROM answer_images').fetchone()[0],0)
+            response=http.post('/api/answer-images',files=[('files',('../../private.png',raw.getvalue(),'image/png'))])
+            self.assertEqual(response.status_code,201,response.text)
+            image=response.json()['images'][0]
+            served=http.get(image['url'])
+            self.assertEqual(served.status_code,200)
+            self.assertEqual(served.headers['content-type'],'image/jpeg')
+            self.assertNotIn('path',image)
+            self.assertEqual(http.get('/api/answer-images/image-'+'0'*32).status_code,404)
+
 
     def test_saved_photo_feedback_reuses_attempt_and_preserves_context(self):
         from PIL import Image
-        from unittest.mock import Mock
+        from http_support import client
         raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
         asset=save_answer_image(self.conn,self.root,raw.getvalue())
         self.apply();pid='paper-test-probe-test'
         attempt=submit_probe(self.conn,pid,{'response':'','image_ids':[asset['id']]})
         self.conn.commit()
-        bridge=Mock(connected=True);bridge.snapshot.return_value={'turns':[]};handler=server.Handler.__new__(server.Handler)
-        with patch.object(server,'BRIDGE',bridge):
-            handler.request_probe_feedback(self.conn,pid,attempt['attempt_id'])
-            first=bridge.submit.call_args.args
-            handler.request_probe_feedback(self.conn,pid,attempt['attempt_id'])
-            self.assertEqual(bridge.submit.call_args.args,first)
-            with self.assertRaises(ValueError):handler.request_probe_feedback(self.conn,'another-probe',attempt['attempt_id'])
-        self.assertEqual(first[2]['screen']['probe_id'],pid)
-        self.assertEqual(first[2]['question_id'],'paper-test-q-01')
-        self.assertEqual(first[3],[asset['id']])
+        with client() as http:
+            first=http.post(f'/api/probes/{pid}/feedback',json={'attempt_id':attempt['attempt_id']}).json()
+            again=http.post(f'/api/probes/{pid}/feedback',json={'attempt_id':attempt['attempt_id']}).json()
+            self.assertEqual(first,again)
+            self.assertEqual(http.post('/api/probes/another-probe/feedback',json={'attempt_id':attempt['attempt_id']}).status_code,400)
+        job=self.conn.execute('SELECT * FROM workflow_jobs WHERE id=?',(first['job']['id'],)).fetchone()
+        self.assertEqual((job['kind'],job['paper_id'],job['attempt_id']),('grade_attempt','paper-test',attempt['attempt_id']))
+        self.assertEqual(job['status'],'queued')
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM workflow_jobs').fetchone()[0],1)
+        self.assertEqual(json.loads(self.conn.execute('SELECT images_json FROM probe_attempts WHERE id=?',(attempt['attempt_id'],)).fetchone()[0]),[asset['id']])
         self.assertEqual(self.conn.execute('SELECT count(*) FROM probe_attempts').fetchone()[0],1)
         self.assertEqual(self.conn.execute("SELECT count(*) FROM learning_events WHERE kind='probe_success'").fetchone()[0],0)
+
 
     def test_submit_is_idempotent_and_not_mastery(self):
         self.apply();body={'response':'2/3','request_id':'12345678-1234-1234-1234-123456789012'}
@@ -182,7 +197,25 @@ class LearningLoopTests(unittest.TestCase):
         snap=loop_snapshot(self.conn)
         self.assertEqual(len(snap['probes'][0]['attempts']),1)
         self.assertNotIn('掌握',snap['skills'][0]['state'])
-        self.assertEqual(snap['skills'][0]['independent_probe_successes'],1)
+        self.assertIsNone(result['assessment'])
+        self.assertEqual(snap['skills'][0]['independent_probe_successes'],0)
+        assess_attempt(self.conn,result['attempt_id'],{'correct':True,'feedback':'steps independently checked','author':'test-agent'})
+        self.assertEqual(loop_snapshot(self.conn)['skills'][0]['independent_probe_successes'],1)
+
+    def test_supplement_after_solution_keeps_original_version_and_is_not_independent(self):
+        self.apply()
+        aid=submit_probe(self.conn,'paper-test-probe-test',{'response':'independent setup'})['attempt_id']
+        assess_attempt(self.conn,aid,{'correct':False,'feedback':'first bound incorrect','author':'agent'})
+        self.conn.execute("INSERT INTO bank_exposures VALUES('bank-test','now')")
+        supplement_attempt(self.conn,aid,{'response':'corrected after reading the solution'})
+        row=self.conn.execute('SELECT * FROM probe_attempts WHERE id=?',(aid,)).fetchone()
+        self.assertEqual(row['answer_exposed'],1)
+        old=json.loads(self.conn.execute("SELECT payload FROM record_versions WHERE kind='attempt' AND record_id=?",(aid,)).fetchone()[0])
+        self.assertEqual(old['response'],'independent setup')
+        self.assertEqual(old['answer_exposed'],0)
+        self.assertFalse(json.loads(old['assessment_json'])['correct'])
+        assess_attempt(self.conn,aid,{'correct':True,'feedback':'assisted correction is valid','author':'agent'})
+        self.assertEqual(loop_snapshot(self.conn)['skills'][0]['independent_probe_successes'],0)
 
     def test_seen_solution_is_not_independent_evidence(self):
         self.apply();self.conn.execute("INSERT INTO bank_exposures VALUES('bank-test','now')")
@@ -220,14 +253,12 @@ class LearningLoopTests(unittest.TestCase):
         self.assertLess(_bank_score('Find x^2=1. Only positive roots.',{'stem':'Find x^2=1.'}),.85)
 
     def upload(self,content):
-        boundary='mathlens-test-boundary'
-        body=(f'--{boundary}\r\nContent-Disposition: form-data; name="title"\r\n\r\n测试试卷\r\n'
-              f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="paper.pdf"\r\nContent-Type: application/pdf\r\n\r\n').encode()+content+f'\r\n--{boundary}--\r\n'.encode()
-        handler=server.Handler.__new__(server.Handler)
-        handler.headers=Message();handler.headers['Content-Type']=f'multipart/form-data; boundary={boundary}';handler.headers['Content-Length']=str(len(body))
-        handler.rfile=BytesIO(body);captured={}
-        handler.send_json=lambda payload,status=200:captured.update(payload=payload,status=int(status))
-        handler.import_paper();return captured
+        from http_support import client
+        self.conn.commit()
+        with client() as http:
+            response=http.post('/api/papers/import',data={'title':'测试试卷'},files={'file':('paper.pdf',content,'application/pdf')})
+            return {'status':response.status_code,'payload':response.json()}
+
 
     def test_multipart_pdf_import_is_deduplicated(self):
         first=self.upload(self.pdf.read_bytes());self.assertEqual(first['status'],201)

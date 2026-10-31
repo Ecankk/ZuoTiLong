@@ -1,52 +1,95 @@
-import {useState} from 'react'
+import {useEffect,useMemo,useState} from 'react'
 import type {Paper,Question,VisibleContext} from './types'
 import type {Skill,Probe} from './LearningWorkspace'
 import {MathText} from './MathText'
-import {BankGate} from './BankGate'
+import {KnowledgeQuestions,readLinks,type LinkSummary} from './KnowledgeQuestions'
+import {postJson} from './api'
+import {KnowledgeTree,kindLabel} from './KnowledgeTree'
+import {ancestorIds,knowledgeIndex,nodeKind,resolveKnowledgeId,scopeEvidence,treeView} from './knowledge-tree'
 
 export type OpenEvidence=(paper:string,question:string,tab?:string,probe?:string)=>void
-type Props={skills:Skill[];papers:Paper[];questions:Question[];probes:Probe[];paperId?:string;studyType:number;onReload:()=>Promise<void>;onOpen:OpenEvidence;onContextChange?:(c:VisibleContext)=>void;locked?:boolean}
+type Pending={source_id:string;paper_id:string;kind:string}
+type Props={catalogOnly?:boolean;skills:Skill[];pendingSources?:Pending[];papers:Paper[];questions:Question[];probes:Probe[];paperId?:string;selectedId?:string;onSelect?:(id:string)=>void;studyType:number;onReload:()=>Promise<void>;onOpen:OpenEvidence;onContextChange?:(c:VisibleContext)=>void;locked?:boolean;questionView?:''|'completed'|'bank';questionOffset?:number;onQuestionView?:(view:'completed'|'bank')=>void;onQuestionOffset?:(offset:number)=>void;onOpenBank?:(id:string)=>void}
 const names=['','一','二','三']
 
-export function EvidenceProfile({skills,papers,questions,probes,paperId,studyType,onReload,onOpen,onContextChange,locked}:Props){
-  const [selected,setSelected]=useState(''),[filter,setFilter]=useState('all')
-  const activePapers=papers.filter(p=>!p.archived_at&&(!paperId||p.id===paperId)),ids=new Set(activePapers.map(p=>p.id))
-  const visibleSkills=skills.map(skill=>{
+export function EvidenceProfile({catalogOnly=false,skills,pendingSources=[],papers,questions,probes,paperId,selectedId,onSelect,studyType,onReload,onOpen,onContextChange,locked,questionView,questionOffset,onQuestionView,onQuestionOffset,onOpenBank}:Props){
+  const [localSelected,setLocalSelected]=useState(''),[query,setQuery]=useState('')
+  const [summary,setSummary]=useState<LinkSummary>(),[summaryError,setSummaryError]=useState(''),[localView,setLocalView]=useState<''|'completed'|'bank'>(''),[localOffset,setLocalOffset]=useState(0),[indexGeneration,setIndexGeneration]=useState(0)
+  const [organizing,setOrganizing]=useState(false),[message,setMessage]=useState('')
+  const activePapers=useMemo(()=>papers.filter(p=>!p.archived_at&&(!paperId||p.id===paperId)),[papers,paperId])
+  const ids=useMemo(()=>new Set(activePapers.map(p=>p.id)),[activePapers])
+  const visibleSkills=useMemo(()=>skills.map(skill=>{
     const events=(skill.events||[]).filter(e=>ids.has(e.paper_id))
     const tasks=probes.filter(p=>ids.has(p.paper_id)&&(skill.probe_ids||[]).includes(p.id))
-    return {...skill,events,tasks}
-  }).filter(s=>s.events.length||s.tasks.length)
-  const current=visibleSkills.find(s=>s.skill_id===selected)
-  const sourceIds=new Set([...(current?.events.map(e=>e.question_id).filter(Boolean)||[]),...(current?.tasks.map(p=>p.question_id)||[])])
-  const original=questions.filter(q=>ids.has(q.paper_id)&&sourceIds.has(q.id))
-  const done=(p:Probe)=>typeof p.attempts.at(-1)?.assessment?.correct==='boolean'
-  const related=current?.tasks.filter(p=>filter==='all'||(filter==='done'?done(p):!done(p)))||[]
-  const choose=(skill:Skill)=>{
-    setSelected(skill.skill_id);setFilter('all')
-    onContextChange?.({view:paperId?'试卷工作区':'个人画像',label:skill.label,section:'知识点证据',paper_id:paperId})
+    const original=questions.filter(q=>ids.has(q.paper_id)&&(skill.question_ids||[]).includes(q.id))
+    return {...skill,events,tasks,original,hasRecords:events.length>0||tasks.length>0||original.length>0}
+  }),[skills,probes,questions,ids])
+  const index=useMemo(()=>knowledgeIndex(visibleSkills),[visibleSkills])
+  const selected=resolveKnowledgeId(index,selectedId??localSelected)
+  const current=index.items.get(selected),group=!!current&&nodeKind(current)!=='atom'
+  const view=useMemo(()=>treeView(index,false,query),[index,query])
+  const scope=useMemo(()=>current?scopeEvidence(index,selected):null,[index,current,selected])
+  const events=group?scope?.events||[]:current?.events||[]
+  const pending=pendingSources.filter(p=>ids.has(p.paper_id))
+  const refreshKey=JSON.stringify([skills.length,pendingSources.length,questions.map(q=>[q.id,q.correctness]),probes.map(p=>[p.id,p.attempts.map(a=>[a.id,a.assessment?.correct])])])
+  useEffect(()=>{
+    const abort=new AbortController();setSummaryError('')
+    readLinks<LinkSummary>('/api/knowledge/links/summary'+(paperId?'?paper_id='+encodeURIComponent(paperId):''),abort.signal).then(value=>{if(!abort.signal.aborted)setSummary(value)}).catch(e=>{if(!abort.signal.aborted)setSummaryError(String(e))})
+    return()=>abort.abort()
+  },[paperId,refreshKey,indexGeneration])
+  const activeView=questionView||localView||summary?.default_view||'bank',offset=questionOffset??localOffset
+  const setOffset=(n:number)=>{setLocalOffset(n);onQuestionOffset?.(n)}
+  const setQuestionView=(value:'completed'|'bank')=>{setLocalView(value);setLocalOffset(0);onQuestionView?.(value)}
+  useEffect(()=>{if(current&&!view.visible.has(selected))setQuery('')},[selected])
+  const choose=(id:string)=>{
+    const item=index.items.get(id);if(!item)return
+    setLocalSelected(id);setLocalOffset(0);onSelect?.(id)
+    onContextChange?.({view:paperId?'试卷工作区':catalogOnly?'考点树':'个人画像',label:item.label,section:'考点定义与题目关联',paper_id:paperId})
   }
+  const organize=async()=>{
+    setOrganizing(true);setMessage('')
+    try{
+      const result=await postJson('/api/knowledge/organize'+(paperId?'?paper_id='+encodeURIComponent(paperId):''),{}) as {jobs:unknown[]}
+      setMessage(result.jobs.length?'已排入考点整理，连接 Codex 后依次处理；原始分析和作答保留。':'当前证据已整理。')
+      window.dispatchEvent(new Event('mathlens:agent-refresh'));await onReload()
+    }catch(error){setMessage(String(error))}finally{setOrganizing(false)}
+  }
+  const breadcrumb=current?[...ancestorIds(index,selected),selected]:[]
   return <div className="profile-workspace">
-    {!paperId&&<ScoreTrend papers={activePapers} studyType={studyType} onOpen={onOpen}/>}
-    <section className="panel"><div className="eyebrow">{paperId?'本卷的学习证据':'跨卷学习证据'}</div><h2>{paperId?'本卷知识点':'知识点与解题环节'}</h2><p>点击查看对应原卷题、已完成检验和待处理任务。掌握情况由实际作答支持，浏览题目不计成功。</p>
-      {!visibleSkills.length&&<div className="empty-state">还没有诊断证据。先上传试卷并让 Agent 写回逐题分析。</div>}
-      <div className="skill-grid">{visibleSkills.map(s=>{
-        const errors=s.events.filter(e=>['exam_error','probe_failure'].includes(e.kind)).length,success=s.events.filter(e=>['exam_success','probe_success'].includes(e.kind)).length
-        return <button className={`skill-card skill-button ${selected===s.skill_id?'selected':''}`} key={s.skill_id} onClick={()=>choose(s)} aria-pressed={selected===s.skill_id}><h3><MathText text={s.label}/></h3><span className={`status ${errors?'pending':'done'}`}>{errors?'有失误证据，原因待复核':success?'有成功证据，待持续验证':'待验证'}</span><p>失误 {errors} · 成功 {success} · 待处理检验 {s.tasks.filter(p=>!done(p)).length}</p><small>{new Set([...s.events.map(e=>e.paper_id),...s.tasks.map(p=>p.paper_id)]).size} 份试卷 · 查看题目与过程 →</small></button>
-      })}</div>
+    {!paperId&&!catalogOnly&&<ScoreTrend papers={activePapers} studyType={studyType} onOpen={onOpen}/>}
+    <section className="panel knowledge-panel">
+      <div className="section-toolbar"><div><h2>{catalogOnly?'考点树':'考点目录与学习证据'}</h2><p className="knowledge-intro">同一份目录，查看已完成题目或全部题库。没有个人记录不代表薄弱。</p></div><div className="segmented" role="group" aria-label="关联题目视图">{([['completed','已完成题目'],['bank','全部题库']] as const).map(([value,label])=><button key={value} aria-pressed={activeView===value} className={activeView===value?'active':''} onClick={()=>setQuestionView(value)}>{label}</button>)}</div></div>
+      {summaryError&&<p className="notice" role="alert">{summaryError}</p>}
+      {!!pending.length&&<div className="notice"><strong>{pending.length} 份已保存证据待整理</strong><p>关联到统一考点；保留原始分析和判分。</p><button disabled={locked||organizing} onClick={organize}>{organizing?'正在排入…':'整理已有证据'}</button></div>}
+      {message&&<p className="muted" role="status">{message}</p>}
+      <div className="knowledge-browser-toolbar"><label className="knowledge-search"><span>查找考点</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="名称、别名或考点编号" aria-label="搜索考点"/>{query&&<button onClick={()=>setQuery('')} aria-label="清除考点搜索">×</button>}</label><span className="knowledge-catalog-count">{visibleSkills.filter(s=>nodeKind(s)==='atom').length} 个原子考点{query.trim()?`，${view.matches.size} 项匹配`:''}</span></div>
+      {!skills.length?<div className="empty-state">当前没有可用考点目录。可在设置中导入通用目录；已保存试卷和作答会保留。</div>:<div className="knowledge-browser">
+        <aside className="knowledge-sidebar"><KnowledgeTree index={index} visible={view.visible} selected={selected} query={query} onSelect={choose} counts={summary?.nodes} questionView={activeView}/>{!view.visible.size&&<div className="knowledge-search-empty"><p>当前范围未找到匹配考点。</p></div>}</aside>
+        <div className="knowledge-reading" aria-live="polite">
+          {!current?<div className="knowledge-start"><h3>{selected?'当前目录中未找到这个考点':'选择一个考点'}</h3><p>{selected?'可搜索名称或别名重新定位，已保存材料不会删除。':'展开左侧章节，查看定义、适用条件和已有学习记录。'}</p><p className="muted">目录统一维护；解题方法、计算步骤和可能错因保留在具体题目中。</p></div>:<>
+            <nav aria-label="当前考点路径" className="knowledge-breadcrumb">{breadcrumb.map((id,i)=><span key={id}>{i>0&&<span aria-hidden="true"> / </span>}<button onClick={()=>choose(id)} aria-current={id===selected?'page':undefined}>{index.items.get(id)?.label}</button></span>)}</nav>
+            {!view.visible.has(selected)&&<p className="muted">当前考点不在筛选结果中。<button className="small-action" onClick={()=>{setQuery('')}}>显示当前考点</button></p>}
+            <div className="knowledge-detail-heading"><span className="knowledge-kind">{kindLabel(nodeKind(current))}</span><h2><MathText text={current.label}/></h2>{group?<p>本范围有 {scope?.atoms} 个原子考点，{scope?.recordedAtoms} 个已有学习记录。下方材料合并子考点并去重，不据此判断整章掌握。</p>:<p><span className={`status ${current.state==='需要关注'?'pending':['未覆盖','证据不足'].includes(current.state)?'neutral':'done'}`}>{current.state==='未覆盖'?'暂无学习证据':current.state}</span> {current.state_reason}</p>}</div>
+            <KnowledgeDefinition item={current}/>
+            {paperId&&<p className="muted">状态综合历史证据；已完成题目按本卷显示，全部题库不限来源试卷。</p>}
+            <KnowledgeQuestions topicId={selected} questionView={activeView} offset={offset} paperId={paperId} summary={summary} onRefreshSummary={()=>setIndexGeneration(n=>n+1)} onView={setQuestionView} onOffset={setOffset} onTopic={choose} onOpen={onOpen} onBank={onOpenBank||((id)=>{location.href='/?view=bank&bank_id='+encodeURIComponent(id)})}/>
+            {!!events.length&&<details className="knowledge-evidence"><summary>已记录的表现 · {events.length} 条{group?'（含子考点）':''}</summary>{events.map((event,i)=><p key={event.id||i}><span className="muted">{event.created_at.slice(0,10)}</span> · {({exam_error:'原卷相关错误',exam_success:'原卷相关成功',probe_failure:'独立检验有误',probe_success:'独立检验成功',assisted_failure:'参考解析后仍有误',assisted_success:'参考解析后完成',incomplete:'未完成，原因未知',hypothesis:'原因待观察'} as Record<string,string>)[event.kind]||'待核实证据'}</p>)}</details>}
+          </>}
+        </div>
+      </div>}
+      <p className="muted knowledge-scope-note">目录及其来源用于组织知识，不代表当年官方考纲范围的完整认证。</p>
     </section>
-    {current&&<section className="panel skill-detail"><div className="section-toolbar"><div><div className="eyebrow">证据详情</div><h2><MathText text={current.label}/></h2></div><button className="small-action" disabled={locked} onClick={()=>window.dispatchEvent(new CustomEvent('mathlens:discuss',{detail:`请审核知识点/环节「${current.label}」的现有原卷和检验作答，区分仍待检验的错误原因。若缺少合适检验，请阅读题库后添加少量有明确诊断目的的题目，不按标签自动添加。相关原卷题ID：${original.map(q=>q.id).join('、')||'请读取当前画像证据'}。`}))}>请 Agent 审核并补充检验</button></div>
-      <h3>来自上传试卷 <span className="count-pill">{original.length}</span></h3>
-      {original.map(q=><button className="evidence-row" key={q.id} onClick={()=>onOpen(q.paper_id,q.id,'diagnosis')}><span><strong>{papers.find(p=>p.id===q.paper_id)?.title} · 第{q.number}题</strong><small>{({wrong:'作答有误',partial:'部分完成',correct:'作答正确',unknown:'待核对'} as Record<string,string>)[q.correctness]||'待核对'}</small></span><span>查看原卷与诊断 →</span></button>)}
-      {!original.length&&<p className="muted">尚无关联的原卷作答证据。</p>}
-      <div className="section-toolbar"><h3>来自题库的检验</h3><div className="segmented" role="group" aria-label="知识点检验状态">{[['all','全部'],['done','已完成'],['pending','未完成']].map(([value,label])=><button key={value} aria-pressed={filter===value} className={filter===value?'active':''} onClick={()=>setFilter(value)}>{label}</button>)}</div></div>
-      {!related.length&&<p className="muted">这个范围还没有检验题。由 Agent 阅读并审核后添加。</p>}
-      {related.map(p=>{
-        const last=p.attempts.at(-1),state=done(p)?last?.assessment?.correct?'已完成 · 正确':'已完成 · 有误':last?last.assessment?.correct===null?'未完成 · 需补充证据':'未完成 · 待评价':'未完成 · 待作答'
-        return <article className="related-probe" key={p.id}><div className="paper-card-meta"><strong>数学{names[p.access.math_type]} · {p.access.year} · 第{p.access.number}题</strong><span className={`status ${done(p)?'done':'pending'}`}>{state}</span></div>
-          {!p.access.can_view?<BankGate item={p.access} reload={onReload}/>:<><p><MathText text={p.discriminates||p.prompt}/></p><button className="evidence-row" onClick={()=>onOpen(p.paper_id,p.question_id,'probes',p.id)}>查看检验任务与作答 →</button></>}
-        </article>
-      })}
-    </section>}
+  </div>
+}
+
+function KnowledgeDefinition({item}:{item:Skill}){
+  const origin=item.origin
+  return <div className="knowledge-definition">
+    {origin?.definition?<div className="knowledge-definition-text"><MathText text={origin.definition} implicit/></div>:<p className="muted">这个目录分组尚未单列定义，可展开查看子考点。</p>}
+    {!!origin?.conditions?.length&&<section><h3>适用条件</h3><ul>{origin.conditions.map((text,i)=><li key={i}><MathText text={text} implicit/></li>)}</ul></section>}
+    {!!origin?.boundaries?.length&&<section><h3>边界与辨析</h3><ul>{origin.boundaries.map((text,i)=><li key={i}><MathText text={text} implicit/></li>)}</ul></section>}
+    {!!item.aliases?.length&&<p className="knowledge-aliases"><b>也称：</b>{item.aliases.join('、')}</p>}
+    <details className="knowledge-provenance"><summary>来源与版本</summary><p>考点编号：<code>{item.skill_id}</code></p>{origin?.source_refs?.length?<ul>{origin.source_refs.map(ref=><li key={ref.source_version_id+ref.source_id}><code>{ref.source_id}</code><small title={ref.source_version_id}>来源版本 {ref.source_version_id.slice(0,19)}…</small></li>)}</ul>:<p className="muted">暂无单独登记的来源记录。</p>}{origin?.review_note&&<p><MathText text={origin.review_note}/></p>}{origin?.catalog_revision&&<small title={origin.catalog_revision}>目录版本 {origin.catalog_revision.slice(0,22)}…</small>}</details>
   </div>
 }
 

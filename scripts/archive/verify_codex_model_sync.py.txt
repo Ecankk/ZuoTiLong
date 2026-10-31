@@ -1,0 +1,106 @@
+"""Verify CLI model settings versus a loaded app-server on one isolated thread.
+
+Runs two tiny real model turns, never reads/writes student learning records.
+All test artifacts stay under ignored tmp/. Does not modify global config.
+"""
+import json
+from pathlib import Path
+import queue
+import subprocess
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from app.agent.transport import CodexProcess
+
+
+def main():
+    data = ROOT / 'tmp' / 'model-sync-check'
+    data.mkdir(parents=True, exist_ok=True)
+    events = queue.Queue()
+    clients = []
+
+    def client():
+        p = CodexProcess(ROOT, data, events.put, lambda r: None)
+        clients.append(p)
+        p.request('initialize', {'clientInfo': {'name': 'mathlens-model-verification', 'version': '1.0'},
+                                 'capabilities': {'experimentalApi': True}})
+        p.send({'method': 'initialized', 'params': {}})
+        return p
+
+    def settings(response):
+        thread = response.get('thread', {})
+        return {'model': response.get('model', thread.get('model')),
+                'effort': response.get('reasoningEffort', thread.get('reasoningEffort'))}
+
+    sid = None
+    try:
+        a = client()
+        manifest = data / 'fixture-session.json'
+        previous = json.loads(manifest.read_text(encoding='utf8')) if manifest.exists() else None
+        r = a.request('thread/resume' if previous else 'thread/start', {**({'threadId': previous['id'], 'excludeTurns': True} if previous else {}), 'cwd': str(data), 'model': 'gpt-6-luna',
+            'config': {'model_reasoning_effort': 'xhigh'}, 'approvalPolicy': 'never',
+            'sandbox': 'read-only', 'ephemeral': False,
+            'developerInstructions': 'This is an isolated protocol test. Never use tools or access files. Only reply with the exact short token requested.'})
+        sid = r['thread']['id']
+        manifest.write_text(json.dumps({'id': sid}), encoding='utf8')
+        a.request('thread/name/set', {'threadId': sid, 'name': 'MathLens isolated model synchronization test'})
+        initial = settings(r)
+        history = a.request('thread/turns/list', {'threadId': sid, 'limit': 20})['data']
+        if not history:
+            tid = a.request('turn/start', {'threadId': sid, 'input': [{'type': 'text', 'text': 'Only reply SYNC_A.'}]})['turn']['id']
+            deadline = time.monotonic() + 90
+            while time.monotonic() < deadline:
+                event = events.get(timeout=60)
+                if event.get('method') == 'turn/completed' and event.get('params', {}).get('turn', {}).get('id') == tid:
+                    assert event['params']['turn']['status'] == 'completed', event
+                    break
+            else:
+                raise TimeoutError('Initial verification turn did not finish')
+        # The local version enforces a single writer, even between idle clients.
+        observer = client()
+        conflict = None
+        try:
+            observer.request('thread/resume', {'threadId': sid, 'excludeTurns': True})
+        except RuntimeError as exc:
+            conflict = str(exc)
+        assert conflict and 'active writer' in conflict, conflict
+        loaded = settings(a.request('thread/read', {'threadId': sid, 'includeTurns': False}))
+        a.close()
+        # A real CLI resume with launch-time selection, the same configuration
+        # path used by the interactive /model selector on its next submitted turn.
+        cli = subprocess.run([a.process.args[0], 'exec', 'resume', sid, '-m', 'gpt-6-luna',
+            '-c', 'model_reasoning_effort="high"', '--json',
+            'Isolated protocol test; do not use tools. Only reply SYNC_B.'],
+            cwd=data, capture_output=True, text=True, encoding='utf8', errors='replace', timeout=120,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0)
+        (data / 'cli-events.jsonl').write_text(cli.stdout, encoding='utf8')
+        (data / 'cli-stderr.log').write_text(cli.stderr, encoding='utf8')
+        if cli.returncode:
+            raise RuntimeError(f'CLI resume failed; inspect {data / "cli-stderr.log"}')
+        assert any(json.loads(line).get('type') == 'turn.completed' for line in cli.stdout.splitlines() if line.strip()), 'CLI turn incomplete'
+        stored = settings(observer.request('thread/read', {'threadId': sid, 'includeTurns': False}))
+        resumed = observer.request('thread/resume', {'threadId': sid, 'excludeTurns': True})
+        recovered = settings(resumed)
+        turns = observer.request('thread/turns/list', {'threadId': sid, 'limit': 20})['data']
+        result = {'initial': initial, 'before_release': loaded, 'concurrent_resume_rejected': conflict,
+                  'persisted_after_cli': stored, 'resume_after_release': recovered,
+                  'same_session': resumed['thread']['id'] == sid, 'turn_count': len(turns),
+                  'cli_thread_ids': [json.loads(line).get('thread_id') for line in cli.stdout.splitlines()
+                                     if line.strip() and json.loads(line).get('type') == 'thread.started']}
+        assert initial == {'model': 'gpt-6-luna', 'effort': 'xhigh'}, result
+        assert stored == recovered == {'model': 'gpt-6-luna', 'effort': 'high'}, result
+        assert result['same_session'] and result['cli_thread_ids'] == [sid] and len(turns) >= 2, result
+        (data / 'validation.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf8')
+        print(json.dumps(result, ensure_ascii=False), flush=True)
+        observer.request('thread/archive', {'threadId': sid})
+        manifest.unlink()
+    finally:
+        for p in clients:
+            if not p.closed:
+                p.close()
+
+
+if __name__ == '__main__':
+    main()

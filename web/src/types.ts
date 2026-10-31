@@ -1,4 +1,4 @@
-export type View = 'paper' | 'papers' | 'bank' | 'profile' | 'settings'
+export type View = 'paper' | 'papers' | 'bank' | 'knowledge' | 'profile' | 'settings'
 
 export type VisibleContext = {
   view: string; label: string; paper_id?: string; question_id?: string;
@@ -61,5 +61,5 @@ export type Profile = {
   repeated_errors: Array<{ label: string; count: number }>
 }
 
-export type Preferences = {study_type:number;mask_same_type:boolean;reserved:{math_type:number;year:string}[]}
+export type Preferences = {study_type:number;mask_same_type:boolean;paper_marking_convention:string;default_agent_prompt:string;reserved:{math_type:number;year:string}[]}
 export type Bootstrap = { papers: Paper[]; questions: Question[]; bank: BankQuestion[]; profile: Profile; loop: import('./LearningWorkspace').Loop; preferences:Preferences }

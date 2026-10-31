@@ -53,7 +53,7 @@ def inspect_bank(repo: Path) -> list[dict]:
 
 def probe_pipeline() -> dict:
     import pymupdf as fitz
-    from pdf_pipeline import extract_pdf, _bank_score
+    from app.documents.pdf import extract_pdf, _bank_score
 
     probes = []
     # Keep temporary writes inside the workspace (Windows sandbox TEMP may be read-only).

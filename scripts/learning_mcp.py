@@ -5,11 +5,12 @@ from pathlib import Path
 import sys
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
-from learning_tools import execute, SCHEMA, DESCRIPTION
+from app.agent.tools import execute, SCHEMA, DESCRIPTION
+from app.config import AppConfig
 
 
 def main():
-    data=Path(os.environ.get('MATHLENS_DATA_DIR',ROOT/'.mathlens')).resolve()
+    data=AppConfig.from_env(ROOT).data
     for line in sys.stdin:
         message=None
         try:

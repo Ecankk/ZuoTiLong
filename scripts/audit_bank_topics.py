@@ -7,12 +7,13 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from agent_workspace import topic_audit
+from app.agent.workspace import topic_audit
+from app.config import AppConfig
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", type=Path, default=ROOT / ".mathlens" / "mathlens.db")
+    parser.add_argument("--db", type=Path, default=AppConfig.from_env(ROOT).library_database)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     conn = sqlite3.connect(args.db.resolve().as_uri() + "?mode=ro", uri=True)

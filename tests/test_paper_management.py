@@ -4,9 +4,9 @@ from urllib.parse import urlparse
 import unittest
 
 import test_learning_loop as fixtures
-import server
-from learning_loop import apply_report, assess_attempt, skill_profile, submit_probe
-from agent_workspace import workspace_context
+import database_fixture as server
+from app.learning.loop import apply_report, assess_attempt, skill_profile, submit_probe
+from app.agent.workspace import workspace_context
 
 
 class PaperManagementTests(unittest.TestCase):
@@ -14,6 +14,7 @@ class PaperManagementTests(unittest.TestCase):
         self.fixture=fixtures.LearningLoopTests()
         self.fixture.setUp()
         self.conn=self.fixture.conn
+        self.fixture.report.update(completion='complete',review={'status':'verified','issues':[]})
         self.fixture.apply()
 
     def tearDown(self):
@@ -75,39 +76,36 @@ class PaperManagementTests(unittest.TestCase):
         self.assertEqual(self.conn.execute('SELECT score FROM papers LIMIT 1').fetchone()[0],100)
 
     def test_resummarize_needs_confirmation_and_connected_agent_before_extraction(self):
-        handler=server.Handler.__new__(server.Handler)
-        handler.read_json=lambda:{'confirmed':False}
-        handler.send_json=Mock()
-        with patch.object(server,'analyze_paper_record') as analyze,patch.object(server,'BRIDGE',None):
-            handler.api_post(urlparse('/api/papers/paper-test/resummarize'))
-            self.assertEqual(handler.send_json.call_args.args[1],400)
-            handler.read_json=lambda:{'confirmed':True}
-            handler.api_post(urlparse('/api/papers/paper-test/resummarize'))
-            self.assertEqual(handler.send_json.call_args.args[1],400)
+        from http_support import client
+        from app.services.papers import PaperService
+        self.conn.commit()
+        with patch.object(PaperService,'analyze') as analyze,client() as http:
+            self.assertEqual(http.post('/api/papers/paper-test/resummarize',json={'confirmed':False}).status_code,400)
+            self.assertEqual(http.post('/api/papers/paper-test/resummarize',json={'confirmed':True}).status_code,400)
             analyze.assert_not_called()
         bridge=Mock(connected=True)
-        with patch.object(server,'analyze_paper_record',return_value={'paper':{'id':'paper-test'}}),patch.object(server,'BRIDGE',bridge):
-            handler.api_post(urlparse('/api/papers/paper-test/resummarize'))
-        self.assertTrue(handler.send_json.call_args.args[0]['agent_submitted'])
-        self.assertEqual(bridge.submit.call_args.args[2],{'paper_id':'paper-test'})
+        import threading
+        bridge.lock=threading.RLock()
+        bridge.assert_user_write_allowed=Mock()
+        with patch.object(PaperService,'analyze') as analyze,client(bridge) as http:
+            response=http.post('/api/papers/paper-test/resummarize',json={'confirmed':True})
+            self.assertEqual(response.status_code,201,response.text)
+            self.assertTrue(response.json()['agent_submitted'])
+            analyze.assert_not_called()
+        self.assertEqual(bridge.submit_task.call_args.args[:2],('summarize_paper','paper-test'))
+
 
     def test_http_archived_lists_and_restore_are_explicit(self):
+        from http_support import client
         self.conn.commit()
-        handler=server.Handler.__new__(server.Handler)
-        response={}
-        handler.send_json=lambda body,status=200:response.update(body=body,status=status)
-        handler.read_json=lambda:{'confirmed':False}
-        handler.api_post(urlparse('/api/papers/paper-test/archive'))
-        self.assertEqual(response['status'],400)
-        handler.read_json=lambda:{'confirmed':True}
-        handler.api_post(urlparse('/api/papers/paper-test/archive'))
-        handler.api_get(urlparse('/api/papers'))
-        self.assertEqual(response['body']['papers'],[])
-        handler.api_get(urlparse('/api/papers?archived=1'))
-        self.assertEqual(response['body']['papers'][0]['id'],'paper-test')
-        handler.api_post(urlparse('/api/papers/paper-test/restore'))
-        handler.api_get(urlparse('/api/papers'))
-        self.assertEqual(response['body']['papers'][0]['id'],'paper-test')
+        with client() as http:
+            self.assertEqual(http.post('/api/papers/paper-test/archive',json={'confirmed':False}).status_code,400)
+            self.assertEqual(http.post('/api/papers/paper-test/archive',json={'confirmed':True}).status_code,200)
+            self.assertEqual(http.get('/api/papers').json()['papers'],[])
+            self.assertEqual(http.get('/api/papers?archived=1').json()['papers'][0]['id'],'paper-test')
+            self.assertEqual(http.post('/api/papers/paper-test/restore',json={'confirmed':True}).status_code,200)
+            self.assertEqual(http.get('/api/papers').json()['papers'][0]['id'],'paper-test')
+
 
 
 if __name__=='__main__':unittest.main()

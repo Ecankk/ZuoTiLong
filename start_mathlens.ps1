@@ -3,7 +3,19 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
 Set-Location -LiteralPath $PSScriptRoot
-$dataDirectory = if ($env:MATHLENS_DATA_DIR) { [IO.Path]::GetFullPath($env:MATHLENS_DATA_DIR) } else { [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '.mathlens')) }
+$versionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $PSScriptRoot 'app/version.py') -Raw), "(?m)^VERSION = '([^']+)'")
+if (-not $versionMatch.Success) { throw 'Cannot read the MathLens application version.' }
+$expectedVersion = $versionMatch.Groups[1].Value
+$pythonPath = Join-Path $PSScriptRoot '.venv/Scripts/python.exe'
+if (-not (Test-Path -LiteralPath $pythonPath)) {
+    $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+    if (-not $pythonCommand) { throw 'Install Python 3.12, then run setup_mathlens.bat.' }
+    $pythonPath = $pythonCommand.Source
+}
+# Packaged Windows apps can virtualize LOCALAPPDATA differently per process.
+$configuredData = & $pythonPath -X utf8 -c "from app.config import AppConfig; print(AppConfig.from_env().data)"
+if ($LASTEXITCODE -ne 0) { throw 'Cannot read the MathLens data configuration.' }
+$dataDirectory = [IO.Path]::GetFullPath(($configuredData | Select-Object -Last 1).Trim())
 New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
 $sha = [Security.Cryptography.SHA256]::Create()
 try { $dataId = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($dataDirectory.ToLowerInvariant())))).Replace('-','').ToLowerInvariant() }
@@ -37,10 +49,11 @@ function Stop-OldServer([int]$OwnedPid) {
         $basePython = & $expectedPython -c "import sys; print(sys._base_executable)"
         if ($LASTEXITCODE -eq 0) { $allowedPython += $basePython.Trim() }
     }
-    if (-not $ownedProcess -or $ownedProcess.ExecutablePath -notin $allowedPython -or $ownedProcess.CommandLine -notmatch 'server\.py.*--port\s+\d+') {
+    $serverCommand = '(?:server\.py|-m\s+app)\s+.*--port\s+\d+'
+    if (-not $ownedProcess -or $ownedProcess.ExecutablePath -notin $allowedPython -or $ownedProcess.CommandLine -notmatch $serverCommand) {
         throw 'An older MathLens is running. Its saved PID cannot be verified; stop that MathLens service before launching.'
     }
-    $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$OwnedPid" | Where-Object { $_.CommandLine -match 'server\.py.*--port\s+\d+' }
+    $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$OwnedPid" | Where-Object { $_.CommandLine -match $serverCommand }
     foreach ($child in $children) { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue }
     Stop-Process -Id $OwnedPid -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
@@ -51,7 +64,7 @@ try {
     $saved = Read-Address
     $health = if ($saved) { Read-Health $saved.url } else { $null }
     if (Is-OwnHealth $health) {
-        if ($health.version -ne '0.5.3') { Stop-OldServer ([int]$saved.pid); $health = $null }
+        if ($health.version -ne $expectedVersion) { Stop-OldServer ([int]$saved.pid); $health = $null }
     } else { $health = $null }
     # Recognise managed releases that predate the address file.
     if (-not $health) {
@@ -69,12 +82,14 @@ try {
         }
         & $pythonPath -c "import sys; assert (3,11) <= sys.version_info[:2] < (3,13), 'Python 3.11 or 3.12 is required'"
         if ($LASTEXITCODE -ne 0) { throw 'Use Python 3.11/3.12 and run setup_mathlens.bat.' }
-        $arguments = @('-u','-X','utf8','server.py','--host','127.0.0.1','--port',"$Port",'--auto-port')
+        & $pythonPath -c "import fastapi, uvicorn, multipart, pymupdf, PIL, jsonschema"
+        if ($LASTEXITCODE -ne 0) { throw 'Dependencies are missing. Run setup_mathlens.bat once to update the local environment.' }
+        $arguments = @('-u','-X','utf8','-m','app','--host','127.0.0.1','--port',"$Port",'--auto-port')
         $process = Start-Process -FilePath $pythonPath -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $dataDirectory 'server.stdout.log') -RedirectStandardError (Join-Path $dataDirectory 'server.stderr.log') -PassThru
         for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $saved = Read-Address
             $health = if ($saved) { Read-Health $saved.url } else { $null }
-            if ((Is-OwnHealth $health) -and $health.version -eq '0.5.3') { break }
+            if ((Is-OwnHealth $health) -and $health.version -eq $expectedVersion) { break }
             $health = $null
             $process.Refresh()
             if ($process.HasExited) {
@@ -83,7 +98,7 @@ try {
             }
             Start-Sleep -Milliseconds 250
         }
-        if (-not $health) { throw 'Server did not become ready. Check .mathlens/server.stderr.log.' }
+        if (-not $health) { throw "Server did not become ready. Check $dataDirectory/server.stderr.log." }
         $saved.pid | Set-Content -LiteralPath (Join-Path $dataDirectory 'server.pid')
     }
     Write-Host ('MathLens is ready: ' + $saved.url)

@@ -7,9 +7,9 @@ from PIL import Image
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-import server
-from learning_loop import import_image_bank
-from bank_access import reveal
+import database_fixture as server
+from app.learning.loop import import_image_bank
+from app.bank.access import reveal
 
 
 class BankImportTests(unittest.TestCase):

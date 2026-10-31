@@ -1,3 +1,4 @@
+from app.storage.boundaries import library_root
 import tempfile
 import json
 import unittest
@@ -8,8 +9,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import server
-from bank_access import access, init_access, register_identity, reveal, save_preferences, public_bank, record_view, preferences
+import database_fixture as server
+from app.bank.access import access, init_access, register_identity, reveal, save_preferences, public_bank, record_view, preferences
 from urllib.parse import urlparse
 
 
@@ -28,7 +29,7 @@ class BankAccessTests(unittest.TestCase):
             [('math1-2025-01', 'fixture', 'one', 'now'), ('math2-2025-01', 'fixture', 'two', 'now'), ('math3-2025-01', 'fixture', 'three', 'now')],
         )
         from PIL import Image
-        image_dir = self.root / 'bank-assets'
+        image_dir = library_root(self.root) / 'bank-assets'
         image_dir.mkdir()
         for bid, color in [('math1-2025-01', 'white'), ('math2-2025-01', 'black'), ('math3-2025-01', 'gray')]:
             path = image_dir / (bid + '.png')
@@ -60,6 +61,21 @@ class BankAccessTests(unittest.TestCase):
             reveal(self.conn, 'math1-2025-01', 'question', True)
         self.assertIn('question_image',public_bank(self.conn,'math1-2025-01',view='library'))
 
+    def test_learning_catalog_cannot_filter_by_exam_type_but_display_protection_remains(self):
+        from app.agent.tools import execute
+        self.conn.commit()
+        with patch('app.agent.tools.connection',lambda data:server.connect()):
+            result=json.loads(execute(ROOT,self.root,'catalog',{'math_types':[1],'limit':100})[0]['text'])
+        self.assertEqual({item['math_type'] for item in result['items']},{1,2,3})
+        states={item['math_type']:item['student_access']['can_view'] for item in result['items']}
+        self.assertEqual(states,{1:False,2:True,3:True})
+        self.assertIn('scope_note',result)
+        save_preferences(self.conn,{'study_type':1,'reserved':[{'math_type':1,'year':'2025'}]})
+        self.conn.commit()
+        with patch('app.agent.tools.connection',lambda data:server.connect()):
+            result=json.loads(execute(ROOT,self.root,'catalog',{'math_types':[1],'limit':100})[0]['text'])
+        self.assertEqual({item['math_type'] for item in result['items']},{2,3})
+
     def test_study_category_and_hide_switch_only_control_probes(self):
         for selected in (1,2,3):
             save_preferences(self.conn,{'study_type':selected,'mask_same_type':True,'reserved':[]})
@@ -83,26 +99,22 @@ class BankAccessTests(unittest.TestCase):
         self.assertFalse(access(self.conn,bid)['can_view'])
 
     def test_http_library_image_is_open_but_probe_image_stays_hidden(self):
+        from http_support import client
         self.conn.commit()
-        handler=server.Handler.__new__(server.Handler)
-        result={};served=[]
-        handler.send_json=lambda payload,status=200:result.update(status=status,payload=payload)
-        handler.send_file=lambda path,mime:served.append(path)
-        handler.api_get(urlparse('/api/bank/math1-2025-01/question'))
-        self.assertEqual(result['status'],403)
-        handler.api_get(urlparse('/api/bank/math1-2025-01/question?view=library'))
-        self.assertEqual(len(served),1)
-        self.assertFalse(access(self.conn,'math1-2025-01')['can_view'])
-        handler.api_get(urlparse('/api/bank/math2-2025-01/question'))
-        self.assertEqual(len(served),2)
+        with client() as http:
+            self.assertEqual(http.get('/api/bank/math1-2025-01/question').status_code,403)
+            self.assertEqual(http.get('/api/bank/math1-2025-01/question?view=library').status_code,200)
+            self.assertFalse(access(self.conn,'math1-2025-01')['can_view'])
+            self.assertEqual(http.get('/api/bank/math2-2025-01/question').status_code,200)
+
 
     def test_legacy_preferences_default_to_masked_probes(self):
         self.conn.execute("UPDATE preferences SET payload=? WHERE id=1",('{"study_type":1,"reserved":[]}',))
         self.assertTrue(preferences(self.conn)['mask_same_type'])
 
     def test_agent_tool_distinguishes_direct_question_and_unrevealed_analysis(self):
-        from learning_tools import execute
-        with patch('learning_tools.connection',lambda data:server.connect()):
+        from app.agent.tools import execute
+        with patch('app.agent.tools.connection',lambda data:server.connect()):
             direct=json.loads(execute(ROOT,self.root,'read_bank',{'bank_id':'math2-2025-01'})[0]['text'])
             reference=json.loads(execute(ROOT,self.root,'read_bank',{'bank_id':'math2-2025-01','role':'analysis'})[0]['text'])
             masked=json.loads(execute(ROOT,self.root,'read_bank',{'bank_id':'math1-2025-01'})[0]['text'])

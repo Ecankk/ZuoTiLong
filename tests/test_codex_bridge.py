@@ -15,7 +15,7 @@ import sqlite3
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from codex_bridge import CodexBridge, BridgeConflict
+from app.agent.bridge import CodexBridge, BridgeConflict
 
 
 class FakeCodex:
@@ -26,7 +26,9 @@ class FakeCodex:
     def request(self, method, params):
         self.calls.append((method, params))
         if method in ("thread/start", "thread/resume"):
-            return {"thread": {"id": "fixed-test-session"}}
+            return {"thread": {"id": "fixed-test-session"}, 'model':'gpt-6-luna','reasoningEffort':'xhigh'}
+        if method == 'model/list':
+            return {'data':[{'model':'gpt-6-luna','supportedReasoningEfforts':[{'reasoningEffort':'xhigh'}]}]}
         if method == "turn/start":
             return {"turn": {"id": f"turn-{len(self.calls)}"}}
         if method == "thread/turns/list":
@@ -84,6 +86,194 @@ class CodexBridgeTests(unittest.TestCase):
         self.assertFalse(self.bridge.snapshot()["can_submit"])
         self.event("turn/completed", tid, turn={"id": tid, "status": "completed"})
         self.assertTrue(self.bridge.snapshot()["can_submit"])
+        self.assertTrue(self.bridge.state['turns'][-1]['finished_at'])
+
+    def test_model_default_applied_once_and_reconnect_follows_codex_on_same_session(self):
+        starts = [p for m,p in self.bridge.transport.calls if m == 'thread/start']
+        self.assertEqual(starts[0]['model'], 'gpt-6-luna')
+        self.assertEqual(starts[0]['config']['model_reasoning_effort'], 'xhigh')
+        class ExternalSelection(FakeCodex):
+            def request(self, method, params):
+                result = super().request(method, params)
+                if method == 'thread/resume':
+                    result.update(model='gpt-6-sol', reasoningEffort='low')
+                return result
+        sid = self.bridge.state['session_id']
+        self.bridge.release()
+        self.assertTrue(self.bridge.snapshot()['input_locked'])
+        with self.assertRaises(BridgeConflict):self.bridge.assert_user_write_allowed()
+        self.bridge.close()
+        self.bridge = CodexBridge(ROOT, self.data, ExternalSelection)
+        self.bridge.connect();self.wait(lambda:self.bridge.connected)
+        self.assertEqual(self.bridge.state['session_id'], sid)
+        resume = next(p for m,p in self.bridge.transport.calls if m == 'thread/resume')
+        self.assertNotIn('model', resume);self.assertNotIn('config', resume)
+        self.assertFalse(any(m == 'thread/start' for m,_ in self.bridge.transport.calls))
+        settings = self.bridge.snapshot()['model_settings']
+        self.assertEqual((settings['model'], settings['effort']), ('gpt-6-sol','low'))
+        self.assertFalse(self.bridge.snapshot()['external_control'])
+        self.assertTrue(self.bridge.snapshot()['can_submit'])
+        self.send()
+        self.assertEqual(self.bridge.state['turns'][-1]['model_settings'],settings)
+        sent = next(p for m,p in self.bridge.transport.calls if m == 'turn/start')
+        self.assertNotIn('model',sent);self.assertNotIn('effort',sent)
+
+    def test_running_or_unresolved_turn_cannot_release_session(self):
+        _,tid = self.send()
+        transport = self.bridge.transport
+        with self.assertRaises(BridgeConflict):self.bridge.release()
+        self.assertIs(self.bridge.transport,transport)
+        self.finish(tid,status='interrupted')
+        with self.assertRaises(BridgeConflict):self.bridge.release()
+
+    def test_active_writer_conflict_does_not_create_replacement_session(self):
+        class BusyCodex(FakeCodex):
+            def request(self,method,params):
+                if method == 'thread/resume':
+                    self.calls.append((method,params))
+                    raise RuntimeError('thread already has an active writer')
+                return super().request(method,params)
+        sid = self.bridge.state['session_id']
+        self.bridge.close();self.bridge=CodexBridge(ROOT,self.data,BusyCodex)
+        self.bridge.connect();self.wait(lambda:self.bridge.state.get('error'))
+        self.assertIn('占用',self.bridge.state['error'])
+        self.assertEqual(self.bridge.state['session_id'],sid)
+        self.assertFalse(any(m=='thread/start' for m,_ in self.bridge.transport.calls))
+        self.assertFalse(self.bridge.snapshot()['can_submit'])
+        self.assertTrue(self.bridge.snapshot()['external_control'])
+        self.assertTrue(self.bridge.snapshot()['input_locked'])
+
+    def test_idle_reconnect_rejects_foreign_running_turn_without_new_session(self):
+        sid=self.bridge.state['session_id']
+        self.bridge.close()
+        clients=[]
+        def factory(root,data,notify,disconnected):
+            transport=FakeCodex(root,data,notify,disconnected)
+            transport.history=[{'id':'desktop-turn','status':'inProgress'}]
+            clients.append(transport)
+            return transport
+        self.bridge=CodexBridge(ROOT,self.data,factory)
+        self.bridge.connect();self.wait(lambda:bool(self.bridge.state.get('error')))
+        state=self.bridge.snapshot()
+        self.assertEqual(state['session_id'],sid)
+        self.assertFalse(state['connected']);self.assertFalse(state['can_submit'])
+        self.assertTrue(state['input_locked']);self.assertTrue(state['external_control'])
+        self.assertFalse(any(m in ('thread/start','turn/start') for m,_ in clients[0].calls))
+
+    def test_dispatch_does_not_steer_a_foreign_running_turn(self):
+        transport=self.bridge.transport
+        transport.history=[{'id':'desktop-turn','status':'inProgress'}]
+        self.bridge.submit('do not steer',str(uuid.uuid4()))
+        self.wait(lambda:self.bridge.state['status']=='disconnected')
+        self.assertFalse(any(m=='turn/start' for m,_ in transport.calls))
+        self.assertTrue(self.bridge.snapshot()['input_locked'])
+        self.assertTrue(self.bridge.snapshot()['external_control'])
+        self.assertEqual(self.bridge._active()['status'],'failed')
+
+    def test_closed_session_fences_old_events_and_reconnects_same_id(self):
+        sid=self.bridge.state['session_id'];generation=self.bridge.generation
+        self.bridge.event({'method':'thread/closed','params':{'threadId':sid}},generation)
+        self.assertFalse(self.bridge.snapshot()['connected'])
+        self.assertTrue(self.bridge.snapshot()['input_locked'])
+        self.bridge.event({'method':'thread/settings/updated','params':{'threadId':sid,
+                          'threadSettings':{'model':'wrong','effort':'low'}}},generation)
+        self.assertEqual(self.bridge.state['model_settings']['model'],'gpt-6-luna')
+        self.bridge.connect();self.wait(lambda:self.bridge.snapshot()['can_submit'])
+        self.assertEqual(self.bridge.state['session_id'],sid)
+        self.assertFalse(self.bridge.snapshot()['external_control'])
+        self.assertFalse(any(m=='thread/start' for m,_ in self.bridge.transport.calls))
+
+    def test_unsolicited_remote_turn_blocks_idle_web_writes(self):
+        self.event('turn/started','desktop-turn',turn={'id':'desktop-turn','status':'inProgress'})
+        self.assertFalse(self.bridge.snapshot()['connected'])
+        self.assertTrue(self.bridge.snapshot()['input_locked'])
+        self.assertFalse(self.bridge.state['turns'])
+        with self.assertRaises(BridgeConflict):self.bridge.submit('blocked',str(uuid.uuid4()))
+
+    def test_pending_chain_cannot_be_released_between_stages(self):
+        self.bridge.state['pending_chain']={'paper_id':'paper','request_id':'queued','workflow_id':'workflow'}
+        with self.assertRaises(BridgeConflict):self.bridge.release()
+        self.assertTrue(self.bridge.connected)
+
+    def test_model_unavailable_is_not_silently_replaced(self):
+        self.bridge.release()
+        with self.bridge.lock:
+            self.bridge.state.pop('model_policy_version',None);self.bridge._save()
+        class NoModel(FakeCodex):
+            def request(self,method,params):
+                if method=='model/list':self.calls.append((method,params));return {'data':[]}
+                return super().request(method,params)
+        self.bridge.transport_factory=NoModel
+        self.bridge.connect();self.wait(lambda:self.bridge.state.get('error'))
+        self.assertIn('未提供',self.bridge.state['error'])
+        self.assertFalse(any(m in ('thread/start','thread/resume') for m,_ in self.bridge.transport.calls))
+
+    def test_reasoning_commentary_and_unclassified_deltas_are_not_web_feedback(self):
+        _,tid=self.send()
+        self.event('item/reasoning/summaryTextDelta',tid,itemId='reason',delta='internal reasoning')
+        self.event('item/agentMessage/delta',tid,itemId='progress',delta='uncategorized progress')
+        self.assertEqual(self.bridge.snapshot()['turns'][-1]['messages'],[])
+        self.event('item/completed',tid,item={'id':'progress','type':'agentMessage','phase':'commentary','text':'internal progress'})
+        self.assertEqual(self.bridge.snapshot()['turns'][-1]['messages'],[])
+        self.event('item/started',tid,item={'id':'answer','type':'agentMessage','phase':'final_answer','text':''})
+        self.event('item/agentMessage/delta',tid,itemId='answer',delta='给学生的解释')
+        self.assertEqual(self.bridge.snapshot()['turns'][-1]['messages'][0]['text'],'给学生的解释')
+        self.assertFalse(self.bridge.snapshot()['can_submit'])
+        self.finish(tid)
+        self.assertTrue(self.bridge.snapshot()['can_submit'])
+        self.assertNotIn('internal',json.dumps(self.bridge.snapshot(),ensure_ascii=False))
+
+    def test_settings_event_is_visible_when_idle_and_from_current_generation_only(self):
+        self.bridge.event({'method':'thread/settings/updated','params':{'threadId':self.bridge.state['session_id'],
+            'threadSettings':{'model':'gpt-6-luna','effort':'high'}}},self.bridge.generation)
+        self.assertEqual(self.bridge.snapshot()['model_settings']['effort'],'high')
+        self.bridge.event({'method':'thread/settings/updated','params':{'threadId':self.bridge.state['session_id'],
+            'threadSettings':{'model':'stale','effort':'low'}}},self.bridge.generation-1)
+        self.assertEqual(self.bridge.snapshot()['model_settings']['model'],'gpt-6-luna')
+
+    def test_custom_prompt_is_attached_at_top_without_paper(self):
+        with closing(sqlite3.connect(self.data/'mathlens.db')) as conn,conn:
+            conn.execute('CREATE TABLE preferences(id INTEGER PRIMARY KEY,payload TEXT NOT NULL)')
+            conn.execute('INSERT INTO preferences VALUES(1,?)',(json.dumps({'study_type':1,'reserved':[],'paper_marking_convention':'蓝色为独立作答，绿色为事后批改。'}),))
+        self.bridge.submit('分析试卷',str(uuid.uuid4()))
+        text=self.bridge.state['turns'][-1]['inputs'][0]['text']
+        self.assertIn('蓝色为独立作答',text)
+        self.assertIn('task_packages',text)
+        self.assertLess(text.index('蓝色为独立作答'),text.index('MathLens 网页请求'))
+        self.assertEqual(self.bridge.state['turns'][-1]['agent_prompt'],'蓝色为独立作答，绿色为事后批改。')
+
+    def test_default_prompt_and_next_turn_change_keep_original_snapshot(self):
+        from app.bank.access import DEFAULT_AGENT_PROMPT
+        _,tid=self.send()
+        original=self.bridge.state['turns'][-1]
+        self.assertEqual(original['agent_prompt'],DEFAULT_AGENT_PROMPT)
+        self.assertTrue(original['inputs'][0]['text'].startswith('【MathLens 默认提示词】\n'+DEFAULT_AGENT_PROMPT))
+        self.finish(tid)
+        with closing(sqlite3.connect(self.data/'mathlens.db')) as conn,conn:
+            conn.execute('CREATE TABLE preferences(id INTEGER PRIMARY KEY,payload TEXT NOT NULL)')
+            conn.execute('INSERT INTO preferences VALUES(1,?)',(json.dumps({'study_type':1,'reserved':[],'paper_marking_convention':'新的用户约定'}),))
+        self.send()
+        self.assertEqual(self.bridge.state['turns'][-1]['agent_prompt'],'新的用户约定')
+        self.assertEqual(original['agent_prompt'],DEFAULT_AGENT_PROMPT)
+        self.assertIn(DEFAULT_AGENT_PROMPT,original['inputs'][0]['text'])
+
+    def test_connect_is_not_ready_until_reconciliation_finishes(self):
+        self.bridge.close();self.bridge=CodexBridge(ROOT,self.data,FakeCodex)
+        entered=threading.Event();release=threading.Event()
+        def reconcile(_transport):
+            entered.set();release.wait(3)
+        self.bridge._reconcile=reconcile
+        self.bridge.connect()
+        self.assertTrue(entered.wait(2))
+        try:
+            self.assertFalse(self.bridge.snapshot()['can_submit'])
+            self.assertTrue(self.bridge.snapshot()['input_locked'])
+            with self.assertRaises(BridgeConflict):self.bridge.submit('不能抢跑',str(uuid.uuid4()))
+            transport=self.bridge.transport
+            self.bridge.connect()
+            self.assertIs(self.bridge.transport,transport)
+        finally:release.set()
+        self.wait(lambda:self.bridge.snapshot()['can_submit'])
 
     def test_missing_empty_session_is_recovered_but_history_is_never_replaced(self):
         class MissingRollout(FakeCodex):
@@ -106,7 +296,7 @@ class CodexBridgeTests(unittest.TestCase):
     def test_photo_only_message_attaches_validated_image_to_codex(self):
         from PIL import Image
         from io import BytesIO
-        from answer_images import init_answer_images,save_answer_image
+        from app.storage.images import init_answer_images, save_answer_image
         raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
         with closing(sqlite3.connect(self.data/'mathlens.db')) as conn,conn:
             conn.row_factory=sqlite3.Row;init_answer_images(conn)
@@ -149,7 +339,7 @@ class CodexBridgeTests(unittest.TestCase):
             conn.execute("INSERT INTO papers VALUES('paper',?)", (str(pdf),))
             conn.execute("INSERT INTO diagnostic_probes VALUES('probe','paper','q1','bank')")
             conn.execute("INSERT INTO bank_resources VALUES('bank','probe.png')")
-            from bank_access import init_access,reveal
+            from app.bank.access import init_access, reveal
             conn.execute('CREATE TABLE bank_questions(id TEXT)');conn.execute("INSERT INTO bank_questions VALUES('bank')")
             conn.execute('CREATE TABLE bank_exposures(bank_id TEXT,created_at TEXT)');init_access(conn);reveal(conn,'bank','question',True)
             for index in (1, 2):
@@ -247,21 +437,18 @@ class CodexBridgeTests(unittest.TestCase):
         self.assertEqual(self.bridge.transport.sent[-1], {"id": 82, "result": {"decision": "cancel"}})
 
     def test_http_write_lock_and_cross_origin_rejection(self):
-        import server
-        previous = server.BRIDGE
-        server.BRIDGE = self.bridge
-        try:
-            self.send()
-            for origin, expected in [(None, 409), ("https://unrelated.example", 403)]:
-                headers = Message();headers["Content-Type"] = "application/json";headers["Host"] = "127.0.0.1:4173"
-                if origin:headers["Origin"] = origin
-                handler = object.__new__(server.Handler)
-                handler.path = "/api/papers";handler.headers = headers
-                codes = [];handler.send_json = lambda body, code: codes.append(code)
-                handler.do_POST()
-                self.assertEqual(codes, [expected])
-        finally:
-            server.BRIDGE = previous
+        from fastapi.testclient import TestClient
+        from app.config import AppConfig
+        from app.main import create_app
+        config=AppConfig(ROOT,self.data,ROOT/'dist',self.data/'mathlens.db')
+        self.send()
+        with TestClient(create_app(config,bridge=self.bridge,agent_factory=None,manage_agent=False),base_url='http://127.0.0.1') as http:
+            for path,origin,expected in [('/api/papers',None,409),('/api/preferences/agent-prompt',None,409),('/api/preferences/agent-prompt','https://unrelated.example',403)]:
+                # Valid bodies reach the application write guard.
+                body={'title':'test'} if path=='/api/papers' else {'prompt':'test'}
+                response=http.post(path,json=body,headers={'Origin':origin} if origin else {})
+                self.assertEqual(response.status_code,expected,response.text)
+
 
 
 if __name__ == "__main__":

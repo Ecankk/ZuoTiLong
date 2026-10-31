@@ -9,7 +9,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from PIL import Image
-from answer_images import init_answer_images, save_answer_image, image_records, image_path
+from app.storage.images import init_answer_images, save_answer_image, image_records, image_path
 
 
 class AnswerImageTests(unittest.TestCase):

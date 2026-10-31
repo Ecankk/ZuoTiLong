@@ -2,7 +2,7 @@ import { useState,useEffect,useRef } from 'react'
 import {useDraft} from './drafts'
 import {postJson} from './api'
 
-export type AnswerImage = {id:string; url:string; width:number; height:number}
+export type AnswerImage = {id:string; url:string; width:number; height:number;role?:'own_work'|'external_solution'|'marking'}
 
 export function useAnswerImages(key='agent') {
   const [images,setImages] = useDraft<AnswerImage[]>(key+':images',[])
@@ -25,25 +25,25 @@ export function useAnswerImages(key='agent') {
     } catch(e) {setError(e instanceof Error?e.message:'图片上传失败，请重试')}
     finally {setBusy(false)}
   }
-  return {images,busy,error,addFiles,mobile,startMobile,stopMobile:async()=>{await postJson('/api/mobile-upload/stop',{});setMobile([])},clear:()=>{setImages([]);setError('');if(mobile.length){postJson('/api/mobile-upload/stop',{}).catch(()=>{});setMobile([])}},remove:(id:string)=>setImages(old=>old.filter(image=>image.id!==id)),move:(id:string,delta:number)=>setImages(old=>{
+  return {images,busy,error,addFiles,mobile,startMobile,setRole:(id:string,role:AnswerImage['role'])=>setImages(old=>old.map(image=>image.id===id?{...image,role}:image)),stopMobile:async()=>{await postJson('/api/mobile-upload/stop',{});setMobile([])},clear:()=>{setImages([]);setError('');if(mobile.length){postJson('/api/mobile-upload/stop',{}).catch(()=>{});setMobile([])}},remove:(id:string)=>setImages(old=>old.filter(image=>image.id!==id)),move:(id:string,delta:number)=>setImages(old=>{
     const index=old.findIndex(image=>image.id===id), next=index+delta
     if(index<0||next<0||next>=old.length)return old
     const images=[...old];[images[index],images[next]]=[images[next],images[index]];return images
   })}
 }
 
-export function AnswerImagePicker({draft,disabled=false}:{draft:ReturnType<typeof useAnswerImages>;disabled?:boolean}) {
+export function AnswerImagePicker({draft,disabled=false,label='选择作答照片'}:{draft:ReturnType<typeof useAnswerImages>;disabled?:boolean;label?:string}) {
   const blocked=disabled||draft.busy
   return <div className="answer-image-picker">
-    <div className="image-actions"><label className="small-action">选择作答照片<input aria-label="选择作答照片" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={blocked} onChange={e=>{draft.addFiles(Array.from(e.target.files||[]));e.target.value=''}}/></label>
+    <div className="image-actions"><label className="small-action">{label}<input aria-label={label} type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={blocked} onChange={e=>{draft.addFiles(Array.from(e.target.files||[]));e.target.value=''}}/></label>
       <label className="small-action">拍照<input aria-label="拍摄作答照片" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={blocked} onChange={e=>{draft.addFiles(Array.from(e.target.files||[]));e.target.value=''}}/></label>
       <small className="muted">{draft.busy?'正在上传…':'最多 4 张，JPG / PNG / WebP；可不填文字'}</small></div>
     <button type="button" className="small-action" disabled={blocked} onClick={draft.startMobile}>从手机传图…</button>{!!draft.mobile.length&&<div className="notice"><p>手机和电脑连接同一 Wi-Fi，打开任一地址。收到的照片会进入这里的预览；请在电脑确认提交。</p>{draft.mobile.map(url=><p key={url}><a href={url} target="_blank" rel="noreferrer">{url}</a></p>)}<button type="button" onClick={draft.stopMobile}>关闭手机传图</button></div>}
-    <div className="answer-image-grid">{draft.images.map((image,index)=><figure key={image.id}><a href={image.url} target="_blank" rel="noreferrer"><img src={image.url} alt={`待提交作答照片 ${index+1}`}/></a><figcaption>第 {index+1} 张 <button type="button" className="small-action" disabled={blocked||index===0} onClick={()=>draft.move(image.id,-1)}>上移</button> <button type="button" className="small-action" disabled={blocked||index===draft.images.length-1} onClick={()=>draft.move(image.id,1)}>下移</button> <button type="button" className="small-action" disabled={blocked} onClick={()=>draft.remove(image.id)}>移除</button></figcaption></figure>)}</div>
+    <div className="answer-image-grid">{draft.images.map((image,index)=><figure key={image.id}><a href={image.url} target="_blank" rel="noreferrer"><img src={image.url} alt={`待提交作答照片 ${index+1}`}/></a><figcaption>第 {index+1} 张 <select aria-label={`第${index+1}张照片的内容`} disabled={blocked} value={image.role||'own_work'} onChange={e=>draft.setRole(image.id,e.target.value as AnswerImage['role'])}><option value="own_work">我的作答</option><option value="external_solution">外部解析</option><option value="marking">事后批改</option></select><button type="button" className="small-action" disabled={blocked||index===0} onClick={()=>draft.move(image.id,-1)}>上移</button> <button type="button" className="small-action" disabled={blocked||index===draft.images.length-1} onClick={()=>draft.move(image.id,1)}>下移</button> <button type="button" className="small-action" disabled={blocked} onClick={()=>draft.remove(image.id)}>移除</button></figcaption></figure>)}</div>
     {draft.error&&<p className="notice" role="alert">{draft.error}</p>}
   </div>
 }
 
-export function SubmittedImages({ids=[]}:{ids?:string[]}) {
-  return <div className="answer-image-grid">{ids.map((id,index)=><a key={id} href={`/api/answer-images/${id}`} target="_blank" rel="noreferrer"><img src={`/api/answer-images/${id}`} alt={`已提交手写作答 ${index+1}`}/></a>)}</div>
+export function SubmittedImages({ids=[],roles={}}:{ids?:string[];roles?:Record<string,string>}) {
+  return <div className="answer-image-grid">{ids.map((id,index)=><figure key={id}><a href={`/api/answer-images/${id}`} target="_blank" rel="noreferrer"><img src={`/api/answer-images/${id}`} alt={`已提交材料 ${index+1}`}/></a><figcaption>{roles[id]==='external_solution'?'外部解析':roles[id]==='marking'?'事后批改':'我的作答'}</figcaption></figure>)}</div>
 }

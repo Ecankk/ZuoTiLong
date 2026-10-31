@@ -8,21 +8,42 @@ node_modules/
 .venv/
 tmp/
 
-# Local source material and generated personal data
+# Source, Skills, tests, public docs and the bundled dist/ remain versioned.
+# Shared runtime data is local too; only reviewed exports may be distributed.
+# Reviewed resources/shared/ JSON packages remain versioned.
+/library/
+/workspaces/
+/data/
+/.workspace-migration-*/
+/.library-migration-*/
+
+# Local source material and generated learning/maintenance data
 backups/
 references/
 papers/
 bank-assets/
+knowledge-sources/
+practice-materials/
 ocr-cache/
 agent-input/
 answer-images/
 reports/
 memory/
+/tasks/
+/drafts/
+/trash/
+workspace.json
+server.json
+server.pid
+screen.json
 *.pdf
 *.PDF
 *.sqlite
 *.sqlite3
 *.db
+*.sqlite-*
+*.sqlite3-*
+*.db-*
 *.log
 
 # Local credentials and machine configuration
@@ -33,4 +54,5 @@ memory/
 *.key
 
 # Private development notes and planning (kept inside the project, never published)
+/AGENTS.md
 docs/local/

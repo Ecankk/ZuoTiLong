@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { backendTarget } from './backend-target.mjs'
 
 export default defineConfig({
   plugins: [react()],
@@ -10,7 +11,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://127.0.0.1:4173',
+      '/api': { target: backendTarget(), changeOrigin: true },
     },
   },
 })

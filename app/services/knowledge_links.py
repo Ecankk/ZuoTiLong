@@ -271,3 +271,12 @@ class KnowledgeLinksService:
             items = {i['bank_id']:i for i in self._bank_index(conn,nodes)}
             if any(bid not in items for bid in bank_ids):raise ValueError('题库题目不存在')
             return {'catalog_revision':catalog.active_id(conn),'items':[deepcopy(items[bid]) for bid in bank_ids]}
+
+    def bank_ids_for_topic(self,topic_id):
+        """One validated bank pass for the paged library, without learner history."""
+        with navigation_snapshot(self.database) as conn:
+            nodes=index.catalog(conn)
+            canonical=catalog.resolve(conn,topic_id) or topic_id
+            selected=self._selected(nodes,canonical,'subtree')
+            return {item['bank_id'] for item in self._bank_index(conn,nodes)
+                    if any(t['topic_id'] in selected for t in item['topics'])}

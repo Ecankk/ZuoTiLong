@@ -1,4 +1,11 @@
 """Isolated-path helpers for existing tests; this module is not a service entry point."""
+import os
+
+# Never capture an inherited user workspace as the fixture's default paths.
+# Tests of environment resolution opt in with patch.dict after fixture import.
+os.environ.pop('MATHLENS_DATA_DIR', None)
+os.environ.pop('MATHLENS_LIBRARY_DIR', None)
+
 from app.config import AppConfig
 from app.storage.database import Database
 from app.services.papers import PaperService, set_paper_archive, confirm_paper_score

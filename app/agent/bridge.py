@@ -10,13 +10,14 @@ import sqlite3
 import sys
 import threading
 import uuid
+import time
 
 from app.learning.loop import stamp
 from app.storage.images import image_records,image_path
 from app.version import VERSION
 
 from app.agent.transport import CodexProcess
-from app.agent.errors import BridgeConflict,SessionControlConflict
+from app.agent.errors import BridgeConflict,SessionControlConflict,AgentUnavailable
 from app.agent.context import PromptContext
 from app.agent.workflows import WorkflowCoordinator
 from app.agent.session_store import SessionStore
@@ -44,6 +45,9 @@ class CodexBridge:
         self.generation = 0
         self.connected = False
         self.connecting = False
+        self.auto_connect = False
+        self.unavailable_reason = None
+        self.next_connect_check = 0
         self.prompts = {}
         self.db = self.data / "agent-session.db"
         from app.storage.boundaries import workspace_config
@@ -119,6 +123,7 @@ class CodexBridge:
             if self.connected or self.connecting:
                 return self.snapshot()
             self.connecting = True
+            self.unavailable_reason = None
             self.closing = False
             if not self.workflow_thread.is_alive():
                 self.workflow_thread = threading.Thread(target=self._workflow_loop, daemon=True)
@@ -128,6 +133,32 @@ class CodexBridge:
             self.connect_thread=threading.Thread(target=self._connect, daemon=True)
             self.connect_thread.start()
             return self.snapshot()
+
+    def ensure_connection(self):
+        """Only resume owned/pending work; never replay restored or released work."""
+        with self.lock:
+            if (not self.auto_connect or self.closing or self.connected or self.connecting
+                    or self.state.get('external_control') or time.monotonic() < self.next_connect_check):
+                return
+            with closing(self._learning_connection()) as conn:
+                pending = conn.execute("SELECT 1 FROM workflow_jobs WHERE status IN ('queued','dispatching','running') AND recovery_required=0 LIMIT 1").fetchone()
+            if not pending and not self.state['active_request']:
+                return
+            self.next_connect_check = time.monotonic()+30
+            self.connect()
+
+    def availability(self):
+        with self.lock:
+            if self.connected:return dict(status='available', reason=None, message='学习服务可用')
+            if self.connecting:return dict(status='checking', reason=None, message='正在准备学习服务')
+            reason = self.unavailable_reason
+            if self.transport_factory is CodexProcess:
+                from app.agent.transport import codex_executable
+                if codex_executable() is None:reason = 'not_installed'
+            messages = {'not_installed':'未安装学习服务，请先完成安装。',
+                        'not_logged_in':'学习服务尚未登录，请先完成登录。', 'other':'学习服务暂不可用，任务和材料已保留。'}
+            return dict(status='unavailable' if reason else 'checking', reason=reason,
+                        message=messages.get(reason, '有学习任务时将自动准备服务'))
 
     def _connect(self):
         transport = None
@@ -151,6 +182,10 @@ class CodexBridge:
                 self.transport = transport
             transport.request("initialize", {"clientInfo": {"name": "mathlens", "title": "MathLens", "version": VERSION},'capabilities':{'experimentalApi':True}})
             transport.send({"method": "initialized", "params": {}})
+            if self.auto_connect:
+                account = transport.request('account/read', {'refreshToken': False})
+                if not account.get('account'):
+                    raise AgentUnavailable('not_logged_in', '学习服务尚未登录，请先完成登录。')
             instructions="你是 MathLens 数学学习 Agent。用中文和 LaTeX；按当前学习任务的 schema 和 read_skill 指令执行，不承担安装或开发任务，不改应用代码、不派生 Agent。优先调用本项目 MCP mathlens 工具读取技能、题库、图片、真实作答并写回评价，避免 Shell。先 read_skill 读取当前环节的 skill。没有学生活动不能虚构作答。隐藏候选的题干/考点/答案仅内部阅读，不向学生复述，让用户在网页确认。预留卷禁止检索。评价不清晰图片时 correct=null，说明需补拍部分。每轮先context读取learning_task和result_schema，再按任务Skill执行；所有固定任务用payload.result提交完整封装，批改用assess，其余用apply_report，不能按旧工具说明直接传report或assessment。以当前任务schema为准，取得保存回执后最终回复并结束本轮。面向学生的解释、必要数学推导、问题与下一步全部通过网页的最终反馈和学习记录交付，不展示内部思考或工具调试细节。"
             options = {"cwd": str(self.root), "sandbox": "workspace-write", "approvalPolicy": "on-request",
                 'developerInstructions':instructions.replace('MCP mathlens','mathlens')}
@@ -212,6 +247,7 @@ class CodexBridge:
             with self.lock:
                 if self.closing or generation!=self.generation:return
                 self.connected = True
+                self.unavailable_reason = None
                 self.connecting = False
                 self.state['external_control'] = False
                 self.state.pop('control_reason', None)
@@ -227,6 +263,9 @@ class CodexBridge:
                 with self.lock:
                     if generation == self.generation:
                         self.state.update(external_control=True, control_reason='conflict')
+            with self.lock:
+                if generation == self.generation:
+                    self.unavailable_reason = getattr(exc, 'reason', 'other')
             self.disconnected(str(exc),generation)
 
     def _model_settings(self, response, source):
@@ -299,6 +338,7 @@ class CodexBridge:
                 return
             self.connected = False
             self.connecting = False
+            if not self.closing and self.unavailable_reason is None:self.unavailable_reason = 'other'
             self.state.update(status="disconnected", error=str(reason), activity="连接已断开", requests=[])
             self.prompts.clear()
             self._save()
@@ -780,17 +820,19 @@ class CodexBridge:
         self.transport.request("turn/interrupt", {"threadId": self.state["session_id"], "turnId": tid})
         return self.snapshot()
 
-    def retry(self):
+    def retry(self, *, expected_task_id=None):
         if not self.operations.acquire(blocking=False):
             raise BridgeConflict("正在核对上一轮状态，请稍候")
         try:
-            return self._retry()
+            return self._retry(expected_task_id=expected_task_id)
         finally:
             self.operations.release()
 
-    def _retry(self):
+    def _retry(self, *, expected_task_id=None):
         with self.lock:
             turn = self._active()
+            if expected_task_id is not None and (not turn or turn.get('task_id') != expected_task_id):
+                raise BridgeConflict('任务状态已变化，请刷新后再试')
             if not self.connected or not turn or self.state["status"] not in ("failed", "interrupted"):
                 raise BridgeConflict("请先连接并确认上轮已停止")
         # Read the actual remote state before resending after errors/timeouts.

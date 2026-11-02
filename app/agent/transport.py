@@ -1,15 +1,23 @@
 """Codex JSON-RPC process transport, independent of study state."""
 import json,os,queue,shutil,subprocess,threading
 from pathlib import Path
+from app.agent.errors import AgentUnavailable
+
+
+def codex_executable():
+    configured = os.environ.get('MATHLENS_CODEX_BIN')
+    if configured:
+        return shutil.which(configured) or (configured if Path(configured).is_file() else None)
+    executable = shutil.which('codex')
+    if executable:return executable
+    fallback = Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs/OpenAI/Codex/bin/codex.exe'
+    return str(fallback) if fallback.is_file() else None
 
 class CodexProcess:
     def __init__(self, root, data, notify, disconnected):
-        executable = os.environ.get("MATHLENS_CODEX_BIN") or shutil.which("codex")
+        executable = codex_executable()
         if not executable:
-            fallback = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/OpenAI/Codex/bin/codex.exe"
-            executable = str(fallback) if fallback.is_file() else None
-        if not executable:
-            raise ValueError("找不到 Codex CLI。请先安装并运行 codex login。")
+            raise AgentUnavailable('not_installed', '未安装学习服务，请先完成安装。')
         self.notify, self.disconnected = notify, disconnected
         self.pending, self.serial = {}, 0
         self.lock = threading.Lock()

@@ -16,6 +16,9 @@ from app.services.practice import PracticeService
 from app.services.question_index import QuestionIndexService
 from app.services.resources import ResourceService
 from app.services.workspace import WorkspaceService
+from app.services.frontend_reads import FrontendReads
+from app.services.task_summary import TaskSummary
+from app.services.events import EventStream
 from app.storage.database import Database
 
 
@@ -39,6 +42,9 @@ class AppRuntime:
         self.knowledge_catalog = KnowledgeCatalogService(config, self.database)
         self.question_index = QuestionIndexService(config, self.database)
         self.agent = AgentController(self)
+        self.frontend = FrontendReads(self)
+        self.tasks = TaskSummary(self)
+        self.events = EventStream(self)
 
     def start(self) -> None:
         self.database.initialize()
@@ -47,8 +53,14 @@ class AppRuntime:
             self.bridge = self.agent_factory(self.config.root, self.config.data)
             self.bridge.learning_db = self.config.database
             if hasattr(self.bridge,'context'):self.bridge.context.learning_db = self.config.database
+            from app.agent.bridge import CodexBridge
+            if isinstance(self.bridge,CodexBridge):
+                self.bridge.auto_connect = True
+                self.bridge.workflow_wakeup.set()
+        self.events.start()
 
     def close(self) -> None:
+        self.events.close()
         self.workspace.close()
         if self.mobile:
             self.mobile.stop()

@@ -1,0 +1,17 @@
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  height: 100vh;
+}
+
+.main {
+  min-width: 0;
+  overflow: auto;
+  background: var(--surface-app);
+}
+
+/* 内容区随窗口拉伸；宽屏多列布局按内容区宽度切换（container query） */
+.content {
+  container-type: inline-size;
+  padding: var(--space-8) var(--page-pad) var(--space-12);
+}

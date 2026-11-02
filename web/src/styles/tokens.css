@@ -26,6 +26,9 @@
   --surface-card: #ffffff;
   --surface-sunken: #f6f7f9;
   --surface-placeholder: #eceef2;
+  --placeholder-print: #d3d7de;
+  --placeholder-hand: #9ea6b4;
+  --placeholder-red-pen: rgba(214, 69, 97, 0.55);
   --glass-bg: rgba(255, 255, 255, 0.62);
   --glass-bg-hover: rgba(255, 255, 255, 0.8);
   --glass-border: rgba(255, 255, 255, 0.7);
@@ -114,5 +117,6 @@
   --sidebar-width: 224px;
   --read-max: 760px;
   --page-pad: clamp(32px, 2.6vw, 64px);
-  --window-min-width: 1280px;
+  /* 窗口最小 1280 宽，扣除系统边框后的内容区约 1200 */
+  --window-min-width: 1200px;
 }

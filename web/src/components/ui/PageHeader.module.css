@@ -1,0 +1,39 @@
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+.eyebrow {
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.crumbs a {
+  color: var(--text-muted);
+}
+
+.crumbs svg {
+  color: var(--text-faint);
+}
+
+.subtitle {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+}
+
+.subtitle:empty {
+  display: none;
+}

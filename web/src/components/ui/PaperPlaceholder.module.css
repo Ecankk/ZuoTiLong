@@ -1,0 +1,45 @@
+.paper {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-placeholder);
+  padding: 7% 7%;
+}
+
+.line {
+  height: 9px;
+  margin: 0 0 12px;
+  border-radius: 3px;
+  background: var(--placeholder-print);
+}
+
+.compact .line {
+  height: 5px;
+  margin-bottom: 8px;
+}
+
+.hand {
+  background: var(--placeholder-hand);
+  border-radius: 6px;
+}
+
+.red {
+  height: 3px;
+  background: var(--placeholder-red-pen);
+}
+
+.gap {
+  height: 14px;
+}
+
+.caption {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+}

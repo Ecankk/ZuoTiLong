@@ -1,0 +1,47 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.chip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.correct {
+  color: var(--status-correct);
+  background: var(--status-correct-soft);
+}
+
+.wrong {
+  color: var(--status-wrong);
+  background: var(--status-wrong-soft);
+}
+
+.partial {
+  color: var(--status-partial);
+  background: var(--status-partial-soft);
+}
+
+.unknown {
+  color: var(--status-unknown);
+  background: var(--status-unknown-soft);
+}
+
+.primary {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.plain {
+  color: var(--text-regular);
+  background: var(--surface-sunken);
+  font-weight: var(--font-weight-medium);
+}

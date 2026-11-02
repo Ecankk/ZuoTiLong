@@ -11,9 +11,20 @@ export const correctnessLabel: Record<Correctness, string> = {
   unknown: '待核对',
 }
 
-/** 批改结果只有对/错/未判定（契约未提供“部分正确”）。 */
-export const assessmentCorrectness = (correct: boolean | null): Correctness =>
-  correct === null ? 'unknown' : correct ? 'correct' : 'wrong'
+const correctnessValues: Correctness[] = ['correct', 'wrong', 'partial', 'unknown']
+
+/**
+ * 批改结果：已保存的 answer_status 是四种结果之一时用它（含“部分正确”），
+ * 否则只按 correct 区分对/错/未判定。
+ */
+export function assessmentCorrectness(assessment: {
+  correct: boolean | null
+  answer_status?: string
+}): Correctness {
+  const status = assessment.answer_status as Correctness | undefined
+  if (status && correctnessValues.includes(status)) return status
+  return assessment.correct === null ? 'unknown' : assessment.correct ? 'correct' : 'wrong'
+}
 
 /** 试卷标题统一加书名号：《2023 数学一》 */
 export const paperName = (title: string) => `《${title}》`

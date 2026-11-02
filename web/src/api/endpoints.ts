@@ -1,74 +1,68 @@
 /**
- * 数据获取入口，每个函数对应 docs/frontend-api.md 的一个接口（注释为真实路径）。
- * 当前返回本地演示数据；接入时把函数体换成 request(...)，页面不需要改动。
+ * 数据接口，路径与参数见 docs/frontend-api.md。
+ * 资源接口带强 ETag：浏览器按 Cache-Control: no-cache 自动带 If-None-Match 重新验证，
+ * 304 时 fetch 拿到的是缓存内容，所以 query 失效后照常重取即可。
  */
-import {
-  home,
-  papers,
-  practiceDetails,
-  practices,
-  questionDetails,
-  questions,
-  revealedQuestions,
-  tasks,
-} from '../mocks/data'
+import { ApiError, postJson, request } from './client'
 import type {
-  HomeData,
+  ImportResult,
+  Page,
+  Paper,
   PaperResponse,
   PracticeResponse,
   PracticesResponse,
+  Preferences,
   QuestionResponse,
   QuestionsResponse,
   TasksResponse,
 } from './types'
 
-const local = <T>(value: T): Promise<T> => Promise.resolve(structuredClone(value))
-
 export type PracticeGrouping = 'topic' | 'paper'
+export type PaperScope = '0' | '1'
 
-function groupPracticesByPaper(source: PracticesResponse): PracticesResponse {
-  const byPaper = new Map<string, PracticesResponse['items'][number]>()
-  for (const card of source.items.flatMap((group) => group.items)) {
-    const group = byPaper.get(card.paper_id) ?? {
-      id: card.paper_id,
-      label: card.paper_title,
-      counts: { pending: 0, grading: 0, graded: 0, needs_supplement: 0, inactive: 0, total: 0 },
-      items: [],
-    }
-    if (!group.items.some((item) => item.id === card.id)) {
-      group.items.push(card)
-      group.counts[card.status] += 1
-      group.counts.total += 1
-    }
-    byPaper.set(card.paper_id, group)
+const enc = encodeURIComponent
+
+/** 404 表示资源不存在（如试卷已删除），页面按“没有找到”处理。 */
+async function orNull<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
   }
-  const items = [...byPaper.values()]
-  return { ...source, items, total: items.length }
 }
 
 export const endpoints = {
-  /** GET /api/tasks */
-  tasks: (): Promise<TasksResponse> => local(tasks),
-  /** 契约未覆盖：首页规则留到后续批次 */
-  home: (): Promise<HomeData> => local(home),
-  /** GET /api/papers/{paper_id} */
-  paper: (paperId: string): Promise<PaperResponse | null> =>
-    local(papers.find((item) => item.paper.id === paperId) ?? null),
-  /** GET /api/papers/{paper_id}/questions */
-  paperQuestions: (paperId: string): Promise<QuestionsResponse> => {
-    const items = questions.filter((question) => question.paper_id === paperId)
-    return local({ items, total: items.length })
+  tasks: () => request<TasksResponse>('/api/tasks'),
+  papers: (archived: PaperScope) =>
+    request<Page<Paper>>(`/api/papers?archived=${archived}&offset=0&limit=100`),
+  paper: (paperId: string) => orNull(request<PaperResponse>(`/api/papers/${enc(paperId)}`)),
+  paperQuestions: (paperId: string) =>
+    request<QuestionsResponse>(`/api/papers/${enc(paperId)}/questions`),
+  question: (questionId: string) =>
+    orNull(request<QuestionResponse>(`/api/questions/${enc(questionId)}`)),
+  practices: (groupBy: PracticeGrouping, includeInactive: boolean) =>
+    request<PracticesResponse>(
+      `/api/practices?group_by=${groupBy}&include_inactive=${includeInactive}&offset=0&limit=100`,
+    ),
+  practice: (practiceId: string) =>
+    orNull(request<PracticeResponse>(`/api/practices/${enc(practiceId)}`)),
+  preferences: () => request<Preferences>('/api/preferences'),
+  /** 旧接口会整体覆盖偏好，所以带上其余字段一起提交 */
+  savePreferences: (current: Preferences, change: Partial<Preferences>) => {
+    const next = { ...current, ...change }
+    return postJson<Preferences>('/api/preferences', {
+      study_type: next.study_type,
+      mask_same_type: next.mask_same_type,
+      paper_marking_convention: next.paper_marking_convention,
+      reserved: next.reserved,
+    })
   },
-  /** GET /api/questions/{question_id} */
-  question: (questionId: string): Promise<QuestionResponse | null> =>
-    local(questionDetails.find((item) => item.question.id === questionId) ?? null),
-  /** GET /api/practices?group_by= */
-  practices: (groupBy: PracticeGrouping): Promise<PracticesResponse> =>
-    local(groupBy === 'paper' ? groupPracticesByPaper(practices) : practices),
-  /** GET /api/practices/{practice_id} */
-  practice: (practiceId: string): Promise<PracticeResponse | null> =>
-    local(practiceDetails.find((item) => item.practice.id === practiceId) ?? null),
-  /** 确认查看被遮挡的题目（真实接口沿用旧的确认查看入口，成功后重新获取练习） */
-  revealQuestion: (practiceId: string): Promise<string | null> =>
-    local(revealedQuestions[practiceId] ?? null),
+  importPaper: (file: File, title: string, examDate: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('title', title)
+    form.append('exam_date', examDate)
+    return request<ImportResult>('/api/papers/import', { method: 'POST', body: form })
+  },
 }

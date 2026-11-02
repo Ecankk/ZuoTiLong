@@ -49,7 +49,7 @@ describe('applyServerEvent', () => {
     expect(client.getQueryData(queryKeys.tasks)).toEqual(tasks)
   })
 
-  it('invalidates the changed resources and the home summary', () => {
+  it('invalidates the changed resources', () => {
     const client = new QueryClient()
     const spy = vi.spyOn(client, 'invalidateQueries')
     applyServerEvent(
@@ -58,7 +58,6 @@ describe('applyServerEvent', () => {
       'e1',
     )
     expect(spy).toHaveBeenCalledWith({ queryKey: ['practices'] })
-    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.home })
   })
 
   it('refreshes everything after a server restart', () => {

@@ -53,9 +53,10 @@ export function applyServerEvent(
       for (const resource of event.data.resources) {
         void client.invalidateQueries({ queryKey: [resource] })
       }
-      void client.invalidateQueries({ queryKey: queryKeys.home })
       break
     case 'preparation.changed':
+      // 原卷识别进度会改变试卷的分析状态
+      void client.invalidateQueries({ queryKey: ['papers'] })
       break
   }
   return epoch

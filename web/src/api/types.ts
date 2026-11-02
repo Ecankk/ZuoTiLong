@@ -178,6 +178,8 @@ export type PracticesResponse = Page<PracticeGroup> & { counts: PracticeCounts }
 
 export type Assessment = {
   correct: boolean | null
+  /** 已保存批改对象里的结果字段（契约未列出，存在时优先使用） */
+  answer_status?: string
   feedback: string
   observations?: { step: string; stage: string; status: string; evidence: string }[]
   first_error?: FirstError | null
@@ -253,35 +255,14 @@ export type TasksResponse = Page<Task> & {
   failed_count: number
 }
 
-/* ---------- 首页（契约未覆盖：首页规则留到后续批次） ---------- */
+/* ---------- 偏好设置（沿用旧接口 GET/POST /api/preferences） ---------- */
 
-export type HomeData = {
-  stats: { weekly_practice_done: number; independent_accuracy: number; analyzed_papers: number }
-  next_step: {
-    title: string
-    description: string
-    action_label: string
-    to: string
-    preview_caption?: string
-  } | null
-  todos: {
-    review: { paper_id: string; paper_title: string; question_number: string; reason: string }[]
-    practice: {
-      topic: TopicRef
-      paper_title: string
-      question_number: string
-      remaining: number
-      practice_id: string
-    }[]
-    grading: { practice_id: string; label: string; submitted_at: string }[]
-    feedback: { practice_id: string; label: string; summary: string; correct: boolean | null }[]
-  }
-  suggestions: {
-    id: string
-    kind: 'repeated_errors' | 'no_practice' | 'unfinished_practice'
-    title: string
-    detail: string
-    action_label: string
-    to: string
-  }[]
+export type Preferences = {
+  study_type: MathType
+  mask_same_type: boolean
+  paper_marking_convention: string
+  reserved: { math_type: MathType; year: string }[]
 }
+
+/** POST /api/papers/import 的返回中前端用到的部分 */
+export type ImportResult = { paper: { id: string }; analysis_warning?: string }

@@ -1,18 +1,20 @@
 /**
- * 本地演示数据：内容与静态样稿一致，形状与 docs/frontend-api.md 一致。
- * 接入真实接口后只留给测试和离线预览使用。
+ * 测试用数据：内容与静态样稿一致，形状与 docs/frontend-api.md 一致。
+ * 页面已接真实接口，这里只供 src/test/server.ts 模拟本地服务。
  */
 import type {
   Access,
   Correctness,
-  HomeData,
   MathType,
+  Page,
+  Paper,
   PaperResponse,
   PracticeCard,
   PracticeCounts,
   PracticeGroup,
   PracticeResponse,
   PracticesResponse,
+  Preferences,
   QuestionResponse,
   QuestionSummary,
   TasksResponse,
@@ -66,106 +68,6 @@ export const tasks: TasksResponse = {
   failed_count: 0,
 }
 tasks.active = tasks.items[0]
-
-/* ---------- 首页（契约未覆盖） ---------- */
-
-export const home: HomeData = {
-  stats: { weekly_practice_done: 8, independent_accuracy: 0.63, analyzed_papers: 3 },
-  next_step: {
-    title: '确认《2023 数学一》第 7 题的作答',
-    description:
-      '这道题的选项涂改过，做题龙看不清你最后选的是 B 还是 D。确认之后，这份试卷的练习就会自动生成。',
-    action_label: '去确认',
-    to: `/papers/${paper2023.id}/questions/7`,
-    preview_caption: '原卷第 2 页 · 第 7 题',
-  },
-  todos: {
-    review: [
-      {
-        paper_id: paper2023.id,
-        paper_title: paper2023.title,
-        question_number: '7',
-        reason: '选项涂改，看不清最后的选择',
-      },
-      {
-        paper_id: paper2023.id,
-        paper_title: paper2023.title,
-        question_number: '19',
-        reason: '红笔批改盖住了第二步作答',
-      },
-    ],
-    practice: [
-      {
-        topic: { topic_id: 'topic-equiv-sum', name: '加减运算中的等价无穷小替换' },
-        paper_title: paper2023.title,
-        question_number: '17',
-        remaining: 2,
-        practice_id: 'pr-2',
-      },
-      {
-        topic: { topic_id: 'topic-double-integral-order', name: '二重积分交换积分次序' },
-        paper_title: paper2023.title,
-        question_number: '18',
-        remaining: 2,
-        practice_id: 'pr-5',
-      },
-      {
-        topic: { topic_id: 'topic-matrix-rank', name: '矩阵的秩' },
-        paper_title: paper2026.title,
-        question_number: '6',
-        remaining: 1,
-        practice_id: 'pr-6',
-      },
-    ],
-    grading: [
-      {
-        practice_id: 'pr-4',
-        label: '二重积分交换积分次序 · 第 1 道',
-        submitted_at: new Date(Date.now() - 3 * 60_000).toISOString(),
-      },
-    ],
-    feedback: [
-      {
-        practice_id: 'pr-1',
-        label: '加减运算中的等价无穷小替换 · 第 1 道',
-        summary: '思路对，最后一步系数算错',
-        correct: false,
-      },
-      {
-        practice_id: 'pr-8',
-        label: '定积分的换元法 · 第 2 道',
-        summary: '换元后上下限处理正确',
-        correct: true,
-      },
-    ],
-  },
-  suggestions: [
-    {
-      id: 's-1',
-      kind: 'repeated_errors',
-      title: '「矩阵的秩」最近 3 次都没做对',
-      detail: '两份试卷和一道练习都在这个考点失分。建议先回看定义和常用结论，再做练习。',
-      action_label: '查看考点',
-      to: '/topics/topic-matrix-rank',
-    },
-    {
-      id: 's-2',
-      kind: 'no_practice',
-      title: '《2026 数学一》已完成逐题分析',
-      detail: '发现 4 个需要加强的考点，还没有生成对应练习。',
-      action_label: '生成练习',
-      to: `/papers/${paper2026.id}`,
-    },
-    {
-      id: 's-3',
-      kind: 'unfinished_practice',
-      title: '「二重积分交换积分次序」还有 2 道没做',
-      detail: '上周已经出错两次，趁记忆还新把剩下的做完。',
-      action_label: '去练习',
-      to: '/practice?item=pr-5',
-    },
-  ],
-}
 
 /* ---------- 试卷与题目 ---------- */
 
@@ -528,7 +430,17 @@ export const practiceDetails: PracticeResponse[] = [
   },
 ]
 
-/** 演示“查看题目”后返回的题干（真实接口由确认查看入口返回） */
-export const revealedQuestions: Record<string, string> = {
-  'pr-2': r`设 $\displaystyle\lim_{x\to0}\frac{\ln(1+x)-x+ax^{2}}{x^{2}\tan x}=b$，求常数 $a,b$ 的值，并说明理由。`,
+export const paperList: Page<Paper> = {
+  items: papers.map((item) => item.paper),
+  total: papers.length,
+  offset: 0,
+  limit: 100,
+  next_offset: null,
+}
+
+export const preferences: Preferences = {
+  study_type: 1,
+  mask_same_type: true,
+  paper_marking_convention: '黑笔为考试作答，红笔为事后批改。',
+  reserved: [],
 }

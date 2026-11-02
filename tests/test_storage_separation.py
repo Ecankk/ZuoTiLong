@@ -4,6 +4,8 @@ from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
+import os
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from app.config import AppConfig
@@ -53,6 +55,45 @@ class StorageSeparationTests(unittest.TestCase):
             self.assertEqual(conn.execute('SELECT count(*) FROM bank_questions').fetchone()[0],1)
             for table in ('papers','probe_attempts','learning_events','bank_views','learning_tasks'):
                 self.assertEqual(conn.execute('SELECT count(*) FROM '+table).fetchone()[0],0)
+
+    def test_library_override_selects_the_same_database_and_materials(self):
+        from app.services.library import LibraryService
+        from app.storage.boundaries import workspace_config, material_path
+        other=AppConfig(ROOT,self.b.data,ROOT/'dist',self.b.database,library=self.base/'override')
+        for config,identity in ((self.a,'stored'),(other,'override')):
+            db=Database(config);db.initialize()
+            LibraryService(config,db).import_text({'questions':[{'id':identity,'stem':identity}]})
+            for relative in ('bank-assets/shared.png','knowledge-sources/source/original.pdf'):
+                path=config.library_dir/relative
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_bytes(identity.encode())
+        # Keep the stale workspace marker: resolution must not depend on startup
+        # rewriting it before a resource/Agent reader gets called.
+        marker=(self.a.data/'workspace.json').read_bytes()
+        with patch.dict(os.environ,{'MATHLENS_DATA_DIR':str(self.a.data),
+                                    'MATHLENS_LIBRARY_DIR':str(other.library_dir)}):
+            config=AppConfig.from_env(ROOT)
+            scoped=workspace_config(self.a.data,ROOT)
+            self.assertEqual(config.library_database,scoped.library_database)
+            self.assertEqual(library_root(self.a.data),config.library_dir)
+            with Database(scoped).session() as conn:
+                self.assertEqual([r[0] for r in conn.execute('SELECT id FROM bank_questions')],['override'])
+            for relative in ('bank-assets/shared.png','knowledge-sources/source/original.pdf'):
+                self.assertEqual(material_path(self.a.data,relative).read_bytes(),b'override')
+            self.assertEqual(material_path(self.a.data,'papers/original.pdf'),self.a.data/'papers/original.pdf')
+        self.assertEqual((self.a.data/'workspace.json').read_bytes(),marker)
+        with patch.dict(os.environ):
+            os.environ.pop('MATHLENS_LIBRARY_DIR',None)
+            self.assertEqual(workspace_config(self.a.data).library_dir,self.a.library_dir)
+            self.assertEqual(library_root(self.a.data),self.a.library_dir)
+
+    def test_library_override_also_applies_without_a_workspace_marker(self):
+        from app.storage.boundaries import workspace_config, material_path
+        with patch.dict(os.environ,{'MATHLENS_DATA_DIR':str(self.a.data),
+                                    'MATHLENS_LIBRARY_DIR':str(self.base/'override')}):
+            config=AppConfig.from_env(ROOT)
+            self.assertEqual(workspace_config(self.a.data).library_dir,config.library_dir)
+            self.assertEqual(material_path(self.a.data,'bank-assets/q.png'),config.library_dir/'bank-assets/q.png')
 
     def test_http_import_and_reveal_do_not_create_private_library_tables(self):
         with TestClient(create_app(self.a,agent_factory=None),base_url='http://127.0.0.1') as http:

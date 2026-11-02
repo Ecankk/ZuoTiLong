@@ -5,6 +5,11 @@ import os
 import json
 
 
+def resolve_library_dir(default):
+    """Use the same library override for database and material-path readers."""
+    return Path(os.environ.get('MATHLENS_LIBRARY_DIR', default)).resolve()
+
+
 @dataclass(frozen=True)
 class AppConfig:
     root: Path
@@ -33,7 +38,7 @@ class AppConfig:
         data = Path(os.environ.get('MATHLENS_DATA_DIR', base / 'workspaces' / 'default')).resolve()
         default_library = data / 'library' if os.environ.get('MATHLENS_DATA_DIR') else base / 'library'
         location = json.loads((data/'workspace.json').read_text(encoding='utf8')) if (data/'workspace.json').is_file() else {}
-        library = Path(os.environ.get('MATHLENS_LIBRARY_DIR', location.get('library',default_library))).resolve()
+        library = resolve_library_dir(location.get('library',default_library))
         database_name = location.get('database','learning.db')
         if Path(database_name).name != database_name:
             raise ValueError('Invalid workspace database name')

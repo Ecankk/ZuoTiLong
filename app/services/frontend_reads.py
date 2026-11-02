@@ -35,6 +35,10 @@ def metadata(conn, bank_id):
     row = conn.execute('SELECT metadata_json FROM bank_resources WHERE bank_id=?', (bank_id,)).fetchone()
     value = json.loads(row[0]) if row else {}
     kind = value.get('question_type')
+    # S01's importer preserves the upstream numeric question_type as `type`.
+    # Decode that source's explicit enum, never infer it from question numbers.
+    if not kind and value.get('source_url') == 'https://github.com/lx-ruc/kaoyanshuxue' and type(value.get('type')) is int:
+        kind = {1:'选择题', 2:'填空题', 3:'解答题'}.get(value['type'])
     score = value.get('max_score', value.get('score'))
     return {'question_type': kind if isinstance(kind, str) and kind.strip() else None,
             'max_score': score if type(score) in (int, float) and math.isfinite(score) and score >= 0 else None}
@@ -265,11 +269,11 @@ class FrontendReads:
             if node is None:raise ServiceError('考点不存在', 404)
             origin = node['origin']
             cards = [c for c in self._cards(conn) if any(t['topic_id'] == canonical for t in c['topics'])]
-        links = self.rt.knowledge_links
+        counts = self.rt.knowledge_links.summary()['nodes'][canonical]
         return dict(topic=dict(id=canonical, parent_id=node['parent_id'], name=node['label'], kind=origin.get('node_kind', node['scope_level']),
                                definition=origin.get('definition', ''), conditions=origin.get('conditions', []), boundaries=origin.get('boundaries', [])),
                     performance={k: node[k] for k in ('state', 'state_reason', 'successes', 'failures', 'pending', 'attempt_count')},
-                    question_counts={v: links.links(view=v, topic_id=canonical, limit=1)['total'] for v in ('completed', 'bank')},
+                    question_counts={v: counts[v] for v in ('completed', 'bank')},
                     practice_counts=practice_counts(cards))
 
     def bank(self, math_type='', year='', topic_id=None, offset=0, limit=20):
@@ -279,12 +283,7 @@ class FrontendReads:
         if topic_id is not None:
             # The existing symmetric projection validates mappings and materials;
             # do not replace its checks with title/tag string matching.
-            allowed = set(); pos = 0
-            while True:
-                result = self.rt.knowledge_links.links(view='bank', topic_id=topic_id, offset=pos, limit=100)
-                allowed.update(s['bank_id'] for g in result['items'] for s in g['sources'])
-                if result['next_offset'] is None:break
-                pos = result['next_offset']
+            allowed = self.rt.knowledge_links.bank_ids_for_topic(topic_id)
         with self.rt.database.session() as conn:
             ids = [r[0] for r in conn.execute("""SELECT b.id FROM bank_questions b JOIN bank_identity i ON i.bank_id=b.id
                 WHERE b.source!='本地示例题库' AND (?='' OR CAST(i.math_type AS TEXT)=?) AND (?='' OR i.year=?) ORDER BY b.id""", (math_type, math_type, year, year))

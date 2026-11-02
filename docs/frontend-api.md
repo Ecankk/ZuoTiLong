@@ -19,7 +19,7 @@
 score 仅返回已核定值，未核定为 null；analysis_status 沿用保存的 import_status（needs_review/processing/diagnosed/partial_analysis 等），不是完成百分比。
 
 `QuestionSummary={id:string,paper_id:string,number:string,question_type:string|null,max_score:number|null,score_earned:number|null,correctness:'correct'|'wrong'|'partial'|'unknown',review_state:string,analysis_available:boolean,matched_bank_id:string|null}`。
-题型和 max_score 只取匹配题库的已保存 metadata（question_type、score/max_score）；优先使用当前报告的固定来源绑定，再使用唯一的 S01 年份/类别/题号出处匹配。歧义或没有字段均返回 null，不用题号规则猜题型/分值。出处定位不表示数学等价或题库标注就绪。题库缺字段不改写原报告。
+题型和 max_score 只取匹配题库的已保存 metadata（question_type、score/max_score）；S01 导入器保存的 source_url=https://github.com/lx-ruc/kaoyanshuxue 的数值 type 按源枚举 1=选择题、2=填空题、3=解答题适配，其他来源不套用此映射。优先使用当前报告的固定来源绑定，再使用唯一的 S01 年份/类别/题号出处匹配。歧义、未知编码或没有字段均返回 null，不用题号规则猜题型/分值。出处定位不表示数学等价或题库标注就绪。题库缺字段不改写原报告。
 
 | 方法/路径 | 参数 | 响应 |
 | --- | --- | --- |
@@ -88,9 +88,9 @@ Task = {
 分页只影响 items，active/counts 始终是全队列摘要，不受 status 筛选影响。排队/运行优先，其次需处理项，最后历史；同级创建时间倒序并以 ID 排序。status 参数枚举不合法返回 400。
 kind 沿用 workflow kind。进度只到试卷（如“正在分析《2023 数学一》”），不猜题号/模型完成比例；不输出会话 ID、聊天、工具日志、输入或执行令牌。error 是已保存业务错误；安装登录问题在 availability 中表达。
 
-POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。复用原 workflow_action/原任务回执和重试，不另建身份绕过未知远端执行。活动轮次、连接核对或外部占用期间不提供任务动作。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。
+POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。复用原 workflow_action/原任务回执和重试，不另建身份绕过未知远端执行。运行中的轮次、连接核对或外部占用期间不提供任务动作；已失败且仍绑定原轮次时可提供 retry，先核对原远端状态再决定是否重试。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。历史直接任务无 workflow 记录时仅在仍绑定原活动轮次的失败状态下允许重试。
 
-默认应用后台在有排队/未确认原任务时自动连接；空工作区不创建远端学习会话。先检查命令和账户，再恢复原会话并核对原 turn，之后才派发；不因连接失败换会话或重复保存。安装/登录后后台会重新检查，无需用户点击连接。未安装/未登录不消费排队任务，保存数据始终可读。显式释放/外部占用不自动抢回。
+默认应用后台在有排队/未确认原任务时自动连接；空工作区不创建远端学习会话。先检查命令和账户，再恢复原会话并核对原 turn，之后才派发；不因连接失败换会话或重复保存。首次有工作时立即检查，失败后约30秒重新检查，无需用户点击连接。空闲、尚未检查登录时 availability 为 checking；不启动空会话探测登录。未安装/未登录不消费排队任务，保存数据始终可读。显式释放/外部占用不自动抢回。
 
 ## SSE
 

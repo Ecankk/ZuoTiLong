@@ -2,6 +2,9 @@
 from fastapi import APIRouter, Depends, Request, Query
 from app.api.dependencies import runtime
 from app.api.conditional import conditional
+from app.api.schemas import RequestModel
+from typing import Literal
+from starlette.responses import StreamingResponse
 
 router = APIRouter(prefix='/api', tags=['frontend-resources'])
 
@@ -46,3 +49,23 @@ def attempts(practice_id: str, request: Request, offset: int=Query(0, ge=0), lim
 @router.get('/knowledge/topics/{topic_id}')
 def topic(topic_id: str, request: Request, rt=Depends(runtime)):
     return conditional(request, rt.frontend.topic(topic_id))
+
+
+@router.get('/tasks')
+def tasks(request: Request, status: str|None=None, offset: int=Query(0, ge=0), limit: int=Query(20, ge=1, le=100), rt=Depends(runtime)):
+    return conditional(request, rt.tasks.read(status, offset, limit))
+
+
+class TaskAction(RequestModel):
+    action: Literal['retry', 'cancel']
+
+
+@router.post('/tasks/{job_id}/action')
+def task_action(job_id: str, body: TaskAction, rt=Depends(runtime)):
+    return rt.tasks.action(job_id, body.action)
+
+
+@router.get('/events')
+async def events(request: Request, rt=Depends(runtime)):
+    return StreamingResponse(rt.events.stream(request), media_type='text/event-stream',
+                             headers={'Cache-Control':'no-store', 'X-Accel-Buffering':'no'})

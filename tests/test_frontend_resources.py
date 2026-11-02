@@ -69,6 +69,16 @@ class FrontendResourceTests(unittest.TestCase):
         self.conn.execute("UPDATE papers SET source_name='2022 数学一.pdf' WHERE id='paper-test'"); self.conn.commit()
         self.assertIsNone(self.http.get('/api/papers/paper-test/questions').json()['items'][0]['matched_bank_id'])
 
+    def test_s01_numeric_source_types_are_decoded_without_guessing_other_sources(self):
+        from app.services.frontend_reads import metadata
+        for code,label in ((1,'选择题'),(2,'填空题'),(3,'解答题'),(99,None)):
+            value={'type':code,'score':5,'source_url':'https://github.com/lx-ruc/kaoyanshuxue'}
+            self.conn.execute('UPDATE bank_resources SET metadata_json=? WHERE bank_id=?',(json.dumps(value),'bank-test'))
+            self.assertEqual(metadata(self.conn,'bank-test'),{'question_type':label,'max_score':5})
+        self.conn.execute('UPDATE bank_resources SET metadata_json=? WHERE bank_id=?',(json.dumps({'type':1,'score':5}),'bank-test'))
+        self.assertIsNone(metadata(self.conn,'bank-test')['question_type'])
+        self.conn.rollback()
+
     def test_practice_mask_reveal_submission_analysis_and_history(self):
         self.conn.execute("UPDATE bank_identity SET math_type=1,year='2023' WHERE bank_id='bank-test'")
         self.conn.execute("DELETE FROM bank_views WHERE bank_id='bank-test'"); self.conn.commit()
@@ -111,7 +121,7 @@ class FrontendResourceTests(unittest.TestCase):
 
 
 class FrozenFrontendTests(unittest.TestCase):
-    def test_new_detail_keeps_frozen_resource_urls_and_deferred_material_is_hidden(self):
+    def test_new_detail_keeps_frozen_resource_urls(self):
         from test_frozen_practice import FrozenPracticeTests
         f = FrozenPracticeTests(); f.setUp(); self.addCleanup(f.doCleanups)
         config = f.service.config
@@ -125,3 +135,35 @@ class FrozenFrontendTests(unittest.TestCase):
         url = value['question'].get('question_image')
         if url:self.assertIn('probe_id='+f.probe_id, url)
         else:self.assertIn('question_text', value['question'])
+
+    def test_deferred_detail_keeps_attempts_and_withholds_current_bank_material(self):
+        from test_deferred_practice import DeferredPracticeTests
+        f=DeferredPracticeTests();f.setUp();self.addCleanup(f.doCleanups)
+        f.remove_proof();f.save_without_unsafe_old_exercise()
+        app=create_app(AppConfig(server.ROOT,server.DATA,server.DIST,server.DB_PATH),agent_factory=None)
+        self.addCleanup(app.state.runtime.close)
+        http=TestClient(app,base_url='http://127.0.0.1');self.addCleanup(http.close)
+        value=http.get('/api/practices/'+f.pid).json()
+        self.assertEqual(value['practice']['status'],'inactive')
+        self.assertIsNone(value['question']);self.assertEqual(value['actions'],[])
+        self.assertTrue(value['review_reason'])
+        self.assertEqual(value['latest_attempt']['response'],f.base.original['response'])
+        self.assertEqual(http.get('/api/practices/'+f.pid+'/attempts').json()['total'],1)
+
+    def test_topic_detail_and_bank_topic_pagination_use_verified_links(self):
+        from test_question_annotations import QuestionPreparationTests
+        f=QuestionPreparationTests();f.setUp();self.addCleanup(f.tearDown)
+        ids=f.save_annotation()
+        app=create_app(f.f.config,agent_factory=None)
+        self.addCleanup(app.state.runtime.close)
+        http=TestClient(app,base_url='http://127.0.0.1');self.addCleanup(http.close)
+        result=http.get('/api/bank?topic_id=GS-04-001&limit=1')
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()['total'],len(ids))
+        self.assertEqual(len(result.json()['items']),1)
+        value=http.get('/api/knowledge/topics/GS-04-001')
+        self.assertEqual(value.status_code,200,value.text)
+        self.assertEqual(value.json()['topic']['id'],'GS-04-001')
+        self.assertTrue(value.json()['topic']['definition'])
+        self.assertEqual(value.json()['question_counts']['bank'],1)  # aliases grouped
+        self.assertEqual(http.get('/api/bank?topic_id=missing&limit=1').status_code,400)

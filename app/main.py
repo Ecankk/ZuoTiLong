@@ -30,8 +30,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        runtime.start()
         try:
+            runtime.start()
             yield
         finally:
             runtime.close()

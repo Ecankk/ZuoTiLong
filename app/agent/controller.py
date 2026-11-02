@@ -45,8 +45,11 @@ class AgentController:
     def summarize(self,paper_id,confirmed):
         if confirmed is not True:raise ValueError('重新总结会生成新的当前报告版本，需要二次确认')
         bridge=self.runtime.bridge
-        if not bridge or not bridge.connected:raise ValueError('请先连接 Codex，再重新总结本卷')
+        if not bridge:raise ValueError('学习助手尚未初始化')
         with self.runtime.database.session() as conn:
             if not conn.execute('SELECT id FROM agent_reports WHERE paper_id=?',(paper_id,)).fetchone():raise ValueError('请先完成逐题分析，再聚合总结本卷')
-        bridge.submit_task('summarize_paper',paper_id,str(uuid.uuid4()))
+        if bridge.connected and not bridge.auto_connect:
+            bridge.submit_task('summarize_paper',paper_id,str(uuid.uuid4()))
+        else:
+            bridge.queue_task('summarize_paper',paper_id,str(uuid.uuid4()))
         return {'paper_id':paper_id,'agent_submitted':True}

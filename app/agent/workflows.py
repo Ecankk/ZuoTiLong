@@ -1,7 +1,7 @@
 """Durable application stage scheduling, separate from Codex transport."""
 import json,uuid
 from contextlib import closing
-from app.agent.errors import BridgeConflict
+from app.agent.errors import BridgeConflict, SessionControlConflict
 
 class WorkflowCoordinator:
     def __init__(self,bridge):self.bridge=bridge
@@ -20,6 +20,7 @@ class WorkflowCoordinator:
             if self.bridge.closing:
                 return
             try:
+                self.bridge.ensure_connection()
                 self.bridge._drain_workflows()
             except Exception as exc:
                 # Keep the durable job for recovery. Do not start a second

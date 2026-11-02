@@ -10,7 +10,7 @@ class LocalBoundary:
         if scope['type']!='http':return await self.app(scope,receive,send)
         path=scope.get('path','');headers=dict(scope.get('headers',[]));api=path.startswith('/api/')
         host=headers.get(b'host',b'').decode();origin=headers.get(b'origin',b'').decode()
-        if api and (urlparse('http://'+host).hostname not in ('127.0.0.1','localhost','::1') or scope['method'] not in ('GET','HEAD','OPTIONS') and origin and origin!='http://'+host):
+        if api and (urlparse('http://'+host).hostname not in ('127.0.0.1','localhost','::1') or (scope['method'] not in ('GET','HEAD','OPTIONS') or path=='/api/events') and origin and origin!='http://'+host):
             return await JSONResponse({'error':'只接受本地网页的同源请求'},status_code=403)(scope,receive,send)
         limit=80*1024*1024 if path=='/api/papers/import' else 33*1024*1024 if path=='/api/answer-images' else 16*1024*1024 if path in ('/api/knowledge/packages/preview','/api/knowledge/packages/import','/api/knowledge/question-index/preview','/api/knowledge/question-index/import') else 100000 if path.startswith('/api/agent/') else 1024*1024
         try:length=int(headers.get(b'content-length',b'0'))

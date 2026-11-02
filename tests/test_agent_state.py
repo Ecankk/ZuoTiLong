@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import unittest
 import uuid
+from unittest.mock import patch
 from contextlib import closing
 
 from fastapi.testclient import TestClient
@@ -56,7 +57,8 @@ class PublicAgentStateTests(unittest.TestCase):
         self.fixture.conn.commit()
     def tearDown(self):self.fixture.tearDown()
 
-    def test_clean_disconnected_state_tracks_external_preparation_changes_without_connecting(self):
+    @patch('app.agent.bridge.CodexBridge.ensure_connection', return_value=None)
+    def test_clean_disconnected_state_tracks_external_preparation_changes_without_connecting(self, _connection):
         f=self.fixture
         with TestClient(create_app(f.config),base_url='http://127.0.0.1') as http:
             first=http.get('/api/agent/state').json()

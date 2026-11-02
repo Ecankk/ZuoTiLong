@@ -10,7 +10,7 @@
 | 画像和证据 | test_evidence_profile.py、test_evidence_stability.py、test_mapping_versions.py |
 | 会话与阶段 | test_codex_bridge.py、test_task_bridge.py、test_study_workflows.py、test_agent_state.py |
 | 图片、PDF和维护 | test_answer_images.py、test_paper_*.py、test_local_restore.py及迁移测试 |
-| 前端纯逻辑 | *.test.mjs，通过npm --prefix web test运行 |
+| 前端 | 在web/src内与代码同目录的*.test.ts(x)，通过npm --prefix web test（Vitest）运行 |
 
 例如只验证考点与题目的关联：
 

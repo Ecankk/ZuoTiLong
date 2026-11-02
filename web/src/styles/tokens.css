@@ -1,0 +1,118 @@
+/*
+ * 做题龙设计变量。数值来源：docs/frontend-design.md（已由静态样稿确认）。
+ * 组件样式只引用这些变量，不写裸色值；主题切换通过 <html data-theme> 覆盖。
+ */
+:root,
+[data-theme='light'] {
+  /* 主色与品牌 */
+  --color-primary: #2b4c9b;
+  --color-primary-hover: #24407f;
+  --color-primary-soft: rgba(43, 76, 155, 0.1);
+  --color-primary-faint: rgba(43, 76, 155, 0.05);
+  --brand-flame: #f26b2a;
+  --brand-gold: #f6c453;
+
+  /* 侧栏渐变（方案 D）：左上光晕 + 右下回暖 + 底色 */
+  --sidebar-gradient:
+    radial-gradient(110% 42% at 0% 0%, rgba(246, 196, 83, 0.3), transparent 70%),
+    radial-gradient(90% 30% at 100% 100%, rgba(242, 107, 42, 0.08), transparent 70%),
+    linear-gradient(176deg, #fff6e6 0%, #ffe9d4 50%, #fdf0d0 100%);
+  --sidebar-border: rgba(160, 110, 40, 0.1);
+  --sidebar-divider: rgba(160, 110, 40, 0.12);
+  --sidebar-hover: rgba(255, 255, 255, 0.45);
+
+  /* 表面 */
+  --surface-app: #ffffff;
+  --surface-card: #ffffff;
+  --surface-sunken: #f6f7f9;
+  --surface-placeholder: #eceef2;
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-bg-hover: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-blur: saturate(150%) blur(12px);
+  --overlay-scrim: rgba(28, 35, 51, 0.28);
+
+  /* 文字四档 */
+  --text-strong: #1c2333;
+  --text-regular: #3a4255;
+  --text-muted: #6b7385;
+  --text-faint: #9aa1b0;
+  --text-on-primary: #ffffff;
+
+  /* 结果状态（只表示结果；进行中统一用主色） */
+  --status-correct: #1f9d7a;
+  --status-correct-soft: #e3f5ef;
+  --status-wrong: #d64561;
+  --status-wrong-soft: #fbe7eb;
+  --status-partial: #d9901a;
+  --status-partial-soft: #fbf0dc;
+  --status-unknown: #8a90a0;
+  --status-unknown-soft: #eef0f4;
+
+  /* 描边与滚动条 */
+  --border-subtle: rgba(28, 35, 51, 0.06);
+  --border-default: rgba(28, 35, 51, 0.1);
+  --border-strong: rgba(28, 35, 51, 0.18);
+  --scrollbar-thumb: rgba(28, 35, 51, 0.18);
+  --scrollbar-thumb-hover: rgba(28, 35, 51, 0.34);
+
+  /* 字体与字号 */
+  --font-sans: Inter, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+  --font-size-xs: 13px;
+  --font-size-sm: 14px;
+  --font-size-ui: 15px;
+  --font-size-read: 16px;
+  --font-size-h3: 16px;
+  --font-size-h2: 20px;
+  --font-size-h1: 24px;
+  --line-height-ui: 1.55;
+  --line-height-read: 1.8;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* 圆角 */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* 间距（4px 网格） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* 阴影：内高光 + 近影 + 柔影 */
+  --shadow-card:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(28, 35, 51, 0.05),
+    0 8px 24px rgba(28, 35, 51, 0.06);
+  --shadow-raised:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 2px 4px rgba(28, 35, 51, 0.06),
+    0 14px 32px rgba(28, 35, 51, 0.1);
+  --shadow-pill:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+    0 1px 2px rgba(110, 70, 20, 0.08), 0 6px 16px rgba(110, 70, 20, 0.07);
+  --shadow-button: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(43, 76, 155, 0.25);
+  --focus-ring: 0 0 0 3px rgba(43, 76, 155, 0.22);
+
+  /* 动效 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 240ms;
+
+  /* 布局 */
+  --sidebar-width: 224px;
+  --read-max: 760px;
+  --page-pad: clamp(32px, 2.6vw, 64px);
+  --window-min-width: 1280px;
+}

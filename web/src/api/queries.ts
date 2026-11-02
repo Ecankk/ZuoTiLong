@@ -1,36 +1,46 @@
 import { useQuery } from '@tanstack/react-query'
-import { endpoints } from './endpoints'
+import { endpoints, type PracticeGrouping } from './endpoints'
 
-/** 第一段与服务端推送的 resource 对应，便于按资源整体失效。 */
+/**
+ * query key 第一段对应 SSE resources.changed 的资源名（papers/questions/practices/...），
+ * 收到变更时按第一段整体失效。
+ */
 export const queryKeys = {
-  background: ['background'] as const,
+  tasks: ['tasks'] as const,
   home: ['home'] as const,
   paper: (paperId: string) => ['papers', paperId] as const,
-  analysis: (paperId: string, number: string) => ['papers', paperId, 'questions', number] as const,
-  practiceOverview: ['practice'] as const,
-  practiceDetail: (practiceId: string) => ['practice', practiceId] as const,
+  paperQuestions: (paperId: string) => ['questions', 'paper', paperId] as const,
+  question: (questionId: string) => ['questions', questionId] as const,
+  practices: (groupBy: PracticeGrouping) => ['practices', 'list', groupBy] as const,
+  practice: (practiceId: string) => ['practices', practiceId] as const,
 }
 
-export const useBackgroundStatus = () =>
-  useQuery({ queryKey: queryKeys.background, queryFn: endpoints.background })
+export const useTasks = () => useQuery({ queryKey: queryKeys.tasks, queryFn: endpoints.tasks })
 
 export const useHome = () => useQuery({ queryKey: queryKeys.home, queryFn: endpoints.home })
 
 export const usePaper = (paperId: string) =>
   useQuery({ queryKey: queryKeys.paper(paperId), queryFn: () => endpoints.paper(paperId) })
 
-export const useAnalysis = (paperId: string, number: string) =>
+export const usePaperQuestions = (paperId: string) =>
   useQuery({
-    queryKey: queryKeys.analysis(paperId, number),
-    queryFn: () => endpoints.analysis(paperId, number),
+    queryKey: queryKeys.paperQuestions(paperId),
+    queryFn: () => endpoints.paperQuestions(paperId),
   })
 
-export const usePracticeOverview = () =>
-  useQuery({ queryKey: queryKeys.practiceOverview, queryFn: endpoints.practiceOverview })
-
-export const usePracticeDetail = (practiceId: string) =>
+export const useQuestion = (questionId: string | undefined) =>
   useQuery({
-    queryKey: queryKeys.practiceDetail(practiceId),
-    queryFn: () => endpoints.practiceDetail(practiceId),
+    queryKey: queryKeys.question(questionId ?? ''),
+    queryFn: () => endpoints.question(questionId ?? ''),
+    enabled: Boolean(questionId),
+  })
+
+export const usePractices = (groupBy: PracticeGrouping) =>
+  useQuery({ queryKey: queryKeys.practices(groupBy), queryFn: () => endpoints.practices(groupBy) })
+
+export const usePractice = (practiceId: string | undefined) =>
+  useQuery({
+    queryKey: queryKeys.practice(practiceId ?? ''),
+    queryFn: () => endpoints.practice(practiceId ?? ''),
     enabled: Boolean(practiceId),
   })

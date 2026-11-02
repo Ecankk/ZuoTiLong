@@ -8,6 +8,7 @@
 | 首次配置、资料准备与配置Agent执行步骤 | [配置教程](setup.md) | 第二套安装命令、学习任务字段 |
 | 项目提供的纯净资料、版本与第三方许可 | [通用资料](../resources/shared/README.md)、[第三方声明](../THIRD_PARTY_NOTICES.md) | 个人数据、原题正文 |
 | 产品应如何工作 | [产品流程](paper-review-workflow.md) | 发布状态、开发待办 |
+| 前端信息架构、术语与视觉规范 | [前端设计](frontend-design.md) | 接口字段、产品规则 |
 | Agent实际工具与交付契约 | [Agent协议](agent-workflow.md) | 全部产品规则、开发验收 |
 | 项目框架、前后端/Agent通信与后端职责 | [项目架构](backend-architecture.md) | 第二份路线图、发布流程 |
 | 题源状态与接入 | [题源目录](question-sources.md)、[题源接口](bank-source-interface.md) | 主线任务与全局版本流水 |

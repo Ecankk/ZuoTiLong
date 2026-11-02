@@ -1,10 +1,13 @@
-from fastapi import APIRouter,Depends,Body,Query
+from fastapi import APIRouter,Depends,Body,Query,Request
+from app.api.conditional import conditional
 from app.api.dependencies import runtime
 from app.api.schemas import Reveal,BankNavigationCorrection,BankIdentityPreview,BankIdentityReview
 from app.api.responses import resource_response
 router=APIRouter(prefix='/api/bank',tags=['library'])
 @router.get('')
-def browse(math_type:str='',year:str='',rt=Depends(runtime)):return rt.library.browse(math_type,year)
+def browse(request:Request,math_type:str='',year:str='',topic_id:str|None=None,offset:int|None=Query(None,ge=0),limit:int|None=Query(None,ge=1,le=100),rt=Depends(runtime)):
+    if offset is None and limit is None and topic_id is None:return rt.library.browse(math_type,year)
+    return conditional(request,rt.frontend.bank(math_type,year,topic_id,offset or 0,limit or 20))
 @router.get('/search')
 def search(topic_id:list[str]=Query(...),stage:list[str]|None=Query(None),method:list[str]|None=Query(None),
            offset:int=0,limit:int=30,include_history:bool=False,rt=Depends(runtime)):

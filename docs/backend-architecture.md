@@ -47,7 +47,7 @@ flowchart LR
 
 正常使用时，Vite将前端构建到dist，FastAPI在同一地址提供页面、`/api/*`及图片/PDF资源。浏览器通过fetch发送JSON，上传PDF/照片使用multipart；不连接SQLite或直接启动Codex。开发模式由Vite提供页面，其`/api`代理读取本地服务的实际地址，配置见web/vite.config.ts。
 
-当前同步使用HTTP轮询：工作区约每3秒读取bootstrap，Agent约每1秒读取state，识别进度约每1.2秒读取preparation；任务完成后重新读取保存结果。尚无WebSocket/SSE，加载优化是独立后续事项。
+当前同步使用HTTP轮询：工作区约每3秒读取bootstrap，Agent约每1秒读取state，识别进度约每1.2秒读取preparation；任务完成后重新读取保存结果。bootstrap结果按个人库、通用库各自的`PRAGMA data_version`缓存（app/services/workspace.py，常驻只读观察连接），任一库有提交即重建，构建期间发生提交则不缓存；测量入口为scripts/benchmark_bootstrap.py，阶段耗时汇总为scripts/stage_timings.py。新前端将改为按资源读取和SSE推送，接口见前端重构计划。
 
 Agent参与过程：
 

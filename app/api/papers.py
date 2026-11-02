@@ -1,4 +1,5 @@
-from fastapi import APIRouter,Depends,UploadFile,File,Form,Body
+from fastapi import APIRouter,Depends,UploadFile,File,Form,Body,Request,Query
+from app.api.conditional import conditional
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from app.api.dependencies import runtime
@@ -6,7 +7,9 @@ from app.api.schemas import Confirmation,Score,PaperDraft,Numbers,QuestionReview
 from app.api.responses import resource_response
 router=APIRouter(prefix='/api',tags=['papers'])
 @router.get('/papers')
-def papers(archived:str='0',rt=Depends(runtime)):return rt.workspace.papers(archived)
+def papers(request:Request,archived:str='0',offset:int|None=Query(None,ge=0),limit:int|None=Query(None,ge=1,le=100),rt=Depends(runtime)):
+    if offset is None and limit is None:return rt.workspace.papers(archived)
+    return conditional(request,rt.frontend.papers(archived,offset or 0,limit or 20))
 @router.post('/papers',status_code=201)
 def create_paper(body:PaperDraft,rt=Depends(runtime)):return rt.mutate(rt.papers.create,body.model_dump())
 @router.post('/papers/import')

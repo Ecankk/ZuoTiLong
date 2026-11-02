@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+from app.config import resolve_library_dir
 
 LIBRARY_TABLES = frozenset('''
 bank_questions bank_resources bank_identity bank_links bank_identity_reviews
@@ -56,13 +57,14 @@ def workspace_config(data, root=None):
         if Path(value['database']).name != value['database']:
             raise ValueError('Invalid workspace database name')
         return AppConfig(Path(root or Path(__file__).resolve().parents[2]), data,
-                         Path(root or '.') / 'dist', data/value['database'], library=Path(value['library']))
-    return AppConfig(Path(root or '.'), data, Path(root or '.') / 'dist', data / 'mathlens.db')
+                         Path(root or '.') / 'dist', data/value['database'], library=resolve_library_dir(data,value['library']))
+    return AppConfig(Path(root or '.'), data, Path(root or '.') / 'dist', data / 'mathlens.db',
+                     library=resolve_library_dir(data,data/'library'))
 
 
 def library_root(data):
     marker = Path(data) / 'workspace.json'
-    return Path(json.loads(marker.read_text(encoding='utf8'))['library']) if marker.exists() else Path(data)
+    return resolve_library_dir(data,json.loads(marker.read_text(encoding='utf8'))['library'] if marker.exists() else data)
 
 
 def material_path(data, relative):

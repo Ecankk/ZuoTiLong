@@ -86,6 +86,10 @@ class PaperManagementTests(unittest.TestCase):
         bridge=Mock(connected=True)
         import threading
         bridge.lock=threading.RLock()
+        bridge.state={}
+        bridge.connecting=False
+        bridge.auto_connect=False
+        bridge.availability.return_value={'status':'available','reason':None,'message':'available'}
         bridge.assert_user_write_allowed=Mock()
         with patch.object(PaperService,'analyze') as analyze,client(bridge) as http:
             response=http.post('/api/papers/paper-test/resummarize',json={'confirmed':True})

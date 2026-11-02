@@ -95,6 +95,51 @@ class StorageSeparationTests(unittest.TestCase):
             self.assertEqual(workspace_config(self.a.data).library_dir,config.library_dir)
             self.assertEqual(material_path(self.a.data,'bank-assets/q.png'),config.library_dir/'bank-assets/q.png')
 
+    def test_library_override_does_not_follow_other_workspaces_or_restores(self):
+        from app.services.library import LibraryService
+        from app.storage.boundaries import workspace_config, material_path
+        from app.storage.maintenance import backup, restore
+        selected=self.base/'selected';selected.mkdir()
+        decoy=self.base/'decoy';decoy.mkdir()
+        with patch.dict(os.environ,{'MATHLENS_DATA_DIR':str(selected),
+                                    'MATHLENS_LIBRARY_DIR':str(decoy)}):
+            # A marked workspace keeps its recorded library, even though this
+            # process was launched for a different workspace.
+            Database(self.a).initialize()
+            scoped=workspace_config(self.a.data)
+            self.assertEqual(scoped.library_dir,self.a.library_dir)
+            self.assertEqual(library_root(self.a.data),self.a.library_dir)
+            LibraryService(scoped,Database(scoped)).import_text({'questions':[{'id':'local','stem':'local'}]})
+            path=material_path(self.a.data,'bank-assets/local.png')
+            path.parent.mkdir(parents=True);path.write_bytes(b'local')
+            archive=backup(self.a.data,ROOT)['path']
+            target=self.base/'restored'
+            restore(archive,target)
+            restored=workspace_config(target)
+            self.assertNotEqual(restored.library_dir,scoped.library_dir)
+            self.assertEqual(library_root(target),restored.library_dir)
+            self.assertEqual(material_path(target,'bank-assets/local.png').read_bytes(),b'local')
+            with Database(restored).session() as conn:
+                self.assertEqual(conn.execute('SELECT id FROM bank_questions').fetchone()[0],'local')
+            # Unmarked/new directories must not pick up the other workspace's
+            # override either; legacy material fallback remains local.
+            self.assertEqual(workspace_config(self.b.data).library_dir,self.b.data/'library')
+            self.assertEqual(library_root(self.b.data),self.b.data)
+            self.assertEqual(list(selected.iterdir()),[])
+            self.assertEqual(list(decoy.iterdir()),[])
+
+    def test_library_override_requires_an_explicit_matching_data_directory(self):
+        from app.storage.boundaries import workspace_config
+        Database(self.a).initialize()
+        with patch.dict(os.environ,{'MATHLENS_LIBRARY_DIR':str(self.base/'decoy')}):
+            os.environ.pop('MATHLENS_DATA_DIR',None)
+            self.assertEqual(workspace_config(self.a.data).library_dir,self.a.library_dir)
+            self.assertEqual(library_root(self.a.data),self.a.library_dir)
+        with patch.dict(os.environ,{'MATHLENS_DATA_DIR':str(self.a.data/'..'/'a'),
+                                    'MATHLENS_LIBRARY_DIR':str(self.base/'override')}):
+            self.assertEqual(workspace_config(self.a.data).library_dir,self.base/'override')
+            self.assertEqual(library_root(self.a.data),self.base/'override')
+
     def test_http_import_and_reveal_do_not_create_private_library_tables(self):
         with TestClient(create_app(self.a,agent_factory=None),base_url='http://127.0.0.1') as http:
             response=http.post('/api/bank/import',json={'questions':[{'id':'shared','stem':'a question','answer':'1'}]})

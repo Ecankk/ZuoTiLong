@@ -57,14 +57,14 @@ def workspace_config(data, root=None):
         if Path(value['database']).name != value['database']:
             raise ValueError('Invalid workspace database name')
         return AppConfig(Path(root or Path(__file__).resolve().parents[2]), data,
-                         Path(root or '.') / 'dist', data/value['database'], library=resolve_library_dir(value['library']))
+                         Path(root or '.') / 'dist', data/value['database'], library=resolve_library_dir(data,value['library']))
     return AppConfig(Path(root or '.'), data, Path(root or '.') / 'dist', data / 'mathlens.db',
-                     library=resolve_library_dir(data/'library'))
+                     library=resolve_library_dir(data,data/'library'))
 
 
 def library_root(data):
     marker = Path(data) / 'workspace.json'
-    return resolve_library_dir(json.loads(marker.read_text(encoding='utf8'))['library'] if marker.exists() else data)
+    return resolve_library_dir(data,json.loads(marker.read_text(encoding='utf8'))['library'] if marker.exists() else data)
 
 
 def material_path(data, relative):

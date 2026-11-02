@@ -80,6 +80,10 @@ class WorkspaceService:
                 self._revision=None
             return deepcopy(value)
 
+    def revision(self):
+        with self._lock:
+            return self._data_revision()
+
     def _build_bootstrap(self):
         with self.database.session() as conn:
             papers=rows(conn,'SELECT * FROM papers ORDER BY COALESCE(exam_date,created_at) DESC,created_at DESC')

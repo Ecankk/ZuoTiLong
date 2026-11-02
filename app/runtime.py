@@ -16,6 +16,7 @@ from app.services.practice import PracticeService
 from app.services.question_index import QuestionIndexService
 from app.services.resources import ResourceService
 from app.services.workspace import WorkspaceService
+from app.services.frontend_reads import FrontendReads
 from app.storage.database import Database
 
 
@@ -39,6 +40,7 @@ class AppRuntime:
         self.knowledge_catalog = KnowledgeCatalogService(config, self.database)
         self.question_index = QuestionIndexService(config, self.database)
         self.agent = AgentController(self)
+        self.frontend = FrontendReads(self)
 
     def start(self) -> None:
         self.database.initialize()

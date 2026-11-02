@@ -24,6 +24,8 @@ class LocalBoundary:
             return message
         async def private_send(message):
             if api and message['type']=='http.response.start':
-                message={**message,'headers':list(message.get('headers',[]))+[(b'cache-control',b'no-store'),(b'x-content-type-options',b'nosniff')]}
+                outgoing=list(message.get('headers',[]))
+                if not any(k.lower()==b'cache-control' for k,v in outgoing):outgoing.append((b'cache-control',b'no-store'))
+                message={**message,'headers':outgoing+[(b'x-content-type-options',b'nosniff')]}
             await send(message)
         await self.app(scope,bounded_receive,private_send)

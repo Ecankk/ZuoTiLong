@@ -2,7 +2,7 @@
 import hashlib
 import json
 from app.bank import annotations
-from app.bank.access import access
+from app.bank.access import access, policy_group
 from app.learning.plans import practice_state
 from app.knowledge import catalog
 
@@ -49,7 +49,7 @@ def _recall(conn,data,topic_ids,stages,methods,offset,limit,include_history,inte
         if allowed_annotations is not None and match['id'] not in allowed_annotations:
             omitted['not_in_task_snapshot']=omitted.get('not_in_task_snapshot',0)+1
             continue
-        related=set(match['alternate_bank_ids'])
+        related=policy_group(conn,match['bank_id'])
         history=_history(conn,related,plans)
         state=access(conn,match['bank_id'])
         metadata={'id':match['bank_id'],'entity_id':match['entity_id'],'math_type':state['math_type'],

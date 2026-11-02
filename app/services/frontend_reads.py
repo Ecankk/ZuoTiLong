@@ -1,11 +1,11 @@
 """Saved resource projections for the routed UI; no learning writes or Agent calls."""
 from copy import deepcopy
 import json
-import math
 from threading import Lock
 
 from app.bank.access import public_bank, access
 from app.bank.paper_candidates import location
+from app.bank.exam_identity import metadata, select as select_exam
 from app.common import rows, json_load
 from app.errors import ServiceError
 from app.knowledge import index, catalog
@@ -29,19 +29,6 @@ def practice_counts(items):
     for item in unique:
         counts[item['status']] += 1
     return dict(counts, total=sum(counts.values()))
-
-
-def metadata(conn, bank_id):
-    row = conn.execute('SELECT metadata_json FROM bank_resources WHERE bank_id=?', (bank_id,)).fetchone()
-    value = json.loads(row[0]) if row else {}
-    kind = value.get('question_type')
-    # S01's importer preserves the upstream numeric question_type as `type`.
-    # Decode that source's explicit enum, never infer it from question numbers.
-    if not kind and value.get('source_url') == 'https://github.com/lx-ruc/kaoyanshuxue' and type(value.get('type')) is int:
-        kind = {1:'选择题', 2:'填空题', 3:'解答题'}.get(value['type'])
-    score = value.get('max_score', value.get('score'))
-    return {'question_type': kind if isinstance(kind, str) and kind.strip() else None,
-            'max_score': score if type(score) in (int, float) and math.isfinite(score) and score >= 0 else None}
 
 
 def attempt(row):
@@ -123,6 +110,7 @@ class FrontendReads:
 
     def _question_card(self, conn, q, paper):
         bid = None
+        selected = None
         binding = conn.execute('''SELECT b.bank_id FROM paper_question_bindings b
             JOIN question_diagnoses d ON d.question_id=b.question_id AND d.report_id=b.report_id
             WHERE b.question_id=?''', (q['id'],)).fetchone()
@@ -131,12 +119,10 @@ class FrontendReads:
         else:
             source = location(paper)
             if source['status'] == 'located' and source['math_type'] and str(q['number']).isdigit():
-                candidates = list(conn.execute('''SELECT i.bank_id FROM bank_identity i JOIN bank_resources r ON r.bank_id=i.bank_id
-                    WHERE i.year=? AND i.math_type=? AND i.number=?''', (source['year'], source['math_type'], int(q['number']))))
-                if len(candidates) == 1:
-                    bid = candidates[0][0]
+                selected = select_exam(conn, source['year'], source['math_type'], int(q['number']))
+                bid = selected['matched_bank_id']
         value = {k: q[k] for k in ('id', 'paper_id', 'number', 'score_earned', 'correctness')}
-        value.update(metadata(conn, bid), matched_bank_id=bid, review_state=q['review_status'],
+        value.update(selected or dict(metadata(conn, bid), matched_bank_id=bid), review_state=q['review_status'],
                      analysis_available=bool(conn.execute('SELECT 1 FROM question_diagnoses WHERE question_id=?', (q['id'],)).fetchone()))
         return value
 

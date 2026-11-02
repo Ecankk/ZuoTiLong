@@ -44,6 +44,8 @@ Resource 为 `{text:string,sha256:SHA256,images:[{path:string,sha256:SHA256,medi
 
 canonical JSON：UTF-8，sort_keys=true，ensure_ascii=false，分隔符 `,`/`:`，禁止 NaN/Infinity。具体机器约束由 app/bank 下版本化 schema 维护，接口和适配器共用校验。
 
+当前支持 PNG/JPEG/WebP。每个角色的多张原图均校验并按内容散列保存；为兼容单图片读取/练习快照接口，另存按顺序纵向拼接的显示衍生图，不替换原件。文本与图可并存，客户端应组合 `question_text`/`question_image`；纯文本不生成图片。来源原始记录和历史版本独立保留，显示规范化不改变出处。
+
 ### 适配器与覆盖文件
 
 适配器放在 `scripts/bank_source_adapters/`，只读取指定上游文件并转换为标准记录。固定来源版本和输入文件 SHA256 一并输出；上游结构异常须失败，不能静默丢题。适配器可按来源文字提取考试身份，但不得按通用题号区间猜题型、分值，也不得按已知正确答案补题干。
@@ -55,6 +57,8 @@ python scripts/adapt_bank_source.py --adapter cxy-daguan --root <来源根目录
 ```
 
 首个范围是固定 7e79423253454dfb32246b6a84c7d6fd6efaa5b8 的 cxy-daguan 中 2026 数一候选。22 条明确题号与未标题号的重复候选都保留为导出记录；无法确定身份的记录保留 null，不能猜配。其他来源复用相同命令与标准，只新增适配器。
+
+适配器模块通过目录发现（文件名下划线对应命令中的连字符），实现 `adapt(root, *, year=None, math_type=None)`，返回标准记录列表；不适用的筛选须明确拒绝，不得静默换范围。当前 cxy 适配器仅接受本批已检查的 2026 数一范围，模拟卷标签不作为原考试身份。覆盖文件为 `scripts/bank_source_adapters/cxy_daguan_2026_math1.overrides.json`；题型/分值依据原卷印刷部分，3 条未编号候选明确排除待核。
 
 人工补正使用 `mathlens.bank-overrides/v1` JSON 文件，跟适配器版本管理，只有元数据，不含正文：
 
@@ -75,7 +79,9 @@ python scripts/agent_tasks.py import-source --source S02 --input <records.jsonl>
 python scripts/agent_tasks.py import-source --source S02 --input <records.jsonl> --overrides <overrides.json> --asset-root <来源根目录> --confirm <plan_sha256>
 ```
 
-没有 --confirm 时只预演；--dry-run 不初始化工作区、不创建数据库、不复制图片、不写学习记录。所有记录、覆盖、文本/图片及原始记录散列先校验。提供 --confirm 后重读并校验；确认摘要须与当前输入、覆盖、相关库记录和身份重叠一致，否则拒绝并重新输出预演，不沿用旧确认。写入只涉及通用库，已有工作区的标注、阅读笔记、作答、曝光不删除。
+操作前备份目标库，并在该进程显式设置 `MATHLENS_DATA_DIR`（目标工作区）与 `MATHLENS_LIBRARY_DIR`（目标通用库）；开发实跑只指向 TEMP 副本。转换器默认不覆盖已有 JSONL。导入命令可用 `--report <私有路径/report.json>` 另存报告；确认须使用本次预演给出的完整摘要，库有变化即重新预演。入口只初始化/写入通用库，不迁移个人工作区。正式主库导入及待标注 ID 的交接由标注会话在备份后执行。
+
+没有 --confirm 时只预演；--dry-run 不初始化工作区、不创建数据库、不复制图片、不写学习记录。所有记录、覆盖、文本/图片及原始记录散列先校验。提供 --confirm 后重读并校验；确认摘要须与当前输入、覆盖、相关库记录和身份重叠一致，否则拒绝，须重新预演，不沿用旧确认。写入只涉及通用库，已有工作区的标注、阅读笔记、作答、曝光不删除。
 
 预演报告为 JSON：`plan_sha256`、`source_id`、`revision`、`added/updated/unchanged` 的稳定 bank_id 列表、`missing_fields`、`identity_conflicts`、`duplicate_candidates`、`excluded`、`overrides_applied`、`needs_annotation`。散列/schema/路径错误导致整体拒绝。写入报告另有 `applied`；报告保留在临时/私有目录，不把正文写进控制台报告或版本库。
 
@@ -88,6 +94,8 @@ bank_id 由 source_id 和 source_uid 的 SHA256 稳定生成，不含 revision�
 同身份跨来源重叠、同批同身份多 UID、题干+选项相同的多记录均列为冲突/重复候选，不自动覆盖、删题、写 bank_links 或复用标注。明确确认预演允许保存这些候选，但不会把它们标成 ready。部分身份（例如有年份/类别却无题号）只作为候选，不进入完整考试身份匹配。
 
 预留、同类别遮挡、已看题/解析和作答暴露按完整考试身份保守联动，即使另一来源后来才导入也不能绕过。保护联动不等于数学 aliases：通用标注的同题/参考核验仍沿原确认流程，不能因身份文字相同合并结论。
+
+`read_bank` 支持纯文本/LaTeX，返回 `text` 或按角色的 `resources`，内部读取不产生学生曝光。练习读取返回 `question_text`，保留遮挡、作答后查看解析和固定旧材料规则。题库列表不内联答案/解析；纯文本角色使用既有 `GET /api/bank/{id}/{question|analysis|answer}`（可用 `view=library` 自主浏览），返回 `application/json` 的 `{bank_id,role,text,sha256}`，实际公开读取沿原路径登记看题/解析曝光。图片角色维持图片响应；文本/图片响应均不绕过练习快照。旧练习界面的纯文本 fallback 已存在；旧题库界面可显示 `stem`，其解析区仅支持图片，后续新前端需读取上述文本角色接口。
 
 ### S01 兼容边界
 

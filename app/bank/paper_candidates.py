@@ -57,13 +57,16 @@ def locate(conn, paper, *, selected_number=None):
     params = [source['year'], *numbers]
     query = '''SELECT i.bank_id,i.math_type,i.year,i.number FROM bank_identity i
         JOIN bank_questions b ON b.id=i.bank_id JOIN bank_resources r ON r.bank_id=b.id
-        WHERE i.year=? AND i.number IN (''' + ','.join('?' for _ in numbers) + ')'
+        WHERE i.math_type IN (1,2,3) AND i.year=? AND i.number IN (''' + ','.join('?' for _ in numbers) + ')'
     if source['math_type'] is not None:
         query += ' AND i.math_type=?'
         params.append(source['math_type'])
     for row in conn.execute(query + ' ORDER BY i.number,i.math_type,i.bank_id', params):
         if (row['math_type'], str(row['year'])) not in reserved:
             groups[row['number']].append({key: row[key] for key in ('bank_id', 'math_type', 'year', 'number')})
+    from app.bank.exam_identity import source_key
+    for entries in groups.values():
+        entries.sort(key=lambda entry: source_key(conn, entry['bank_id']))
     result['candidates'] = [{'number': number, 'sources': entries} for number, entries in groups.items() if entries]
     result['not_located_numbers'] = [number for number, entries in groups.items() if not entries]
     return result

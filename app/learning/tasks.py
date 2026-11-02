@@ -585,7 +585,12 @@ def require_bank_read(conn,data,task,bank_id,*,probe_id=None):
             require_read(conn,task,'prepared_bank',bank_id,role,item['sha256'])
         return
     bank=conn.execute('SELECT * FROM bank_resources WHERE bank_id=?',(bank_id,)).fetchone()
-    if not bank or not bank['question_path']:raise ValueError('练习题资源不存在')
+    if not bank:raise ValueError('练习题资源不存在')
+    if not bank['question_path']:
+        from app.bank.annotations import materials
+        for role,item in materials(conn,data,bank_id).items():
+            require_read(conn,task,'bank',bank_id,role,item['sha256'])
+        return
     for role in ('question','analysis'):
         if bank[role+'_path']:
             from app.storage.boundaries import material_path

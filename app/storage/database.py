@@ -129,6 +129,8 @@ def _initialize_connection(database,conn):
     init_tasks(conn)
     from app.bank.metadata import initialize as initialize_bank_metadata
     initialize_bank_metadata(conn)
+    from app.bank.source_records import initialize as initialize_bank_sources
+    initialize_bank_sources(conn)
     if database.config.demo and conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0:
         seed(conn)
     conn.commit()

@@ -49,6 +49,7 @@ class AppRuntime:
             if hasattr(self.bridge,'context'):self.bridge.context.learning_db = self.config.database
 
     def close(self) -> None:
+        self.workspace.close()
         if self.mobile:
             self.mobile.stop()
         if self.bridge and self.manage_agent:

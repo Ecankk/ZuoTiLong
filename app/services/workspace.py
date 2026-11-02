@@ -1,5 +1,7 @@
 """Read models for the workspace; this module has no web-framework dependency."""
 import sqlite3
+from copy import deepcopy
+from threading import Lock
 from app.common import rows,json_load
 from app.bank.access import public_bank,preferences
 from app.learning.loop import loop_snapshot
@@ -33,8 +35,52 @@ def build_profile(conn: sqlite3.Connection) -> dict:
     return {"stages": stage, "repeated_errors": repeated}
 
 class WorkspaceService:
-    def __init__(self,config,database):self.config,self.database=config,database
+    def __init__(self,config,database):
+        self.config,self.database=config,database
+        self._lock=Lock()
+        self._observers=[]
+        self._revision=None
+        self._bootstrap=None
+
+    def close(self):
+        with self._lock:
+            for conn in self._observers:conn.close()
+            self._observers=[]
+            self._revision=None
+            self._bootstrap=None
+
+    def _data_revision(self):
+        # data_version is comparable only on the SAME connection. Keep read-only
+        # observers alive, with no read transaction held between requests. Every
+        # writer (including another process and WAL commits) invalidates the cache.
+        if not self._observers:
+            try:
+                for path in (self.config.database,self.config.library_database):
+                    self._observers.append(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',
+                                                          uri=True,check_same_thread=False))
+            except BaseException:
+                for conn in self._observers:conn.close()
+                self._observers=[]
+                raise
+        return tuple(conn.execute('PRAGMA data_version').fetchone()[0] for conn in self._observers)
+
     def bootstrap(self):
+        with self._lock:
+            revision=self._data_revision()
+            if self._bootstrap is not None and revision==self._revision:
+                return deepcopy(self._bootstrap)
+            value=self._build_bootstrap()
+            # A commit during the build must never label old/mixed reads with a
+            # newer revision. Return this read as before, but rebuild next time.
+            if revision==self._data_revision():
+                self._bootstrap=value
+                self._revision=revision
+            else:
+                self._bootstrap=None
+                self._revision=None
+            return deepcopy(value)
+
+    def _build_bootstrap(self):
         with self.database.session() as conn:
             papers=rows(conn,'SELECT * FROM papers ORDER BY COALESCE(exam_date,created_at) DESC,created_at DESC')
             questions=[enrich_question(q) for q in rows(conn,'SELECT * FROM questions ORDER BY created_at DESC')]

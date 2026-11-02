@@ -122,21 +122,24 @@ function SelectedPractice({ card, group }: { card: PracticeCard; group: Practice
         这道练习暂时无法显示。
       </Card>
     )
-  if (card.status === 'inactive')
+  const stopped = card.status === 'inactive' || !detail.is_current
+  const note = stopped ? (detail.review_reason ?? '这道练习已停用，历史作答仍然保留。') : undefined
+  if (detail.latest_attempt?.assessment)
+    return <GradedCard detail={detail} position={position} group={group} note={note} />
+  if (stopped)
     return (
       <Card padded className={styles.notice}>
-        {detail.review_reason ?? '这道练习已停用，历史作答仍然保留。'}
+        {note}
       </Card>
     )
-  if (detail.latest_attempt?.assessment)
-    return <GradedCard detail={detail} position={position} group={group} />
   return <AnswerCard key={card.id} detail={detail} position={position} topicName={group.label} />
 }
 
 export function PracticePage() {
   const [params, setParams] = useSearchParams()
   const grouping: PracticeGrouping = params.get('view') === 'paper' ? 'paper' : 'topic'
-  const { data } = usePractices(grouping)
+  const includeInactive = params.get('inactive') === '1'
+  const { data } = usePractices(grouping, includeInactive)
   if (!data) return null
 
   const selected = pickSelected(data.items, params.get('item'), params.get('topic'))
@@ -146,7 +149,12 @@ export function PracticePage() {
     grouping === 'topic' && group
       ? group.items.filter((item) => item.id !== selected && item.status === 'graded')
       : []
-  const linkFor = (id: string) => `/practice?${new URLSearchParams({ view: grouping, item: id })}`
+  const query = (next: Record<string, string>) => {
+    const value = new URLSearchParams({ view: grouping, ...next })
+    if (includeInactive) value.set('inactive', '1')
+    return value
+  }
+  const linkFor = (id: string) => `/practice?${query({ item: id })}`
 
   return (
     <>
@@ -157,23 +165,47 @@ export function PracticePage() {
             <Chip tone="primary">{data.counts.pending} 道待做</Chip>
             {data.counts.grading > 0 && <Chip tone="primary">{data.counts.grading} 道批改中</Chip>}
             <Chip>已批改 {data.counts.graded} 道</Chip>
+            {includeInactive && data.counts.inactive > 0 && (
+              <Chip tone="unknown">已停用 {data.counts.inactive} 道</Chip>
+            )}
           </div>
         }
         actions={
-          <Segmented
-            label="练习分组方式"
-            items={[
-              { value: 'topic', label: '按考点' },
-              { value: 'paper', label: '按试卷' },
-            ]}
-            value={grouping}
-            onChange={(view) => setParams(selected ? { view, item: selected } : { view })}
-          />
+          <div className={styles.headerActions}>
+            <label className={styles.toggle}>
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(event) => {
+                  const next = new URLSearchParams(params)
+                  if (event.target.checked) next.set('inactive', '1')
+                  else next.delete('inactive')
+                  setParams(next)
+                }}
+              />
+              显示已停用的练习
+            </label>
+            <Segmented
+              label="练习分组方式"
+              items={[
+                { value: 'topic', label: '按考点' },
+                { value: 'paper', label: '按试卷' },
+              ]}
+              value={grouping}
+              onChange={(view) => {
+                const next = new URLSearchParams(params)
+                next.set('view', view)
+                setParams(next)
+              }}
+            />
+          </div>
         }
       />
       {data.items.length === 0 ? (
         <Card padded className={styles.notice}>
-          还没有练习。完成一份试卷的逐题分析后，做题龙会为薄弱考点挑选练习。
+          {includeInactive
+            ? '还没有练习。完成一份试卷的逐题分析后，做题龙会为薄弱考点挑选练习。'
+            : '现在没有可做的练习。完成一份试卷的逐题分析后，做题龙会为薄弱考点挑选练习；以前停用的练习可以勾选右上角查看。'}
         </Card>
       ) : (
         <div className={styles.layout}>

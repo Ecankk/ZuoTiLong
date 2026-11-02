@@ -54,31 +54,6 @@ export const BankPage = () => (
   />
 )
 
-export const SettingsPage = () => (
-  <PlaceholderPage
-    title="设置"
-    intro="这里将提供："
-    items={[
-      '备考类别：数学一 / 数学二 / 数学三',
-      '同类别真题模糊显示',
-      '笔迹约定：黑笔为考试作答，红笔为事后批改',
-      '数据备份与恢复',
-      '关于做题龙',
-    ]}
-  />
-)
-
-export const PapersPage = () => (
-  <PlaceholderPage
-    title="试卷"
-    intro="这里将列出你上传的试卷，并提供上传入口："
-    items={[
-      '上传做过的试卷 PDF（黑笔为考试作答，红笔为事后批改）',
-      '每份试卷的得分、分析进度和薄弱考点',
-    ]}
-  />
-)
-
 export const NotFoundPage = () => (
   <PlaceholderPage
     title="没有找到这个页面"

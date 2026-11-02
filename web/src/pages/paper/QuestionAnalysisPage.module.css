@@ -45,6 +45,20 @@
   color: var(--text-strong);
 }
 
+.cropImage {
+  display: block;
+  width: 100%;
+  max-height: calc(100vh - 150px);
+  object-fit: contain;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+}
+
+.cropImage + .cropImage {
+  margin-top: var(--space-2);
+}
+
 .paper {
   aspect-ratio: 5 / 4;
   max-height: calc(100vh - 150px);
@@ -123,6 +137,15 @@
 
 .score.wrong b {
   color: var(--status-wrong);
+}
+
+/* 结论：阅读字号加粗，长句也不压迫 */
+.conclusion {
+  max-width: var(--read-max);
+  color: var(--text-strong);
+  font-size: var(--font-size-read);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-read);
 }
 
 .stem {

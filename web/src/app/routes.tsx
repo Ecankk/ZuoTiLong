@@ -8,14 +8,9 @@ import {
   PaperSummary,
 } from '../pages/paper/PaperLayout'
 import { QuestionAnalysisPage } from '../pages/paper/QuestionAnalysisPage'
-import {
-  BankPage,
-  NotFoundPage,
-  PapersPage,
-  ProfilePage,
-  SettingsPage,
-  TopicsPage,
-} from '../pages/Placeholder'
+import { BankPage, NotFoundPage, ProfilePage, TopicsPage } from '../pages/Placeholder'
+import { PapersPage } from '../pages/paperList/PapersPage'
+import { SettingsPage } from '../pages/settings/SettingsPage'
 import { PracticePage } from '../pages/practice/PracticePage'
 
 export const routes: RouteObject[] = [

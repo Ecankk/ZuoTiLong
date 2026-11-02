@@ -1,4 +1,5 @@
 import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, ZoomIn } from 'lucide-react'
+import { useState } from 'react'
 import { useParams } from 'react-router'
 import { usePaperQuestions, useQuestion, useTasks } from '../../api/queries'
 import type { QuestionResponse, QuestionSummary, StepComparison } from '../../api/types'
@@ -58,23 +59,71 @@ function Steps({ steps }: { steps: Step[] }) {
   )
 }
 
-function SourcePanel({ number, page }: { number: string; page: number }) {
+/** 原卷切图；读取失败时显示占位，不露出破图。 */
+function CropImage({ url, alt }: { url: string; alt: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed)
+    return (
+      <PaperPlaceholder
+        className={styles.paper}
+        lines={placeholderLines}
+        caption="原卷切图暂时无法显示"
+      />
+    )
+  return <img className={styles.cropImage} src={url} alt={alt} onError={() => setFailed(true)} />
+}
+
+function SourcePanel({
+  paperId,
+  number,
+  page,
+  images,
+}: {
+  paperId: string
+  number: string
+  page: number | null
+  images: string[]
+}) {
   return (
     <Card className={styles.source} aria-label="原卷">
       <div className={styles.sourceHead}>
         <strong>
-          原卷第 {page} 页 · 第 {number} 题
+          {page ? `原卷第 ${page} 页 · ` : ''}第 {number} 题
         </strong>
         <div className={styles.tools}>
-          <button type="button" className={styles.iconButton} title="放大">
-            <ZoomIn size={17} aria-hidden />
-          </button>
-          <button type="button" className={styles.iconButton} title="打开整页">
+          {images[0] && (
+            <a
+              className={styles.iconButton}
+              href={images[0]}
+              target="_blank"
+              rel="noreferrer"
+              title="放大"
+            >
+              <ZoomIn size={17} aria-hidden />
+            </a>
+          )}
+          <a
+            className={styles.iconButton}
+            href={`/api/papers/${encodeURIComponent(paperId)}/file${page ? `#page=${page}` : ''}`}
+            target="_blank"
+            rel="noreferrer"
+            title="打开整页"
+          >
             <ExternalLink size={16} aria-hidden />
-          </button>
+          </a>
         </div>
       </div>
-      <PaperPlaceholder className={styles.paper} lines={placeholderLines} caption="原卷切图" />
+      {images.length > 0 ? (
+        images.map((url, index) => (
+          <CropImage key={url} url={url} alt={`第 ${number} 题原卷切图 ${index + 1}`} />
+        ))
+      ) : (
+        <PaperPlaceholder
+          className={styles.paper}
+          lines={placeholderLines}
+          caption="原卷切图暂不可用"
+        />
+      )}
       <div className={styles.pens}>
         <span>
           <i className={styles.pen} style={{ background: 'var(--text-regular)' }} />
@@ -219,9 +268,9 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
           )}
         </div>
         {diagnosis?.observation && (
-          <h2>
+          <p className={styles.conclusion}>
             <MathText text={diagnosis.observation} />
-          </h2>
+          </p>
         )}
         <div className={cx('read', styles.stem)}>
           <small className={styles.stemLabel}>题目</small>
@@ -326,7 +375,12 @@ export function QuestionAnalysisPage() {
     <>
       <QuestionStrip paperId={paperId} questions={list.items} analyzing={analyzing} />
       <div className={styles.layout}>
-        <SourcePanel number={number} page={detail?.question.regions[0]?.page ?? 1} />
+        <SourcePanel
+          paperId={paperId}
+          number={number}
+          page={detail?.question.regions[0]?.page ?? null}
+          images={detail?.evidence_urls ?? []}
+        />
         <div className={styles.analysis}>
           {detail ? (
             <Analysis detail={detail} />

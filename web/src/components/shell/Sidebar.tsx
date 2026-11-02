@@ -9,7 +9,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { NavLink } from 'react-router'
-import { usePractices } from '../../api/queries'
+import { usePractices, usePreferences } from '../../api/queries'
+import { mathTypeName } from '../../lib/labels'
 import { BackgroundIndicator } from './BackgroundIndicator'
 import styles from './Sidebar.module.css'
 
@@ -38,13 +39,16 @@ function NavItem({ entry, badge }: { entry: NavEntry; badge?: number }) {
 export function Sidebar() {
   const practice = usePractices('topic')
   const todo = practice.data?.counts.pending
+  const { data: preferences } = usePreferences()
   return (
     <aside className={styles.sidebar}>
       <div className={styles.brand}>
         <img src="/brand/logo-round.png" alt="" />
         <div>
           <strong className={styles.brandName}>做题龙</strong>
-          <small className={styles.brandSub}>数学一 · 考研复习</small>
+          <small className={styles.brandSub}>
+            {preferences ? `${mathTypeName(preferences.study_type)} · ` : ''}考研复习
+          </small>
         </div>
       </div>
       <nav aria-label="主导航" className={styles.nav}>

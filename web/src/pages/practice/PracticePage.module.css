@@ -168,3 +168,23 @@
 .notice {
   color: var(--text-regular);
 }
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+}

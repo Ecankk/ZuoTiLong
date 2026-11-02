@@ -1,0 +1,45 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: var(--read-max);
+}
+
+.section h2 {
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-h3);
+}
+
+.section p,
+.section ul {
+  color: var(--text-regular);
+  line-height: 1.8;
+}
+
+.section ul {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.note {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.saved {
+  color: var(--status-correct);
+  font-size: var(--font-size-sm);
+}
+
+.error {
+  margin-top: var(--space-2);
+  color: var(--status-wrong);
+  font-size: var(--font-size-sm);
+}

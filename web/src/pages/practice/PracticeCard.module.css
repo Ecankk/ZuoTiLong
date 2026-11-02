@@ -283,7 +283,12 @@
 }
 
 .minePhoto {
+  display: block;
+  width: 100%;
   height: 90px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
 }
 
 .mine small {
@@ -389,4 +394,27 @@
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-4);
+}
+
+.stopped {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--status-unknown-soft);
+  color: var(--text-regular);
+  font-size: var(--font-size-sm);
+}
+
+.questionImage {
+  display: block;
+  max-width: 100%;
+  margin-top: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.soon {
+  align-self: center;
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
 }

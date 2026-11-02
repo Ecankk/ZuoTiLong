@@ -1,6 +1,5 @@
 import { Eye, EyeOff, Image as ImageIcon, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
-import { endpoints } from '../../api/endpoints'
 import type { PracticeResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button } from '../../components/ui/Button'
@@ -12,6 +11,7 @@ import styles from './PracticeCard.module.css'
 type Photo = { id: string; url: string; role: 'own_work' | 'marking' | 'external_solution' }
 
 const maxPhotos = 4
+const writesReady = false
 
 /** 作答照片：选择文件、拖入或粘贴；当前只在本地预览，提交接口接入后上传。 */
 function usePhotos() {
@@ -42,13 +42,13 @@ function usePhotos() {
   return { photos, add, remove, setRole }
 }
 
-function MaskedQuestion({ mathType, onReveal }: { mathType: string; onReveal: () => void }) {
+function MaskedQuestion({ mathType }: { mathType: string }) {
   return (
     <div className={styles.masked}>
       <EyeOff size={22} aria-hidden />
       <strong>{mathType}真题，默认遮挡</strong>
       <p>你在备考{mathType}，同类别真题可能留作整卷自测。查看后会记为“看过题目”。</p>
-      <Button variant="soft" onClick={onReveal}>
+      <Button variant="soft" disabled={!writesReady} title="查看题目即将开放">
         <Eye size={16} aria-hidden />
         查看题目
       </Button>
@@ -66,14 +66,13 @@ export function AnswerCard({
   topicName: string
 }) {
   const { practice } = detail
-  const [revealed, setRevealed] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [dragging, setDragging] = useState(false)
   const { photos, add, remove, setRole } = usePhotos()
-  const questionText = detail.question?.question_text ?? revealed
-  const canSubmit = detail.actions.includes('submit')
+  const questionText = detail.question?.question_text
+  // 提交作答、上传照片和确认查看题目在下一批接入，先禁用
+  const canSubmit = writesReady && detail.actions.includes('submit')
 
-  const reveal = async () => setRevealed(await endpoints.revealQuestion(practice.id))
   const onPaste = (event: ClipboardEvent) => {
     const files = Array.from(event.clipboardData.files)
     if (files.length) {
@@ -109,10 +108,7 @@ export function AnswerCard({
             </div>
           ) : (
             detail.actions.includes('reveal_question') && (
-              <MaskedQuestion
-                mathType={mathTypeName(practice.access.math_type)}
-                onReveal={reveal}
-              />
+              <MaskedQuestion mathType={mathTypeName(practice.access.math_type)} />
             )
           )}
         </div>
@@ -179,7 +175,9 @@ export function AnswerCard({
             )}
           </div>
           <p className={styles.note}>
-            最多 4 张，可以只传照片不写文字。截图后直接 Ctrl+V 也能添加。
+            {writesReady
+              ? '最多 4 张，可以只传照片不写文字。截图后直接 Ctrl+V 也能添加。'
+              : '提交作答和上传照片即将开放，现在可以先看题、在纸上作答。'}
           </p>
           <div className={styles.submitRow}>
             <label className={styles.check}>

@@ -1,6 +1,10 @@
 from fastapi import APIRouter,Depends,Body
 from app.api.dependencies import runtime
 router=APIRouter(prefix='/api',tags=['maintenance'])
+@router.get('/data/status')
+def data_status(rt=Depends(runtime)):
+    from app.storage.path_upgrade import status
+    return status(rt.config)
 @router.get('/maintenance/backups')
 def backups(rt=Depends(runtime)):return rt.local.backups()
 @router.post('/maintenance/backup')

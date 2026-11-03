@@ -5,6 +5,7 @@ or infer a student's cause from the final answer alone.
 """
 from __future__ import annotations
 
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import hashlib
 import json
 from pathlib import Path
@@ -14,7 +15,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from app.storage.images import init_answer_images, image_records
-from app.bank.access import init_access, register_identity, access, require_access, aliases
+from app.bank.access import init_access, register_identity, access, require_access, policy_group
 from app.learning.report_contract import report_issues, present_diagnosis, text
 
 
@@ -144,7 +145,7 @@ def apply_report(conn, paper_id, report, root, *, question_numbers=None):
     if not paper:
         raise ValueError("试卷不存在")
     if paper['archived_at']:raise ValueError('请先恢复已归档试卷')
-    pdf = (root / paper["source_path"]).resolve()
+    pdf = paper_path(connection_data(conn),paper["source_path"],root)
     digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
     if report.get("source_sha256") != digest:
         raise ValueError("报告与试卷 SHA256 不一致，拒绝写入")
@@ -238,7 +239,8 @@ def probe_payload(conn, row):
         attempt['image_roles']=json.loads(attempt.pop('image_roles_json','{}'))
     item["attempts"] = attempts
     if attempts and attempts[-1].get('needs_agent_review'):item['status']='awaiting_assessment'
-    item["bank_exposed"] = bool(conn.execute("SELECT bank_id FROM bank_exposures WHERE bank_id=?", (row["bank_id"],)).fetchone())
+    item['bank_exposed'] = any(conn.execute('SELECT 1 FROM bank_exposures WHERE bank_id=?',(bid,)).fetchone()
+                               for bid in policy_group(conn,row['bank_id']))
     item['access']=state
     if conn.execute("SELECT name FROM sqlite_master WHERE name='probe_goals'").fetchone():
         item['question_ids']=[r[0] for r in conn.execute('''SELECT DISTINCT gq.question_id FROM probe_goals pg
@@ -258,15 +260,20 @@ def probe_payload(conn, row):
         if state['analysis_allowed']:item['analysis_image']+=suffix
         if manifest:
             question=manifest['resources']['question']
+            if question['text']:item['question_text']=question['text']
             if not question['image_file']:
                 item.pop('question_image',None);item['question_text']=question['text']
             if state['analysis_allowed']:
                 role='analysis' if 'analysis' in manifest['resources'] else 'answer'
                 reference=manifest['resources'].get(role)
+                if reference and reference['text']:item['analysis_text']=reference['text']
                 if reference and reference['image_file']:
                     item['analysis_image']=f"/api/bank/{row['bank_id']}/{role}"+suffix
                 elif reference:
                     item.pop('analysis_image',None);item['analysis_text']=reference['text']
+    else:
+        from app.bank.access import text_resources
+        text_resources(conn,row['bank_id'],item,reference=state['analysis_allowed'] and bool(attempts))
     # Reference answers are revealed only after the user has submitted.
     if not attempts or not state['analysis_allowed']:
         for field in ("expected", "accepted", "rubric", "solution_note"):
@@ -385,7 +392,7 @@ def submit_probe(conn, probe_id, body):
     if len(response) > 16000:
         raise ValueError("作答过长")
     payload = json.loads(row["payload_json"])
-    exposed = bool(body.get("answer_exposed")) or any(role!='own_work' for role in roles.values()) or any(conn.execute("SELECT bank_id FROM bank_exposures WHERE bank_id=?", (bid,)).fetchone() for bid in aliases(conn,row['bank_id']))
+    exposed = bool(body.get("answer_exposed")) or any(role!='own_work' for role in roles.values()) or any(conn.execute("SELECT bank_id FROM bank_exposures WHERE bank_id=?", (bid,)).fetchone() for bid in policy_group(conn,row['bank_id']))
     elapsed = body.get("elapsed_seconds")
     if elapsed is not None and (not isinstance(elapsed, (int, float)) or not 0 <= elapsed <= 86400):
         raise ValueError("用时不合法")
@@ -490,7 +497,7 @@ def supplement_attempt(conn,attempt_id,body):
     clear_attempt_assessment(conn,row,body.get('reason') or '用户补充手写步骤')
     bank=conn.execute('SELECT bank_id FROM diagnostic_probes WHERE id=?',(row['probe_id'],)).fetchone()[0]
     exposed=bool(row['answer_exposed']) or bool(body.get('answer_exposed')) or any(role!='own_work' for role in roles.values()) or any(
-        conn.execute('SELECT 1 FROM bank_exposures WHERE bank_id=?',(bid,)).fetchone() for bid in aliases(conn,bank))
+        conn.execute('SELECT 1 FROM bank_exposures WHERE bank_id=?',(bid,)).fetchone() for bid in policy_group(conn,bank))
     conn.execute('UPDATE probe_attempts SET response=?,images_json=?,answer_exposed=?,image_roles_json=? WHERE id=?',
         (row['response']+('\n\n补充：'+addition if addition else ''),dump(images),int(exposed),dump(roles),attempt_id))
     if request_id:

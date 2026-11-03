@@ -1,5 +1,7 @@
 """Resolve private files through their saved identities and access policy."""
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from app.common import as_json,json_load
 from app.errors import ServiceError
@@ -22,7 +24,7 @@ class ResourceService:
     def paper(self,paper_id):
         with self.database.session() as conn:row=conn.execute('SELECT source_path FROM papers WHERE id=?',(paper_id,)).fetchone()
         if not row or not row[0]:raise ServiceError('paper file not found',404)
-        path=(self.config.root/row[0]).resolve()
+        path=paper_path(self.config.data,row[0],self.config.root)
         if not path.is_relative_to(self.config.papers) or not path.is_file():raise ServiceError('paper file not found',404)
         return Resource(path,'application/pdf')
     def bank(self,bank_id,role,library=False,probe_id=None):
@@ -44,7 +46,13 @@ class ResourceService:
                         raise ServiceError('旧练习原题版本待核，不能用当前题库材料代替；历史作答保留',409)
                 if binding:
                     try:
-                        from app.storage.practice_materials import image_path
+                        from app.storage.practice_materials import image_path,load
+                        manifest=load(self.config.data,binding['snapshot_key'],binding['snapshot_sha256'],(role,))
+                        item=manifest['resources'].get(role)
+                        if item and not item['image_file'] and item['text']:
+                            record_view(conn,bank_id,role)
+                            return Resource(json.dumps({'bank_id':bank_id,'role':role,'text':item['text'],
+                                'sha256':item['sha256']},ensure_ascii=False).encode('utf8'),'application/json')
                         path=image_path(self.config.data,binding,role)
                     except ValueError as error:raise ServiceError(str(error),404) from None
                     record_view(conn,bank_id,role)
@@ -56,6 +64,13 @@ class ResourceService:
                 if path.is_relative_to((self.config.library_dir/'bank-assets').resolve()) and path.is_file():
                     record_view(conn,bank_id,role)
                     return Resource(path,'image/png')
+            if row and not row[role+'_path']:
+                from app.bank.annotations import materials
+                item=materials(conn,self.config.data,bank_id).get(role)
+                if item and item['text']:
+                    record_view(conn,bank_id,role)
+                    return Resource(json.dumps({'bank_id':bank_id,'role':role,'text':item['text'],
+                        'sha256':item['sha256']},ensure_ascii=False).encode('utf8'),'application/json')
         raise ServiceError('题库资源缺失',404)
     def evidence(self,question_id,index=0):
         import pymupdf
@@ -64,7 +79,7 @@ class ResourceService:
         if not row:raise ServiceError('题目不存在',404)
         try:
             region=json_load(row['regions_json'],[])[index]
-            pdf=(self.config.root/row['source_path']).resolve()
+            pdf=paper_path(self.config.data,row['source_path'],self.config.root)
             if not pdf.is_relative_to(self.config.papers):raise ValueError('invalid file')
             with pymupdf.open(pdf) as doc:raw=doc[region['page']-1].get_pixmap(matrix=pymupdf.Matrix(2,2),clip=pymupdf.Rect(region['bbox']),alpha=False).tobytes('png')
             return Resource(raw,'image/png')

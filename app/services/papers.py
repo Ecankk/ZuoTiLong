@@ -1,4 +1,5 @@
 """Paper lifecycle and source preparation, independent of HTTP."""
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import hashlib,json,math,sqlite3,uuid
 from datetime import date
 from pathlib import Path
@@ -61,7 +62,7 @@ class PaperService:
         source_path = paper.get("source_path")
         if not source_path:
             raise ValueError("这张试卷没有本地 PDF 文件")
-        pdf_path = (self.config.root / source_path).resolve()
+        pdf_path = paper_path(self.config.data, source_path, self.config.root)
         if self.config.papers not in pdf_path.parents or not pdf_path.is_file():
             raise ValueError("试卷文件不在本地资料目录中")
 
@@ -167,7 +168,7 @@ class PaperService:
         filename=Path(filename).name
         folder=self.config.papers/paper_id;folder.mkdir(parents=True,exist_ok=True)
         target=folder/filename;target.write_bytes(content)
-        source=str(target.relative_to(self.config.root)) if target.is_relative_to(self.config.root) else str(target)
+        source=relative_file(self.config.data,target)
         created=now_iso()
         with self.database.session(write=True) as conn:
             conn.execute('INSERT INTO papers(id,title,exam_date,source_name,source_path,source_sha256,import_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',

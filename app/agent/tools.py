@@ -1,4 +1,5 @@
 """Bounded, local learning operations used by the Codex MCP connection."""
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import base64
 from contextlib import closing
 import hashlib
@@ -223,7 +224,7 @@ def execute(root,data,action,payload,*,lease=None):
             import math
             row=conn.execute('SELECT * FROM papers WHERE id=?',(payload['paper_id'],)).fetchone()
             if not row:raise ValueError('试卷不存在')
-            path=(root/row['source_path']).resolve()
+            path=paper_path(data,row['source_path'],root)
             if not path.is_relative_to(data):raise ValueError('试卷不在个人目录')
             scope=None
             if payload.get('question_id'):
@@ -402,16 +403,25 @@ def execute(root,data,action,payload,*,lease=None):
             role=payload.get('role','question')
             if role not in ('question','analysis','answer'):raise ValueError('资源类别不合法')
             row=conn.execute('SELECT * FROM bank_resources WHERE bank_id=?',(bid,)).fetchone()
-            if not row or not row[role+'_path']:raise ValueError('题库图片缺失')
-            images.append(image_content(material_path(data,row[role+'_path']),data))
+            if not row:raise ValueError('题库资源缺失')
+            from app.bank.annotations import materials
+            standard=json.loads(row['metadata_json']).get('schema')=='mathlens.bank-record/v1'
+            material=materials(conn,data,bid).get(role) if standard or not row[role+'_path'] else {'text':''}
+            if not material:raise ValueError('题库资源缺失')
+            if row[role+'_path']:
+                images.append(image_content(material_path(data,row[role+'_path']),data))
             if task:
                 from app.learning.tasks import record_read,resource_digest
-                record_read(conn,lease,'bank',bid,role,resource_digest(material_path(data,row[role+'_path']),data))
+                sha=resource_digest(material_path(data,row[role+'_path']),data) if row[role+'_path'] else material['sha256']
+                record_read(conn,lease,'bank',bid,role,sha)
             visible=state['can_view'] if role=='question' else state['analysis_allowed']
             result={'bank_id':bid,'student_access':state,'internal_only':not visible,'policy':preferences(conn),
                     'resource_sha256':{key:hashlib.sha256(material_path(data,row[key+'_path']).read_bytes()).hexdigest()
                                        for key in ('question','analysis','answer') if row[key+'_path'] and material_path(data,row[key+'_path']).is_file()},
                     'instruction':('该检验题干可直接展示，不需要跨类别核准；解析另行由用户选择查看。' if visible and role=='question' else '当前资源仅内部阅读；仍隐藏的题干只给年份题号，未展示的解析不提前公布。' if not visible else '用户已选择查看解析，可结合实际作答讲解。')}
+            if material['text']:
+                result['text']=material['text']
+                result['resource_sha256'][role]=material['sha256'] if not row[role+'_path'] else result['resource_sha256'].get(role)
             if task and task['kind']=='prepare_practice':
                 inputs=json.loads(task['input_json'])
                 if inputs.get('contract_version')=='1.9':
@@ -448,7 +458,7 @@ def execute(root,data,action,payload,*,lease=None):
         elif action=='replace_probe':result=replace_probe(conn,payload['probe_id'],payload)
         elif action=='review_cross':result=review_cross(conn,**payload)
         else:
-            path=(data/'memory'/payload['path']).resolve()
+            path=resolve_file(data/'memory',payload['path'])
             if not path.is_relative_to((data/'memory').resolve()) or path.suffix not in ('.md','.json'):raise ValueError('记忆路径不合法')
             if action=='memory_write':
                 text=payload.get('text','')

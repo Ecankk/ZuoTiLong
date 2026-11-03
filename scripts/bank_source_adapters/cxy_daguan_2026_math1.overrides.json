@@ -1,0 +1,323 @@
+{
+  "schema": "mathlens.bank-overrides/v1",
+  "source_id": "S02",
+  "revision": "7e79423253454dfb32246b6a84c7d6fd6efaa5b8",
+  "entries": [
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 1
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第1页，第1题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 2
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第1页，第2题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 3
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第1页，第3题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 4
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第1页，第4题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 5
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第1页，第5题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 6
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第1页，第6题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 7
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第7题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 8
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第8题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 9
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第9题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 10
+      },
+      "set": {
+        "question_type": "choice",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第10题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 11
+      },
+      "set": {
+        "question_type": "fill",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第11题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 12
+      },
+      "set": {
+        "question_type": "fill",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第12题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 13
+      },
+      "set": {
+        "question_type": "fill",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第13题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 14
+      },
+      "set": {
+        "question_type": "fill",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第14题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 15
+      },
+      "set": {
+        "question_type": "fill",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第15题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 16
+      },
+      "set": {
+        "question_type": "fill",
+        "max_score": 5
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第2页，第16题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 17
+      },
+      "set": {
+        "question_type": "proof",
+        "max_score": 10
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第3页，第17题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 18
+      },
+      "set": {
+        "question_type": "proof",
+        "max_score": 12
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第3页，第18题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 19
+      },
+      "set": {
+        "question_type": "proof",
+        "max_score": 12
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第3页，第19题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 20
+      },
+      "set": {
+        "question_type": "proof",
+        "max_score": 12
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第3页，第20题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 21
+      },
+      "set": {
+        "question_type": "proof",
+        "max_score": 12
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第4页，第21题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "exam_year": 2026,
+        "math_type": 1,
+        "number": 22
+      },
+      "set": {
+        "question_type": "proof",
+        "max_score": 12
+      },
+      "reason": "按2026全国统考数学一原卷题型与印刷分值补全",
+      "evidence": "2026年数一.pdf (sha256:9c4e4c858f5cba15fce7992158e20f9f4a3909ea966dd6625351d86665796072), 第4页，第22题；仅核题型和印刷分值，不采用手写作答。"
+    },
+    {
+      "match": {
+        "source_uid": "11729"
+      },
+      "set": {
+        "exclude": true
+      },
+      "reason": "未标原卷题号的重复候选暂不导入；保留预演记录待核",
+      "evidence": "固定来源7e794232的source/original_source/source_details仅标2026数一，无题号，不按内容猜配。"
+    },
+    {
+      "match": {
+        "source_uid": "11753"
+      },
+      "set": {
+        "exclude": true
+      },
+      "reason": "未标原卷题号的重复候选暂不导入；保留预演记录待核",
+      "evidence": "固定来源7e794232的source/original_source/source_details仅标2026数一，无题号，不按内容猜配。"
+    },
+    {
+      "match": {
+        "source_uid": "11844"
+      },
+      "set": {
+        "exclude": true
+      },
+      "reason": "未标原卷题号的重复候选暂不导入；保留预演记录待核",
+      "evidence": "固定来源7e794232的source/original_source/source_details仅标2026数一，无题号，不按内容猜配。"
+    }
+  ]
+}

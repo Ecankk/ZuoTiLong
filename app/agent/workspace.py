@@ -47,9 +47,9 @@ def bank_catalog(conn, data_root: Path, *, topics=(), bank_id=None, offset=0, li
             resources[role] = {"path": str(path), "exists": path.is_file()}
         note = (data_root / "memory" / "bank" / (row["id"] + ".json")).resolve()
         reading_note = str(note) if note.is_relative_to(data_root.resolve()) and note.is_file() else None
-        entries.append({"id": row["id"], "year": metadata.get("paper"),
+        entries.append({"id": row["id"], "year": state['year'] or metadata.get("paper"),
                         'math_type':state['math_type'],'student_access':state,
-                        "number": metadata.get("index"), "source_topic": topic,
+                        "number": state['number'] or metadata.get("index"), "source_topic": topic,
                         "source_url": metadata.get("source_url"), "resources": resources,
                         "fingerprint": json.loads(row["fingerprint_json"] or "{}"),
                         "reading_note_path": reading_note,

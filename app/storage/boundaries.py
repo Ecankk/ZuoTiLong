@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
-from app.config import resolve_library_dir
+from app.config import resolve_library_dir,library_location
 
 LIBRARY_TABLES = frozenset('''
 bank_questions bank_resources bank_identity bank_links bank_identity_reviews
@@ -14,7 +14,7 @@ annotation_cache_imports knowledge_nodes knowledge_source_versions
 knowledge_source_entries knowledge_catalog_releases knowledge_catalog_state
 knowledge_catalog_nodes knowledge_catalog_redirects knowledge_catalog_packages
 knowledge_package_sources knowledge_package_entries knowledge_package_activations
-annotation_provenance
+annotation_provenance bank_source_records bank_source_versions
 '''.split())
 
 
@@ -41,8 +41,13 @@ def scoped_schema(sql, table):
 def save_location(config):
     if config.database.resolve().parent != config.data.resolve():
         raise ValueError('The learning database must belong to this workspace')
-    value = {'database': config.database.name, 'library': str(config.library_dir.resolve())}
+    value = {'database': config.database.name, 'library': library_location(config.data,config.library_dir)}
     path = config.data / 'workspace.json'
+    if path.exists():
+        existing=json.loads(path.read_text(encoding='utf8'))
+        if existing.get('database')==config.database.name:
+            from app.config import resolve_library_dir
+            if resolve_library_dir(config.data,existing.get('library',config.library_dir))==config.library_dir.resolve():return
     raw = json.dumps(value, ensure_ascii=False)
     if not path.exists() or path.read_text(encoding='utf8') != raw:
         path.write_text(raw, encoding='utf8')
@@ -68,9 +73,10 @@ def library_root(data):
 
 
 def material_path(data, relative):
+    from app.storage.paths import resolve_file
     relative = Path(relative)
     root = library_root(data) if relative.parts and relative.parts[0] in ('bank-assets', 'knowledge-sources') else Path(data)
-    return root / relative
+    return resolve_file(root,relative)
 
 
 def connect_workspace(config, *, library_write=False, readonly=False):

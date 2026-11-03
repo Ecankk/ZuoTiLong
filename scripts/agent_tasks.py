@@ -9,6 +9,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from app.storage.paths import paper_path, relative_file
 from app.config import AppConfig
 from app.storage.database import Database
 from app.services.papers import PaperService
@@ -28,6 +29,11 @@ def main():
     p=sub.add_parser("deliver",help="按当前任务执行身份提交固定契约结果")
     p.add_argument("result",type=Path);p.add_argument("--ticket",type=Path,required=True)
     p=sub.add_parser("import-bank");p.add_argument("directory",type=Path)
+    p=sub.add_parser('import-source',help='校验并预演标准题源；仅 --confirm 摘要匹配后写通用库')
+    p.add_argument('--source',required=True);p.add_argument('--input',type=Path,required=True)
+    p.add_argument('--overrides',type=Path);p.add_argument('--asset-root',type=Path)
+    choice=p.add_mutually_exclusive_group();choice.add_argument('--dry-run',action='store_true');choice.add_argument('--confirm')
+    p.add_argument('--report',type=Path,help='另存不含正文的 JSON 报告')
     sub.add_parser("pending")
     p=sub.add_parser("catalog",help="浏览题库目录和原图路径，由 Agent 自行阅读选择")
     p.add_argument("--topic",action="append",default=[],help="可重复，任一分类包含关键词即可；不是匹配规则")
@@ -46,7 +52,7 @@ def main():
             task_conn.row_factory=sqlite3.Row;task_conn.execute('PRAGMA foreign_keys=ON')
             result=deliver(task_conn,ROOT,config.data,payload,ticket)
         print(json.dumps(result,ensure_ascii=False));return
-    if args.command in ('prepare','import-bank','apply','assess'):
+    if args.command in ('prepare','import-bank','import-source','apply','assess'):
         session=config.data/'agent-session.db'
         if session.is_file():
             with sqlite3.connect(session.as_uri()+'?mode=ro',uri=True) as guard_conn:
@@ -56,6 +62,13 @@ def main():
                 raise ValueError('学习任务/外部会话正在使用资料；旧CLI不能额外写入。当前任务交付请使用deliver及原任务write_ticket。')
         if args.command in ('apply','assess'):
             raise ValueError('旧CLI直接报告写入已停用；请由网页发起任务，再用deliver和context.learning_task.write_ticket交付。')
+    if args.command=='import-source':
+        from app.bank.source_import import import_source
+        result=import_source(config,args.source,args.input,asset_root=args.asset_root,
+                             overrides=args.overrides,confirm=args.confirm)
+        output=json.dumps(result,ensure_ascii=False,indent=2)
+        if args.report:args.report.write_text(output,encoding='utf8')
+        print(output);return
     if args.command in ("catalog", "context"):
         conn=database.connect(readonly=True)
         conn.row_factory=sqlite3.Row
@@ -67,7 +80,7 @@ def main():
             source=args.pdf.resolve();digest=hashlib.sha256(source.read_bytes()).hexdigest()
             old=None
             for row in conn.execute("SELECT * FROM papers WHERE source_path IS NOT NULL ORDER BY created_at"):
-                path=(ROOT/row["source_path"]).resolve()
+                path=paper_path(config.data,row["source_path"],ROOT)
                 if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==digest:
                     old=row;break
             if old:
@@ -76,7 +89,7 @@ def main():
                 pid="paper-"+digest[:14];target=config.papers/pid/source.name
                 target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
                 conn.execute("INSERT INTO papers(id,title,source_name,source_path,source_sha256,import_status,created_at) VALUES(?,?,?,?,?,?,?)",
-                             (pid,source.stem,source.name,str(target.resolve()),digest,"needs_review",now_iso()))
+                             (pid,source.stem,source.name,relative_file(config.data,target),digest,"needs_review",now_iso()))
             if args.bank:
                 print(json.dumps(import_image_bank(conn,args.bank,config.data),ensure_ascii=False))
             conn.commit();result=PaperService(config,database).analyze(conn,pid)

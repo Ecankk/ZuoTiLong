@@ -1,0 +1,51 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(4px);
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 101;
+  width: min(440px, calc(100vw - 48px));
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-raised);
+  transform: translate(-50%, -50%);
+  animation: rise var(--duration-slow) var(--ease-out);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 8px));
+  }
+}
+
+.title {
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-h3);
+}
+
+.body {
+  color: var(--text-regular);
+  line-height: 1.8;
+}
+
+.error {
+  margin-top: var(--space-3);
+  color: var(--status-wrong);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}

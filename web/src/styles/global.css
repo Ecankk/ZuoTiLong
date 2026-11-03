@@ -1,0 +1,143 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: var(--window-min-width);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-ui);
+  line-height: var(--line-height-ui);
+  color: var(--text-regular);
+  background: var(--surface-app);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-strong);
+  line-height: 1.4;
+}
+
+h3 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-strong);
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+::selection {
+  background: var(--color-primary-soft);
+}
+
+/* 细滚动条，保留可见，不隐藏 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 阅读排版：题干、解析、批改。行长受 --read-max 限制 */
+.read {
+  max-width: var(--read-max);
+  font-size: var(--font-size-read);
+  line-height: var(--line-height-read);
+  color: var(--text-strong);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.katex {
+  font-size: 1.08em;
+}
+
+.katex-display {
+  margin: var(--space-3) 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

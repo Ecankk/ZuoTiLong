@@ -1,0 +1,127 @@
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+}
+
+.label {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.chip:hover {
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.correct {
+  background: var(--status-correct-soft);
+  color: var(--status-correct);
+}
+
+.wrong {
+  background: var(--status-wrong-soft);
+  color: var(--status-wrong);
+}
+
+.partial {
+  background: var(--status-partial-soft);
+  color: var(--status-partial);
+}
+
+.unknown {
+  background: var(--status-unknown-soft);
+  color: var(--status-unknown);
+}
+
+.pending {
+  border: 1px dashed var(--border-strong);
+  background: var(--surface-card);
+  color: var(--text-faint);
+}
+
+/* 进行中统一用主色 */
+.pending.analyzing {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.analyzing::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--surface-card);
+}
+
+.chip[aria-current='page'] {
+  box-shadow:
+    0 0 0 2px var(--surface-card),
+    0 0 0 4px var(--color-primary);
+}
+
+.legend {
+  display: flex;
+  gap: var(--space-4);
+  align-self: center;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.legend .dashed {
+  border: 1px dashed var(--border-strong);
+}
+
+.legend .dashed.analyzingLegend {
+  border-color: var(--color-primary);
+}
+
+@container (min-width: 1500px) {
+  .chips {
+    gap: 8px;
+  }
+
+  .chip {
+    width: 40px;
+    height: 40px;
+  }
+}

@@ -1,0 +1,159 @@
+.card {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-pill);
+  text-align: left;
+  transition: background var(--duration-base) var(--ease-out);
+}
+
+button.card:hover {
+  background: var(--glass-bg-hover);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: pulse 1.8s var(--ease-out) infinite;
+}
+
+.dot.problem {
+  background: var(--status-partial);
+  animation: none;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(43, 76, 155, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(43, 76, 155, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(43, 76, 155, 0);
+  }
+}
+
+.text {
+  display: block;
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.5;
+}
+
+.bar {
+  display: block;
+  height: 3px;
+  margin: var(--space-2) 0 var(--space-2) 16px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-soft);
+}
+
+.bar span {
+  display: block;
+  width: 35%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  animation: slide 1.6s var(--ease-out) infinite;
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(290%);
+  }
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 16px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.foot svg {
+  color: var(--text-faint);
+}
+
+.guideText {
+  margin: var(--space-1) 0 var(--space-2) 16px;
+  color: var(--text-regular);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+}
+
+.guideLink {
+  margin-left: 16px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+/* 浮层：玻璃效果允许用于浮层 */
+.popover {
+  z-index: 50;
+  width: 300px;
+  padding: var(--space-4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-raised);
+}
+
+.section + .section {
+  margin-top: var(--space-4);
+}
+
+.section h3 {
+  margin-bottom: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.section ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.section li {
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+}
+
+.problemText {
+  display: block;
+  margin: 2px 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.nowrap {
+  white-space: nowrap;
+}

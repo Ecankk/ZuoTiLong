@@ -1,0 +1,118 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: var(--read-max);
+}
+
+.section h2 {
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-h3);
+}
+
+.section p,
+.section ul {
+  color: var(--text-regular);
+  line-height: 1.8;
+}
+
+.section ul {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.note {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.saved {
+  color: var(--status-correct);
+  font-size: var(--font-size-sm);
+}
+
+.error {
+  margin-top: var(--space-2);
+  color: var(--status-wrong);
+  font-size: var(--font-size-sm);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-sm);
+}
+
+.factRow {
+  display: contents;
+}
+
+.facts dt {
+  color: var(--text-muted);
+}
+
+.facts dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.path {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs) !important;
+}
+
+.warn {
+  color: var(--status-partial);
+}
+
+.warnBox {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--status-partial-soft);
+  font-size: var(--font-size-sm);
+}
+
+.switchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  color: var(--text-strong);
+}
+
+.switchRow input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+}
+
+.textarea {
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+
+.textarea:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

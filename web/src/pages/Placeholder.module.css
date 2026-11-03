@@ -1,0 +1,10 @@
+.card {
+  max-width: var(--read-max);
+  color: var(--text-regular);
+}
+
+.card ul {
+  margin: var(--space-3) 0 0;
+  padding-left: 1.4em;
+  line-height: 1.9;
+}

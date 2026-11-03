@@ -1,0 +1,119 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-4) var(--space-3) var(--space-3);
+  border-right: 1px solid var(--sidebar-border);
+  background: var(--sidebar-gradient);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2) var(--space-5);
+}
+
+.brand img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 6px rgba(43, 76, 155, 0.25);
+}
+
+.brandName {
+  display: block;
+  color: var(--text-strong);
+  font-size: 17px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+}
+
+.brandSub {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.bottom {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--sidebar-divider);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 40px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-regular);
+  font-size: var(--font-size-ui);
+  text-decoration: none;
+  transition:
+    background var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
+}
+
+.item svg {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.item:hover {
+  background: var(--sidebar-hover);
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+/* 选中项：玻璃胶囊，弹性动效只用在这里 */
+.item[aria-current='page'] {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-pill);
+  color: var(--text-strong);
+  font-weight: var(--font-weight-semibold);
+  animation: pill-in var(--duration-slow) var(--ease-spring);
+}
+
+.item[aria-current='page'] svg {
+  color: var(--color-primary);
+}
+
+@keyframes pill-in {
+  from {
+    opacity: 0.6;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.badge {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--text-on-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+}

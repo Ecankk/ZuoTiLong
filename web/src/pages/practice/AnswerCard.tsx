@@ -1,0 +1,91 @@
+import { EyeOff } from 'lucide-react'
+import type { PracticeResponse } from '../../api/types'
+import { MathText } from '../../components/math/MathText'
+import { Card } from '../../components/ui/Card'
+import { cx } from '../../lib/cx'
+import { mathTypeName, sourceName } from '../../lib/labels'
+import { AttemptForm } from './AttemptForm'
+import { RevealButton } from './RevealButton'
+import styles from './PracticeCard.module.css'
+
+/** 练习题面：图片题显示原题图，纯文字题按公式排版。 */
+export function QuestionContent({ question }: { question: PracticeResponse['question'] }) {
+  if (!question) return null
+  return (
+    <>
+      {question.question_image && (
+        <img className={styles.questionImage} src={question.question_image} alt="练习原题" />
+      )}
+      {question.question_text && (
+        <div className={cx('read', styles.question)}>
+          <MathText text={question.question_text} />
+        </div>
+      )}
+    </>
+  )
+}
+
+function MaskedQuestion({ detail }: { detail: PracticeResponse }) {
+  const mathType = mathTypeName(detail.practice.access.math_type)
+  const canReveal = detail.actions.includes('reveal_question')
+  return (
+    <div className={styles.masked}>
+      <EyeOff size={22} aria-hidden />
+      <strong>{mathType}真题，默认遮挡</strong>
+      <p>
+        {canReveal
+          ? `你在备考${mathType}，同类别真题可能留作整卷自测。查看后会记为“看过题目”。`
+          : '这道题已留作整卷自测，暂不显示。'}
+      </p>
+      {canReveal && (
+        <RevealButton bankId={detail.practice.bank_id} kind="question" label="查看题目">
+          查看后会记下“看过这道题”。以后用这套真题整卷自测时，这道题的结果会单独标出。
+        </RevealButton>
+      )}
+    </div>
+  )
+}
+
+/** 还没作答的练习：看题、作答、提交。 */
+export function AnswerCard({
+  detail,
+  position,
+  topicName,
+}: {
+  detail: PracticeResponse
+  position: { index: number; total: number }
+  topicName: string
+}) {
+  const { practice } = detail
+  const canSubmit = detail.actions.includes('submit')
+  return (
+    <Card className={styles.card} aria-label="当前练习">
+      <div className={styles.split}>
+        <div>
+          <p className={styles.eyebrow}>
+            {topicName} · 第 {position.index} / {position.total} 道
+          </p>
+          <h2>
+            {sourceName(practice.access)} · 第 {practice.access.number} 题
+          </h2>
+          {detail.selection_reason && (
+            <p className={styles.why}>
+              <b>为什么练这道：</b>
+              <MathText text={detail.selection_reason} />
+            </p>
+          )}
+          {detail.question ? (
+            <QuestionContent question={detail.question} />
+          ) : (
+            <MaskedQuestion detail={detail} />
+          )}
+        </div>
+        {canSubmit ? (
+          <AttemptForm practiceId={practice.id} showExposure />
+        ) : (
+          <p className={cx(styles.answer, styles.note)}>看过题目后就可以作答。</p>
+        )}
+      </div>
+    </Card>
+  )
+}

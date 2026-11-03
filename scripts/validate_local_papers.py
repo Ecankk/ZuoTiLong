@@ -36,7 +36,7 @@ def run(base,library,pdfs,label,cache_from=None):
     for pdf in pdfs:
         cached_before=(data/'ocr-cache'/hashlib.sha256(pdf.read_bytes()).hexdigest()).is_dir()
         started=time.perf_counter()
-        imported,_=service.import_pdf(pdf.name,pdf.read_bytes(),{},queue_agent=False)
+        imported,_=service.import_pdf(pdf.name,pdf.read_bytes(),{})
         elapsed=time.perf_counter()-started
         pid=imported['paper']['id']
         with database.session() as conn:

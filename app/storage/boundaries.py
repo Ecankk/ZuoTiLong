@@ -3,8 +3,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
-import os
-from app.config import resolve_library_dir
+from app.config import resolve_library_dir,library_location
 
 LIBRARY_TABLES = frozenset('''
 bank_questions bank_resources bank_identity bank_links bank_identity_reviews
@@ -42,7 +41,7 @@ def scoped_schema(sql, table):
 def save_location(config):
     if config.database.resolve().parent != config.data.resolve():
         raise ValueError('The learning database must belong to this workspace')
-    value = {'database': config.database.name, 'library': Path(os.path.relpath(config.library_dir,config.data)).as_posix()}
+    value = {'database': config.database.name, 'library': library_location(config.data,config.library_dir)}
     path = config.data / 'workspace.json'
     if path.exists():
         existing=json.loads(path.read_text(encoding='utf8'))

@@ -2,7 +2,7 @@ from contextlib import closing
 import hashlib,json,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
-from app.config import AppConfig
+from app.config import AppConfig,library_location
 from app.storage.database import Database
 from app.storage.paths import resolve_file
 from app.storage.path_upgrade import preview,upgrade,status
@@ -54,6 +54,8 @@ class DataPathsTests(unittest.TestCase):
         app=create_app(self.config,agent_factory=None);self.addCleanup(app.state.runtime.close)
         with TestClient(app,base_url='http://127.0.0.1') as http:
             response=http.get('/api/data/status');self.assertEqual(response.status_code,200)
+            self.assertTrue(response.json()['library_exists'])
+            self.assertFalse(response.json()['library_env_override'])
             self.assertTrue(response.json()['path_migration']['pending'])
             self.assertEqual(response.json()['invalid_file_references']['count'],1)
             self.assertEqual(http.post('/api/preferences',json={'reserved':[{'math_type':1,'year':'2026'}]}).status_code,200)
@@ -88,3 +90,39 @@ class DataPathsTests(unittest.TestCase):
         packed=session_paths(value,self.config.data)
         self.assertEqual(packed,{'path':{'$file':'bank-assets/fixture.png','root':'library'}})
         self.assertEqual(session_paths(packed,self.config.data,unpack=True),value)
+
+    def test_library_locator_supports_standard_layout_and_cross_volume(self):
+        self.assertEqual(library_location(Path('F:/path-fixture/workspaces/default'),
+            Path('F:/path-fixture/library')),'../../library')
+        other_library=Path('D:/')/(self.root.name+'-library-fixture')
+        self.assertEqual(Path(library_location(Path('F:/workspace-fixture'),other_library)),other_library)
+        # Neither example is opened or created; this checks Windows path syntax.
+        from dataclasses import replace
+        from app.storage.boundaries import save_location
+        cfg=replace(self.config,data=self.root/'cross-workspace',database=self.root/'cross-workspace'/'learning.db',library=other_library)
+        cfg.data.mkdir()
+        save_location(cfg)
+        self.assertEqual(Path(json.loads((cfg.data/'workspace.json').read_text(encoding='utf8'))['library']),cfg.library_dir)
+        with patch('app.storage.path_upgrade.inventory',return_value=([],[])):
+            self.assertEqual(preview(cfg)['changes'],[])
+
+    def test_standard_absolute_library_is_proposed_as_portable_locator(self):
+        library=self.root/'layout'/'library';library.mkdir(parents=True)
+        data=self.root/'layout'/'workspaces'/'default';data.mkdir(parents=True)
+        (data/'workspace.json').write_text(json.dumps(dict(database='learning.db',library=str(library))),encoding='utf8')
+        cfg=AppConfig(self.root,data,self.root/'dist',data/'learning.db',library=library)
+        change=preview(cfg)['changes'][0]
+        self.assertEqual(change['old'],str(library))
+        self.assertEqual(change['relative'],'../../library')
+
+    def test_status_reports_library_existence_and_scoped_environment_override(self):
+        missing=self.root/'missing-library'
+        with patch.dict('os.environ',{'MATHLENS_DATA_DIR':str(self.config.data), 'MATHLENS_LIBRARY_DIR':str(missing)}):
+            selected=AppConfig.from_env(self.root)
+            value=status(selected)
+            self.assertEqual(Path(value['library_dir']),missing)
+            self.assertFalse(value['library_exists']);self.assertTrue(value['library_env_override'])
+            other=status(self.config.__class__(self.root,self.root/'other',self.root/'dist',self.root/'other'/'learning.db',library=self.config.library_dir))
+            self.assertTrue(other['library_exists']);self.assertFalse(other['library_env_override'])
+        with patch.dict('os.environ',{},clear=True):
+            self.assertFalse(status(self.config)['library_env_override'])

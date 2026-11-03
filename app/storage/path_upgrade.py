@@ -90,11 +90,12 @@ def preview(config):
     if session_change:result['changes'].append(session_change[0])
     marker=config.data/'workspace.json'
     if marker.is_file():
-        import os
+        from app.config import library_location
         value=json.loads(marker.read_text(encoding='utf8'))
-        if Path(value.get('library','')).is_absolute():
+        location=library_location(config.data,config.library_dir)
+        if Path(value.get('library','')).is_absolute() and Path(value['library'])!=Path(location):
             result['changes'].append(dict(store='config',field='library',old=value['library'],
-                relative=Path(os.path.relpath(config.library_dir,config.data)).as_posix(),
+                relative=location,
                 sha256=hashlib.sha256(marker.read_bytes()).hexdigest(),exists=config.library_database.is_file(),verified=True))
     result['plan_sha256']=digest(result)
     return result
@@ -147,9 +148,11 @@ def upgrade(config,confirm=None):
 
 
 def status(config):
+    from app.config import library_env_override
     plan=preview(config)
     backups=list((config.data/'backups').glob('*.zip'))
     return dict(data_dir=str(config.data),library_dir=str(config.library_dir),
+        library_exists=config.library_dir.is_dir(),library_env_override=library_env_override(config.data),
         databases={k:dict(bytes=p.stat().st_size if p.is_file() else 0,exists=p.is_file()) for k,p in stores(config).items()},
         invalid_file_references=dict(count=len(plan['invalid_references']),examples=plan['invalid_references'][:10]),
         last_backup_at=datetime.fromtimestamp(max(p.stat().st_mtime for p in backups),timezone.utc).isoformat() if backups else None,

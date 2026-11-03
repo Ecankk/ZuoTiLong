@@ -116,10 +116,10 @@ GET `/api/events`：`Content-Type:text/event-stream`，no-store，禁代理缓�
 
 ## 数据状态与备份
 
-GET `/api/data/status`：只读，不启动任务，不自动迁移。响应 `{data_dir:string,library_dir:string,databases:{learning|library|session:{bytes:integer,exists:boolean}},invalid_file_references:{count:integer,examples:FileReference[]},last_backup_at:string|null,path_migration:{pending:boolean,ready_count:integer,unresolved_count:integer,historical_reference_count:integer,plan_sha256:string}}`。FileReference 包含 store/table/id/field/old/relative/exists/verified 等定位元数据，不含题目正文。该接口读取当前文件状态，不使用 ETag/304；缺库以 exists=false 表示，不创建数据库。待迁移及缺文件不是普通网络错误。
+GET `/api/data/status`：只读，不启动任务，不自动迁移。响应 `{data_dir:string,library_dir:string,library_exists:boolean,library_env_override:boolean,databases:{learning|library|session:{bytes:integer,exists:boolean}},invalid_file_references:{count:integer,examples:FileReference[]},last_backup_at:string|null,path_migration:{pending:boolean,ready_count:integer,unresolved_count:integer,historical_reference_count:integer,plan_sha256:string}}`。FileReference 包含 store/table/id/field/old/relative/exists/verified 等定位元数据，不含题目正文。该接口读取当前文件状态，不使用 ETag/304；缺库以 exists=false 表示，不创建数据库。待迁移及缺文件不是普通网络错误。library_dir 是解析后的实际通用库位置；library_exists 表示该目录存在（数据库是否存在另看 databases.library.exists）；library_env_override 表示 MATHLENS_LIBRARY_DIR 覆盖规则正在此工作区生效，即使环境变量与文件配置的值相同也为 true。环境变量指向其他工作区时为 false。
 
 立即备份复用 POST `/api/maintenance/backup`，响应 `{path:string,files:integer}`；列表 GET `/api/maintenance/backups` 返回 `{backups:[{name,bytes}]}`，无需新增写接口。
 
 POST `/api/preferences` 仅合并实际传入字段，省略 reserved、mask_same_type、paper_marking_convention、study_type 均保留旧值；显式非法值返回400。
 
-文件路径升级为显式 CLI：`python scripts/migrate_file_paths.py --dry-run --report <私有报告路径>`，核对 changes/unresolved/historical_references 后用 `--confirm <plan_sha256>`。确认前自动执行现有完整备份；找不到或散列不匹配的引用不猜配、不删除。workspace.json.library 是根目录位置配置，允许相对 ../ 指向共享库；业务文件引用只允许所属根目录内的相对路径。受散列保护的不可变历史证据单独报告，不能直接改写后继续宣称旧回执有效。
+文件路径升级为显式 CLI：`python scripts/migrate_file_paths.py --dry-run --report <私有报告路径>`，核对 changes/unresolved/historical_references 后用 `--confirm <plan_sha256>`。确认前自动执行现有完整备份；找不到或散列不匹配的引用不猜配、不删除。只对 workspace.json.library 这一个根目录位置配置开例外：同盘存相对工作区的位置（标准布局为 ../../library），跨盘允许绝对路径，迁移预演不会把已正确配置的跨盘绝对路径反复列为待迁移。预演 changes.relative 在该配置项跨盘时可为绝对目标；业务文件引用仍只允许所属根目录内的相对路径，拒绝绝对和越界路径。受散列保护的不可变历史证据单独报告，不能直接改写后继续宣称旧回执有效。

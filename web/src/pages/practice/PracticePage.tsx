@@ -52,7 +52,17 @@ function GroupCard({
   return (
     <Card className={cx(styles.group, allGraded && grouping === 'topic' && styles.done)}>
       <div className={styles.groupHead}>
-        <strong>{grouping === 'paper' ? paperName(group.label) : group.label}</strong>
+        <strong>
+          {grouping === 'paper' ? (
+            paperName(group.label)
+          ) : group.id === 'unlinked' ? (
+            group.label
+          ) : (
+            <Link className={styles.topicLink} to={`/topics/${encodeURIComponent(group.id)}`}>
+              {group.label}
+            </Link>
+          )}
+        </strong>
         <small>
           <span>{subtitle}</span>
           <span className={styles.dots} aria-hidden>

@@ -1,6 +1,6 @@
 import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, ZoomIn } from 'lucide-react'
 import { useState } from 'react'
-import { useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { usePaperQuestions, useQuestion, useTasks } from '../../api/queries'
 import type { QuestionResponse, QuestionSummary, StepComparison } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
@@ -347,7 +347,9 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
             <small>本题考点</small>
             <div className={styles.tags}>
               {detail.topics.map((topic) => (
-                <Chip key={topic.topic_id}>{topic.name}</Chip>
+                <Link key={topic.topic_id} to={`/topics/${encodeURIComponent(topic.topic_id)}`}>
+                  <Chip>{topic.name}</Chip>
+                </Link>
               ))}
             </div>
           </div>

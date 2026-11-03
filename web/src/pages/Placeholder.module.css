@@ -8,3 +8,9 @@
   padding-left: 1.4em;
   line-height: 1.9;
 }
+
+.muted {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}

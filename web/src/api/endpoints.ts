@@ -6,7 +6,12 @@
 import { ApiError, postJson, request } from './client'
 import type {
   AttemptBody,
+  BankCard,
+  BankTopics,
+  CatalogNode,
+  CatalogPage,
   DataStatus,
+  TopicResponse,
   ImportResult,
   MathType,
   Page,
@@ -24,6 +29,7 @@ import type {
 
 export type PracticeGrouping = 'topic' | 'paper'
 export type PaperScope = '0' | '1'
+export type BankFilter = { mathType: string; year: string; topic: string }
 
 const enc = encodeURIComponent
 
@@ -60,6 +66,29 @@ export const endpoints = {
     orNull(request<PracticeResponse>(`/api/practices/${enc(practiceId)}`)),
   preferences: () => request<Preferences>('/api/preferences'),
   dataStatus: () => request<DataStatus>('/api/data/status'),
+  /** 题库浏览（view=library）；考点筛选包含子考点，由后端处理 */
+  bank: (filter: BankFilter, offset: number, limit: number) => {
+    const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+    if (filter.mathType) query.set('math_type', filter.mathType)
+    if (filter.year) query.set('year', filter.year)
+    if (filter.topic) query.set('topic_id', filter.topic)
+    return request<Page<BankCard>>(`/api/bank?${query}`)
+  },
+  bankTopics: (ids: string[]) =>
+    request<BankTopics>(`/api/bank/topics?${ids.map((id) => `bank_id=${enc(id)}`).join('&')}`),
+  /** 完整考点目录：接口每页最多 100 项，分页取全后在前端建树 */
+  catalog: async (): Promise<CatalogNode[]> => {
+    const first = await request<CatalogPage>('/api/knowledge/catalog?limit=100&offset=0')
+    const rest = await Promise.all(
+      Array.from({ length: Math.max(0, Math.ceil(first.total / 100) - 1) }, (_, i) =>
+        request<CatalogPage>(`/api/knowledge/catalog?limit=100&offset=${(i + 1) * 100}`),
+      ),
+    )
+    return [first, ...rest].flatMap((page) => page.items)
+  },
+  /** 历史考点 ID 由后端重定向，返回的 topic.id 可能与请求不同 */
+  topic: (topicId: string) =>
+    orNull(request<TopicResponse>(`/api/knowledge/topics/${enc(topicId)}`)),
 
   /* ---------- 设置 ---------- */
   /** 偏好接口只合并传入的字段 */

@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { endpoints, type PaperScope, type PracticeGrouping } from './endpoints'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { endpoints, type BankFilter, type PaperScope, type PracticeGrouping } from './endpoints'
 import type { Preferences } from './types'
 
 /**
@@ -92,3 +92,30 @@ export const useImportPaper = () =>
       endpoints.importPaper(file, title, examDate),
     [['papers'], queryKeys.tasks],
   )
+
+/* ---------- 题库与考点（第一段对应 SSE 的 bank / knowledge 资源） ---------- */
+
+export const useBank = (filter: BankFilter, offset: number, limit: number) =>
+  useQuery({
+    queryKey: ['bank', filter.mathType, filter.year, filter.topic, offset, limit],
+    queryFn: () => endpoints.bank(filter, offset, limit),
+    placeholderData: keepPreviousData,
+  })
+
+export const useBankTopics = (ids: string[]) =>
+  useQuery({
+    queryKey: ['bank', 'topics', ...ids],
+    queryFn: () => endpoints.bankTopics(ids),
+    enabled: ids.length > 0,
+  })
+
+/** 目录很少变化，取一次后长期缓存 */
+export const useCatalog = () =>
+  useQuery({ queryKey: ['knowledge', 'catalog'], queryFn: endpoints.catalog, staleTime: Infinity })
+
+export const useTopic = (topicId: string | undefined) =>
+  useQuery({
+    queryKey: ['knowledge', 'topic', topicId ?? ''],
+    queryFn: () => endpoints.topic(topicId ?? ''),
+    enabled: Boolean(topicId),
+  })

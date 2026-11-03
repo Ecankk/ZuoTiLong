@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
 import { Card } from '../components/ui/Card'
 import { PageHeader } from '../components/ui/PageHeader'
 import styles from './Placeholder.module.css'
@@ -30,34 +31,34 @@ export function PlaceholderPage({
   )
 }
 
-export const TopicsPage = () => (
-  <PlaceholderPage
-    title="考点"
-    intro="这里将按章节展示考点树，选中考点后查看："
-    items={['定义与适用条件', '关联题：已完成的题 / 全部题库', '我在这个考点的做题情况']}
-  />
-)
-
 export const ProfilePage = () => (
-  <PlaceholderPage
-    title="画像"
-    intro="这里将用图表展示你的整体情况："
-    items={['成绩趋势', '各科目与章节的正确率', '薄弱考点排行', '练习完成情况与独立正确率']}
-  />
-)
-
-export const BankPage = () => (
-  <PlaceholderPage
-    title="题库"
-    intro="这里可以浏览全部真题，并按以下条件筛选："
-    items={['数学一 / 数学二 / 数学三', '年份', '考点']}
-  />
+  <>
+    <PageHeader title="画像" />
+    <Card padded className={styles.card}>
+      <p>画像还在开发中，后续版本提供。</p>
+      <p className={styles.muted}>
+        现在可以在“考点”里查看每个考点的做题情况，在“试卷”里查看每份试卷的正误分布。
+      </p>
+    </Card>
+  </>
 )
 
 export const NotFoundPage = () => (
-  <PlaceholderPage
-    title="没有找到这个页面"
-    intro="可以从左侧导航回到："
-    items={['首页', '试卷', '练习']}
-  />
+  <>
+    <PageHeader title="没有找到这个页面" />
+    <Card padded className={styles.card}>
+      <p>这个地址没有对应的页面，可能链接已经过期。可以回到：</p>
+      <ul>
+        <li>
+          <Link to="/">首页</Link>
+        </li>
+        <li>
+          <Link to="/papers">试卷</Link>
+        </li>
+        <li>
+          <Link to="/practice">练习</Link>
+        </li>
+      </ul>
+    </Card>
+  </>
 )

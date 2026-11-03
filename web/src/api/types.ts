@@ -316,3 +316,72 @@ export type DataStatus = {
     plan_sha256: string
   }
 }
+
+/* ---------- 题库与考点 ---------- */
+
+/** GET /api/bank?…&offset&limit 的一项（public_bank view=library + 题型/分值） */
+export type BankCard = {
+  id: string
+  math_type: MathType
+  year: string
+  number: number
+  can_view: boolean
+  reserved: boolean
+  reason: string
+  analysis_allowed: boolean
+  stem?: string
+  question_text?: string
+  analysis_text?: string
+  tags?: string[]
+  question_image?: string
+  analysis_image?: string
+  question_type: string | null
+  max_score: number | null
+}
+
+/** GET /api/bank/topics?bank_id=… */
+export type BankTopics = {
+  catalog_revision: string | null
+  items: {
+    bank_id: string
+    status: string
+    topics: { topic_id: string; name: string; role: string }[]
+  }[]
+}
+
+/** GET /api/knowledge/catalog 的一项 */
+export type CatalogNode = {
+  id: string
+  parent_id: string | null
+  name: string
+  kind: 'subject' | 'chapter' | 'topic' | 'atom' | string
+  aliases: string[]
+  definition?: string
+  conditions?: string[]
+  boundaries?: string[]
+}
+
+export type CatalogPage = { release_id: string | null; total: number; items: CatalogNode[] }
+
+/** GET /api/knowledge/topics/{topic_id} */
+export type TopicResponse = {
+  topic: {
+    id: string
+    parent_id: string | null
+    name: string
+    kind: string
+    definition: string
+    conditions: string[]
+    boundaries: string[]
+  }
+  performance: {
+    state: string
+    state_reason: string
+    successes: number
+    failures: number
+    pending: number
+    attempt_count: number
+  }
+  question_counts: { completed: number; bank: number }
+  practice_counts: PracticeCounts
+}

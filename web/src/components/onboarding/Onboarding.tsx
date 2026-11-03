@@ -136,7 +136,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           <Dialog.Overlay className={styles.overlay} />
           <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
             <div className={styles.top}>
-              <img src="/brand/logo-round.png" alt="" />
+              <img src="/brand/logo-icon.png" alt="" />
               <span className={styles.stepLabel}>
                 第 {step + 1} 步，共 {steps.length} 步
               </span>

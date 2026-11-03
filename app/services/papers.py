@@ -182,7 +182,7 @@ class PaperService:
             "agent_task": str(task_file),
         }
 
-    def import_pdf(self,filename,content,fields,*,queue_agent=True):
+    def import_pdf(self,filename,content,fields):
         import pymupdf
         if not filename or not content or len(content)>80*1024*1024:
             raise ValueError('PDF 上传大小须为 1 字节至 80 MB')
@@ -209,18 +209,16 @@ class PaperService:
             with self.database.session(write=True) as conn:
                 analysis=self.analyze(conn,paper_id)
                 result.update(paper=analysis['paper'],created_questions=analysis['created_questions'],warnings=analysis['warnings'])
-                if queue_agent:
-                    job=enqueue(conn,self.config.root,self.config.data,'analyze_paper',paper_id,
-                        str(uuid.uuid5(uuid.NAMESPACE_URL,'mathlens:paper:'+digest)),auto_prepare=True,index_after=True,practice_contract_version='1.9',contract_version='2.0')
-                    result.update(agent_queued=True,job_id=job['id'])
-                else:result['agent_queued']=False
+                result['agent_queued']=False
         except (ValueError,RuntimeError,ImportError) as exc:result['analysis_warning']=str(exc)
         return result,201
 
     def analyze_and_queue(self,paper_id,confirmed=False):
         with self.database.session(write=True) as conn:
-            if conn.execute('SELECT 1 FROM agent_reports WHERE paper_id=?',(paper_id,)).fetchone() and confirmed is not True:
-                raise ValueError('重新分析将生成当前版本，需要二次确认；旧报告及真实作答保留')
+            if confirmed is not True:
+                if conn.execute('SELECT 1 FROM agent_reports WHERE paper_id=?',(paper_id,)).fetchone():
+                    raise ValueError('重新分析将生成当前版本，需要二次确认；旧报告及真实作答保留')
+                raise ValueError('请核对切题结果并确认开始分析')
             result=self.analyze(conn,paper_id)
             job=enqueue(conn,self.config.root,self.config.data,'analyze_paper',paper_id,str(uuid.uuid4()),auto_prepare=True,index_after=True,practice_contract_version='1.9',contract_version='2.0')
             return {**result,'agent_queued':True,'job_id':job['id']}

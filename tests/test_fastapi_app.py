@@ -3,6 +3,7 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from app.config import AppConfig
 from app.main import create_app
@@ -83,6 +84,48 @@ class FastAPIAppTests(unittest.TestCase):
             with Database(self.config).session() as conn:
                 self.assertEqual(conn.execute('SELECT stem FROM bank_questions WHERE id=?',('original',)).fetchone()[0],'unchanged')
                 self.assertIsNone(conn.execute('SELECT id FROM bank_questions WHERE id=?',('new',)).fetchone())
+
+    def test_pdf_upload_waits_for_confirmation_before_queueing_analysis(self):
+        import pymupdf
+        with pymupdf.open() as pdf:
+            page=pdf.new_page()
+            page.insert_text((50,70),'1. First question.\n2. Second question.')
+            content=pdf.tobytes()
+        # No bridge/dispatcher: queueing here remains local and isolated.
+        with self.client(agent_factory=None) as http:
+            with patch('app.services.papers.enqueue',side_effect=AssertionError('upload queued AI')):
+                uploaded=http.post('/api/papers/import',files={'file':('fixture.pdf',content,'application/pdf')})
+            self.assertEqual(uploaded.status_code,201,uploaded.text)
+            result=uploaded.json();pid=result['paper']['id']
+            self.assertFalse(result['agent_queued']);self.assertNotIn('job_id',result)
+            self.assertEqual(http.get('/api/tasks').json()['items'],[])
+            detail=http.get('/api/papers/'+pid).json()
+            self.assertIn(detail['paper']['analysis_status'],('segmented','needs_review'))
+            self.assertIsNone(detail['analysis']['report_id']);self.assertIn('analyze',detail['actions'])
+            questions=http.get('/api/papers/'+pid+'/questions').json()['items']
+            self.assertEqual([q['number'] for q in questions],['1','2'])
+            corrected=http.post('/api/papers/'+pid+'/questions/correct',json={
+                'confirmed':True,'questions':[{'number':q['number'],'question_ids':[q['id']]} for q in questions]})
+            self.assertEqual(corrected.status_code,200,corrected.text)
+            for body in ({},{'confirmed':False}):
+                rejected=http.post('/api/papers/'+pid+'/analyze',json=body)
+                self.assertEqual(rejected.status_code,400,rejected.text)
+            self.assertEqual(http.get('/api/tasks').json()['items'],[])
+            queued=http.post('/api/papers/'+pid+'/analyze',json={'confirmed':True})
+            self.assertEqual(queued.status_code,201,queued.text)
+            self.assertTrue(queued.json()['agent_queued'])
+            reused=http.post('/api/papers/import',files={'file':('renamed.pdf',content,'application/pdf')})
+            self.assertEqual(reused.status_code,200,reused.text)
+            self.assertTrue(reused.json()['reused']);self.assertEqual(reused.json()['paper']['id'],pid)
+            tasks=http.get('/api/tasks').json()['items']
+            self.assertEqual(len(tasks),1);self.assertEqual(tasks[0]['paper_id'],pid)
+            with Database(self.config).session() as conn:
+                job=conn.execute('SELECT * FROM workflow_jobs').fetchone()
+                self.assertEqual(job['kind'],'analyze_paper')
+                self.assertEqual((job['auto_prepare'],job['index_after']),(1,1))
+                self.assertEqual((job['practice_contract_version'],job['contract_version']),('1.9','2.0'))
+                self.assertEqual(conn.execute('SELECT count(*) FROM papers').fetchone()[0],1)
+                self.assertEqual(conn.execute('SELECT count(*) FROM learning_tasks').fetchone()[0],0)
 
     def test_two_apps_keep_paths_and_records_separate(self):
         other=AppConfig(ROOT,self.data/'other',self.dist,self.data/'other'/'mathlens.db')

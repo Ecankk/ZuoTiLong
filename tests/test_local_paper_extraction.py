@@ -46,7 +46,7 @@ class LocalPaperExtractionTests(unittest.TestCase):
                 p=pdf.new_page();p.insert_text((50,70),'1. First main question.\n(1) Subpart.\n(2) Subpart.\n2. Next main question.')
                 raw=pdf.tobytes()
             with patch('app.services.papers.enqueue',side_effect=AssertionError('AI queued')):
-                result,code=service.import_pdf('fixture.pdf',raw,{},queue_agent=False)
+                result,code=service.import_pdf('fixture.pdf',raw,{})
                 self.assertEqual(code,201);self.assertFalse(result['agent_queued'])
                 pid=result['paper']['id']
                 with database.session(write=True) as conn:
@@ -55,7 +55,7 @@ class LocalPaperExtractionTests(unittest.TestCase):
                     self.assertEqual(before,[tuple(r) for r in conn.execute('SELECT * FROM questions ORDER BY id')])
                     self.assertEqual(conn.execute('SELECT count(*) FROM learning_tasks').fetchone()[0],0)
                     self.assertEqual(conn.execute('SELECT count(*) FROM workflow_jobs').fetchone()[0],0)
-                reused,code=service.import_pdf('fixture.pdf',raw,{},queue_agent=False)
+                reused,code=service.import_pdf('fixture.pdf',raw,{})
                 self.assertTrue(reused['reused']);self.assertEqual(code,200)
 
     def test_tall_math_crop_context_does_not_reassign_preceding_ocr_text(self):

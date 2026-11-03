@@ -67,13 +67,16 @@ class KnowledgeLinksService:
                     value=str(cell).encode();digest.update(str(len(value)).encode()+b':'+value)
         release=catalog.document(conn)
         digest.update(catalog.encode(release).encode())
-        base=os.path.abspath(library_root(self.config.data)/'bank-assets')
-        safe_base=(library_root(self.config.data)/'bank-assets').resolve()
+        root=library_root(self.config.data)
+        base=os.path.abspath(root/'bank-assets')
+        safe_base=(root/'bank-assets').resolve()
         seen_files=set()
         for row in conn.execute('SELECT question_path,answer_path,analysis_path FROM bank_resources ORDER BY bank_id'):
             for value in row:
                 if not value:continue
-                path = os.path.abspath(material_path(self.config.data, value))
+                from app.storage.paths import resolve_file
+                owner=root if Path(value).parts[0] in ('bank-assets','knowledge-sources') else self.config.data
+                path = os.path.abspath(resolve_file(owner,value))
                 if path in seen_files:continue
                 seen_files.add(path)
                 if os.path.commonpath((base,path))!=base:
@@ -280,3 +283,21 @@ class KnowledgeLinksService:
             selected=self._selected(nodes,canonical,'subtree')
             return {item['bank_id'] for item in self._bank_index(conn,nodes)
                     if any(t['topic_id'] in selected for t in item['topics'])}
+
+    def resource_snapshot(self, bank=None):
+        """Validated shared read projection for version-cached routed resources."""
+        with navigation_snapshot(self.database) as conn:
+            nodes=index.catalog(conn)
+            if bank is None:bank=self._bank_index(conn,nodes)
+            completed=self._completed(conn,nodes,bank,None)
+            counts={n['id']:{'bank':set(),'completed':set()} for n in nodes}
+            parents={n['id']:n['parent_id'] for n in nodes}
+            for kind,items in (('bank',bank),('completed',completed)):
+                for item in items:
+                    for binding in item['topics']:
+                        tid=binding['topic_id'];seen=set()
+                        while tid in counts and tid not in seen:
+                            seen.add(tid);counts[tid][kind].add(item['entity_id']);tid=parents[tid]
+            return dict(nodes=nodes,bank=bank,
+                        redirects=(catalog.document(conn) or {}).get('document',{}).get('redirects',[]),
+                        counts={tid:{k:len(v) for k,v in c.items()} for tid,c in counts.items()})

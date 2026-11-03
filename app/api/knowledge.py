@@ -68,6 +68,10 @@ def catalog(query:str='',parent_id:str|None=None,kind:str|None=None,release_id:s
 def catalog_summary(rt=Depends(runtime)):
     return rt.knowledge_catalog.summary()
 
+@router.get('/catalog/tree')
+def catalog_tree(rt=Depends(runtime)):
+    return rt.knowledge_catalog.tree()
+
 
 @router.get('/catalog/releases')
 def catalog_releases(rt=Depends(runtime)):

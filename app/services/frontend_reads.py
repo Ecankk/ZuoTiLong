@@ -46,6 +46,21 @@ class FrontendReads:
         self._knowledge_lock = Lock()
         self._knowledge_key = None
         self._knowledge_value = None
+        self._navigation_lock = Lock()
+        self._navigation_key = None
+        self._navigation_value = None
+
+    def _navigation(self):
+        # Routed UI resources reuse validated projections while both databases
+        # are unchanged. Official material imports also commit to the library.
+        with self._navigation_lock:
+            key=self.rt.workspace.revision()
+            if self._navigation_value is None or key!=self._navigation_key:
+                bank=self._navigation_value['bank'] if self._navigation_key and key[1]==self._navigation_key[1] else None
+                value=self.rt.knowledge_links.resource_snapshot(bank)
+                self._navigation_value=value
+                self._navigation_key=key if key==self.rt.workspace.revision() else None
+            return self._navigation_value
 
     def _knowledge(self):
         # Share the existing version observers, never compare versions obtained
@@ -255,7 +270,7 @@ class FrontendReads:
             if node is None:raise ServiceError('考点不存在', 404)
             origin = node['origin']
             cards = [c for c in self._cards(conn) if any(t['topic_id'] == canonical for t in c['topics'])]
-        counts = self.rt.knowledge_links.summary()['nodes'][canonical]
+        counts = self._navigation()['counts'][canonical]
         return dict(topic=dict(id=canonical, parent_id=node['parent_id'], name=node['label'], kind=origin.get('node_kind', node['scope_level']),
                                definition=origin.get('definition', ''), conditions=origin.get('conditions', []), boundaries=origin.get('boundaries', [])),
                     performance={k: node[k] for k in ('state', 'state_reason', 'successes', 'failures', 'pending', 'attempt_count')},
@@ -269,11 +284,17 @@ class FrontendReads:
         if topic_id is not None:
             # The existing symmetric projection validates mappings and materials;
             # do not replace its checks with title/tag string matching.
-            allowed = self.rt.knowledge_links.bank_ids_for_topic(topic_id)
+            navigation=self._navigation()
+            canonical=next((r['target_id'] for r in navigation['redirects'] if r['old_id']==topic_id),topic_id)
+            selected=self.rt.knowledge_links._selected(navigation['nodes'],canonical,'subtree')
+            allowed={item['bank_id'] for item in navigation['bank'] if any(t['topic_id'] in selected for t in item['topics'])}
         with self.rt.database.session() as conn:
             ids = [r[0] for r in conn.execute("""SELECT b.id FROM bank_questions b JOIN bank_identity i ON i.bank_id=b.id
-                WHERE b.source!='本地示例题库' AND (?='' OR CAST(i.math_type AS TEXT)=?) AND (?='' OR i.year=?) ORDER BY b.id""", (math_type, math_type, year, year))
+                WHERE b.source!='本地示例题库' AND (?='' OR CAST(i.math_type AS TEXT)=?) AND (?='' OR i.year=?)
+                ORDER BY CAST(i.year AS INTEGER) DESC,i.math_type,i.number,b.id""", (math_type, math_type, year, year))
                    if allowed is None or r[0] in allowed]
             result = page(ids, offset, limit)
             result['items'] = [{**public_bank(conn, bid, view='library'), **metadata(conn, bid)} for bid in result['items']]
+            from app.bank.access import text_resources
+            result['items']=[text_resources(conn,item['id'],item,reference=item['analysis_allowed']) for item in result['items']]
             return result

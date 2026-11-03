@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+import os
 from app.config import resolve_library_dir
 
 LIBRARY_TABLES = frozenset('''
@@ -41,8 +42,13 @@ def scoped_schema(sql, table):
 def save_location(config):
     if config.database.resolve().parent != config.data.resolve():
         raise ValueError('The learning database must belong to this workspace')
-    value = {'database': config.database.name, 'library': str(config.library_dir.resolve())}
+    value = {'database': config.database.name, 'library': Path(os.path.relpath(config.library_dir,config.data)).as_posix()}
     path = config.data / 'workspace.json'
+    if path.exists():
+        existing=json.loads(path.read_text(encoding='utf8'))
+        if existing.get('database')==config.database.name:
+            from app.config import resolve_library_dir
+            if resolve_library_dir(config.data,existing.get('library',config.library_dir))==config.library_dir.resolve():return
     raw = json.dumps(value, ensure_ascii=False)
     if not path.exists() or path.read_text(encoding='utf8') != raw:
         path.write_text(raw, encoding='utf8')
@@ -68,9 +74,10 @@ def library_root(data):
 
 
 def material_path(data, relative):
+    from app.storage.paths import resolve_file
     relative = Path(relative)
     root = library_root(data) if relative.parts and relative.parts[0] in ('bank-assets', 'knowledge-sources') else Path(data)
-    return root / relative
+    return resolve_file(root,relative)
 
 
 def connect_workspace(config, *, library_write=False, readonly=False):

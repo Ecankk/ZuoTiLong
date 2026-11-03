@@ -5,6 +5,7 @@ one SQLite transaction; the session database is a recoverable UI projection.
 """
 from __future__ import annotations
 
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 from contextlib import contextmanager
 import copy
 import hashlib
@@ -121,7 +122,7 @@ def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract
     paper = dict(paper)
     if not paper.get('source_path'):
         raise ValueError('试卷缺少原始PDF')
-    source_sha = resource_digest(root / paper['source_path'], data)
+    source_sha = resource_digest(paper_path(data,paper['source_path'],root), data)
     if kind=='review_practice':
         from app.learning.practice_review import capture
         return {'paper':{k:paper.get(k) for k in ('id','archived_at','source_path')},
@@ -397,7 +398,7 @@ def deliver(conn, root, data, payload, lease):
             if not known.issubset(set(range(1, report['expected_count'] + 1))):
                 raise ValueError('报告遗漏已经定位的题目，不能缩小题数后声称整卷完成')
             import pymupdf
-            with pymupdf.open(root / current['paper']['source_path']) as pdf:
+            with pymupdf.open(paper_path(data,current['paper']['source_path'],root)) as pdf:
                 for page in range(1, len(pdf) + 1):
                     require_read(conn, task, 'paper', task['paper_id'], str(page), current['source_sha256'])
             report['probes'] = []

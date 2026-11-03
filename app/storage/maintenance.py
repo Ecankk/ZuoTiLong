@@ -62,8 +62,9 @@ def restore(archive_path,destination):
         save_location(AppConfig(old_root,destination,old_root/'dist',destination/database_name,library=destination/'__library__'))
     with closing(sqlite3.connect(destination/database_name)) as conn,conn:
         for pid,relative in conn.execute('SELECT id,source_path FROM papers WHERE source_path IS NOT NULL'):
+            if str(relative).replace('\\','/').startswith('papers/'):continue
             old=(old_root/relative).resolve()
-            if old.is_relative_to(old_data.resolve()):conn.execute('UPDATE papers SET source_path=? WHERE id=?',(str(destination/old.relative_to(old_data.resolve())),pid))
+            if old.is_relative_to(old_data.resolve()):conn.execute('UPDATE papers SET source_path=? WHERE id=?',(old.relative_to(old_data.resolve()).as_posix(),pid))
     for path in (destination/'tasks').glob('*/request.json'):
         value=json.loads(path.read_text(encoding='utf8'))
         path.write_text(json.dumps(_rebase_paths(value,old_data,destination),ensure_ascii=False),encoding='utf8')
@@ -82,7 +83,8 @@ def restore(archive_path,destination):
                 state.update(active_request=None,status='disconnected',external_control=False,requests=[])
                 state.pop('pending_chain',None)
                 state['connection_notice']='资料已恢复。保留原会话ID；未完成阶段须按当前材料重新发起。跨机缺少Codex会话历史时仍可阅读全部本地记录，不自动另建会话。'
-                conn.execute('UPDATE session SET payload=? WHERE id=1',(json.dumps(state,ensure_ascii=False),))
+                from app.storage.paths import session_paths
+                conn.execute('UPDATE session SET payload=? WHERE id=1',(json.dumps(session_paths(state,destination),ensure_ascii=False),))
     with closing(sqlite3.connect(destination/database_name)) as conn,conn:
         if conn.execute("SELECT 1 FROM sqlite_master WHERE name='learning_tasks'").fetchone():
             conn.execute("""UPDATE learning_tasks SET status='interrupted',run_token=lower(hex(randomblob(16))),

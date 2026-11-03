@@ -49,7 +49,7 @@ Access 沿用现有 access 对象（id、math_type、year、number、reserved、
 | GET /api/practices/{practice_id}/attempts | 分页参数 | Page<Attempt>；创建时间、ID 倒序；不带标准答案 |
 
 `PracticeGroup={id:string,label:string,counts:PracticeCounts,items:PracticeCard[]}`。无稳定考点映射的练习放在 unlinked 组，不把训练标签当目录 ID。
-`Attempt={id:string,probe_id:string,response:string,image_ids:string[],image_roles:object,answer_exposed:boolean,elapsed_seconds:number|null,created_at:string,assessment:object|null}`；assessment 为已保存批改对象（correct:boolean|null、feedback、observations、first_error、possible_causes、reference_reasoning、next_step、needs_material 等），不新增 partial。
+`Attempt={id:string,probe_id:string,response:string,image_ids:string[],image_roles:object,answer_exposed:boolean,elapsed_seconds:number|null,created_at:string,assessment:object|null}`；assessment 为已保存批改对象（correct:boolean|null、answer_status?:string、feedback、observations、first_error、possible_causes、reference_reasoning、next_step、needs_material 等）。answer_status 原样提供给前端；旧记录若为 partial，显示“部分正确”，不得转成全错或独立全对。当前写入契约允许 correct/wrong/unknown，本批不修改批改写入 schema；字段缺失时按 correct 展示并保留未知状态。
 question 仅包含允许返回的 question_text/question_image、analysis_text/analysis_image、expected/solution_note；隐藏时为 null，inactive 时为 null。参考字段同时要求已经提交且 analysis_allowed。图片 URL 带固定快照 probe_id；不得以当前通用库替代旧练习固定材料。
 actions 取 submit/supplement/reveal_question/reveal_analysis 的实际允许子集；草稿仍用 GET/POST /api/drafts，提交/补充/上传/确认查看沿用旧接口。
 
@@ -113,3 +113,13 @@ GET `/api/events`：`Content-Type:text/event-stream`，no-store，禁代理缓�
 
 旧 bootstrap、loop、profile、agent/state、preparation 与所有写入口继续可用；新增读取不改变学习记录、不自动 reveal、不触发新学习任务。资源接口只读取已保存结果，后台自动连接独立于读取。
 本批不更新学习结果 schema/Skill，不回填旧报告，不做计时图表。客户端不应把缺失摘要、未知题型、未关联考点或未核定分数显示为 0/错误/已掌握。
+
+## 数据状态与备份
+
+GET `/api/data/status`：只读，不启动任务，不自动迁移。响应 `{data_dir:string,library_dir:string,databases:{learning|library|session:{bytes:integer,exists:boolean}},invalid_file_references:{count:integer,examples:FileReference[]},last_backup_at:string|null,path_migration:{pending:boolean,ready_count:integer,unresolved_count:integer,historical_reference_count:integer,plan_sha256:string}}`。FileReference 包含 store/table/id/field/old/relative/exists/verified 等定位元数据，不含题目正文。该接口读取当前文件状态，不使用 ETag/304；缺库以 exists=false 表示，不创建数据库。待迁移及缺文件不是普通网络错误。
+
+立即备份复用 POST `/api/maintenance/backup`，响应 `{path:string,files:integer}`；列表 GET `/api/maintenance/backups` 返回 `{backups:[{name,bytes}]}`，无需新增写接口。
+
+POST `/api/preferences` 仅合并实际传入字段，省略 reserved、mask_same_type、paper_marking_convention、study_type 均保留旧值；显式非法值返回400。
+
+文件路径升级为显式 CLI：`python scripts/migrate_file_paths.py --dry-run --report <私有报告路径>`，核对 changes/unresolved/historical_references 后用 `--confirm <plan_sha256>`。确认前自动执行现有完整备份；找不到或散列不匹配的引用不猜配、不删除。workspace.json.library 是根目录位置配置，允许相对 ../ 指向共享库；业务文件引用只允许所属根目录内的相对路径。受散列保护的不可变历史证据单独报告，不能直接改写后继续宣称旧回执有效。

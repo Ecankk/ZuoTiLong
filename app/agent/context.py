@@ -1,4 +1,5 @@
 """Build explicit text/image inputs; never infer unseen desktop content."""
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import json,sqlite3
 from app.storage.boundaries import connect_workspace,workspace_config
 from contextlib import closing
@@ -54,7 +55,7 @@ class PromptContext:
                     raise ValueError("试卷不存在")
                 if question and question["regions_json"]:
                     import pymupdf
-                    pdf = (self.root / paper["source_path"]).resolve()
+                    pdf = paper_path(self.data,paper["source_path"],self.root)
                     if not pdf.is_relative_to(self.data):
                         raise ValueError("原卷文件不在个人数据目录")
                     folder = self.data / "agent-input" / request_id

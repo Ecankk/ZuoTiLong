@@ -171,7 +171,8 @@ class StorageSeparationTests(unittest.TestCase):
         self.assertFalse((self.a.library_dir/'papers').exists())
         with Database(self.a).session() as conn:
             row=conn.execute('SELECT source_path FROM papers').fetchone()
-            self.assertEqual(Path(row[0]).read_bytes(),b'%PDF-test')
+            self.assertFalse(Path(row[0]).is_absolute())
+            self.assertEqual((self.a.data/row[0]).read_bytes(),b'%PDF-test')
             self.assertEqual(conn.execute('SELECT count(*) FROM bank_questions').fetchone()[0],1)
         Database(self.b).initialize()
         with Database(self.b).session() as conn:

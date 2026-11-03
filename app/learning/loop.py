@@ -5,6 +5,7 @@ or infer a student's cause from the final answer alone.
 """
 from __future__ import annotations
 
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import hashlib
 import json
 from pathlib import Path
@@ -144,7 +145,7 @@ def apply_report(conn, paper_id, report, root, *, question_numbers=None):
     if not paper:
         raise ValueError("试卷不存在")
     if paper['archived_at']:raise ValueError('请先恢复已归档试卷')
-    pdf = (root / paper["source_path"]).resolve()
+    pdf = paper_path(connection_data(conn),paper["source_path"],root)
     digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
     if report.get("source_sha256") != digest:
         raise ValueError("报告与试卷 SHA256 不一致，拒绝写入")

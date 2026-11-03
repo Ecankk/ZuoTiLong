@@ -1,6 +1,7 @@
 """Scoped original-question review inputs and conservative report merging."""
 from __future__ import annotations
 
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import copy
 import json
 import re
@@ -54,7 +55,7 @@ def capture_review(conn, root, data, paper_id, request):
     if not question:
         raise ValueError('当前报告没有该题，请重新分析本卷')
     paper = conn.execute('SELECT source_path FROM papers WHERE id=?', (paper_id,)).fetchone()
-    if report['source_sha256'] != resource_digest(root / paper[0], data):
+    if report['source_sha256'] != resource_digest(paper_path(data,paper[0],root), data):
         raise ValueError('原PDF已改变，请重新分析本卷')
     images = [{**record, 'actual_sha256': resource_digest(image_path(record, data), data)}
               for record in image_records(conn, request['image_ids'])]

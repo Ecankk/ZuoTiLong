@@ -10,7 +10,8 @@ def resolve_library_dir(data, default):
     selected = os.environ.get('MATHLENS_DATA_DIR')
     if selected and Path(data).resolve() == Path(selected).resolve():
         default = os.environ.get('MATHLENS_LIBRARY_DIR', default)
-    return Path(default).resolve()
+    candidate=Path(default)
+    return (candidate if candidate.is_absolute() else Path(data)/candidate).resolve()
 
 
 @dataclass(frozen=True)

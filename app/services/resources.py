@@ -1,4 +1,5 @@
 """Resolve private files through their saved identities and access policy."""
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -23,7 +24,7 @@ class ResourceService:
     def paper(self,paper_id):
         with self.database.session() as conn:row=conn.execute('SELECT source_path FROM papers WHERE id=?',(paper_id,)).fetchone()
         if not row or not row[0]:raise ServiceError('paper file not found',404)
-        path=(self.config.root/row[0]).resolve()
+        path=paper_path(self.config.data,row[0],self.config.root)
         if not path.is_relative_to(self.config.papers) or not path.is_file():raise ServiceError('paper file not found',404)
         return Resource(path,'application/pdf')
     def bank(self,bank_id,role,library=False,probe_id=None):
@@ -78,7 +79,7 @@ class ResourceService:
         if not row:raise ServiceError('题目不存在',404)
         try:
             region=json_load(row['regions_json'],[])[index]
-            pdf=(self.config.root/row['source_path']).resolve()
+            pdf=paper_path(self.config.data,row['source_path'],self.config.root)
             if not pdf.is_relative_to(self.config.papers):raise ValueError('invalid file')
             with pymupdf.open(pdf) as doc:raw=doc[region['page']-1].get_pixmap(matrix=pymupdf.Matrix(2,2),clip=pymupdf.Rect(region['bbox']),alpha=False).tobytes('png')
             return Resource(raw,'image/png')

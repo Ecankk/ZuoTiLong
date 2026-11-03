@@ -1,4 +1,5 @@
 """Local, validated handwritten-answer images; no arbitrary path inputs."""
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 from io import BytesIO
 import hashlib
 from pathlib import Path
@@ -35,7 +36,7 @@ def public_image(record):
 
 
 def image_path(record, data_root):
-    path = (data_root / record['path']).resolve()
+    path = resolve_file(data_root,record['path'])
     if not path.is_relative_to((data_root / 'answer-images').resolve()) or not path.is_file():
         raise ValueError("作答图片文件缺失或位置不合法")
     if hashlib.sha256(path.read_bytes()).hexdigest() != record['sha256']:

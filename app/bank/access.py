@@ -44,6 +44,7 @@ def preferences(conn):
 
 
 def save_preferences(conn, body):
+    body={**preferences(conn),**body}
     if body.get('study_type') not in (1,2,3):raise ValueError('请选择数学一、二或三')
     mask_same_type = body.get('mask_same_type', preferences(conn)['mask_same_type'])
     if type(mask_same_type) is not bool:raise ValueError('检验题隐藏选项需要是开关值')

@@ -61,6 +61,7 @@ class PaperService:
         for item in bank_rows:
             item['tags']=json_load(item.pop('tags_json',None),[])
             item['fingerprint']=json_load(item.pop('fingerprint_json',None),{})
+        by_id={item['id']:item for item in bank_rows}
         source=location(dict(paper))
         for question in questions:
             pool=bank_rows
@@ -68,8 +69,8 @@ class PaperService:
             # not itself confirm mathematical identity or raise the score.
             if source['status']=='located' and source['math_type'] is not None:
                 number=str(question['number'])
-                ids=set(candidates(conn,source['year'],source['math_type'],int(number))) if number.isascii() and number.isdecimal() else set()
-                pool=[b for b in bank_rows if b['id'] in ids]
+                ids=candidates(conn,source['year'],source['math_type'],int(number)) if number.isascii() and number.isdecimal() else []
+                pool=[by_id[bid] for bid in ids if bid in by_id]
             match_bank_questions([question],pool)
         return questions
 

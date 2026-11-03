@@ -123,6 +123,20 @@ class F5BackendTests(unittest.TestCase):
         self.assertEqual(http.get('/api/papers/paper-test/questions').json()['total'],1)
         self.assertEqual(response.json()['deleted_question_ids'],ids[1:])
 
+    def test_corrected_text_ties_use_the_same_source_priority_as_exam_navigation(self):
+        self.service.analyze(self.f.conn,'paper-test')
+        ids=[r[0] for r in self.f.conn.execute('SELECT id FROM questions ORDER BY number')]
+        self.f.conn.execute("UPDATE papers SET title='2026年数一',source_name='2026年数一.pdf'")
+        self.f.conn.execute('UPDATE questions SET stem=? WHERE id=?',('Synthetic exact text',ids[0]))
+        for source in ('S99','S02'):
+            self.f.conn.execute('INSERT INTO bank_questions(id,source,stem,created_at) VALUES(?,?,?,?)',(source,source,'Synthetic exact text','now'))
+            self.f.conn.execute('INSERT INTO bank_resources VALUES(?,?,?,NULL,NULL)',(source,json.dumps({'source_id':source}),'unused.png'))
+            self.f.conn.execute('INSERT INTO bank_identity VALUES(?,?,?,?,NULL)',(source,1,'2026',1))
+        self.f.conn.commit()
+        self.service.correct_questions('paper-test',dict(confirmed=True,questions=[dict(number=str(n),question_ids=[qid]) for n,qid in enumerate(ids,1)]))
+        with Database(self.config).session() as conn:
+            self.assertEqual(conn.execute('SELECT match_bank_id FROM questions WHERE id=?',(ids[0],)).fetchone()[0],'S02')
+
     def test_uuid_validation_preserves_legacy_valid_spelling(self):
         from app.api.schemas import Attempt
         value=uuid.uuid4().hex

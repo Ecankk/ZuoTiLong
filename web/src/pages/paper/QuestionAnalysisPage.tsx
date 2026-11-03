@@ -11,6 +11,7 @@ import { Fold } from '../../components/ui/Fold'
 import { PaperPlaceholder, type PaperLine } from '../../components/ui/PaperPlaceholder'
 import { cx } from '../../lib/cx'
 import { QuestionStrip } from './QuestionStrip'
+import { ReviewCard } from './ReviewCard'
 import styles from './QuestionAnalysisPage.module.css'
 
 type Step = { text: string; mark?: 'error' | 'fix' | 'affected' }
@@ -383,7 +384,10 @@ export function QuestionAnalysisPage() {
         />
         <div className={styles.analysis}>
           {detail ? (
-            <Analysis detail={detail} />
+            <>
+              <Analysis detail={detail} />
+              <ReviewCard paperId={paperId} detail={detail} />
+            </>
           ) : (
             (!summary?.analysis_available || !isPending) && (
               <Card padded className={styles.notice}>

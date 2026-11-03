@@ -79,13 +79,13 @@ describe('app shell', () => {
     expect(mainText()).not.toMatch(forbidden)
   })
 
-  it('saves the study type together with the other preferences', async () => {
+  it('saves only the changed study type', async () => {
     const fetch = mockServer()
     renderAt('/settings')
     await userEvent.click(await screen.findByRole('radio', { name: '数学二' }))
     expect(await screen.findByText('已保存')).toBeInTheDocument()
     const post = fetch.mock.calls.find(([, init]) => init?.method === 'POST')
-    expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ study_type: 2, reserved: [] })
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ study_type: 2 })
   })
 })
 

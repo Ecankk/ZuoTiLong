@@ -266,3 +266,53 @@ export type Preferences = {
 
 /** POST /api/papers/import 的返回中前端用到的部分 */
 export type ImportResult = { paper: { id: string }; analysis_warning?: string }
+
+/* ---------- 写入（沿用现有后端接口，契约尚未统一） ---------- */
+
+/** GET /api/papers/{paper_id}/summary */
+export type PaperSummaryResponse = {
+  status: 'missing' | 'available'
+  result_id: string | null
+  created_at: string | null
+  summary: {
+    overview?: string
+    key_findings?: (string | { text: string })[]
+    improvements?: (string | { text: string })[]
+    next_actions?: (string | { text: string })[]
+    limitations?: string[]
+  } | null
+}
+
+/** POST /api/answer-images */
+export type UploadedImage = { id: string; url: string; width?: number; height?: number }
+
+export type ImageRole = 'own_work' | 'marking' | 'external_solution'
+
+export type AttemptBody = {
+  response: string
+  image_ids: string[]
+  image_roles: Record<string, ImageRole>
+  answer_exposed: boolean
+  request_id: string
+}
+
+/** GET /api/data/status */
+export type DataStatus = {
+  data_dir: string
+  library_dir: string
+  library_exists: boolean
+  library_env_override: boolean
+  databases: Record<'learning' | 'library' | 'session', { bytes: number; exists: boolean }>
+  invalid_file_references: {
+    count: number
+    examples: { table: string; field: string; relative?: string }[]
+  }
+  last_backup_at: string | null
+  path_migration: {
+    pending: boolean
+    ready_count: number
+    unresolved_count: number
+    historical_reference_count: number
+    plan_sha256: string
+  }
+}

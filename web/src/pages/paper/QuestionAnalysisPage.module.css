@@ -314,3 +314,47 @@
   max-width: var(--read-max);
   color: var(--text-regular);
 }
+
+.review h3 {
+  margin-bottom: var(--space-2);
+}
+
+.review p {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.reviewNote {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.reviewNote:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.reviewActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.ok {
+  color: var(--status-correct);
+  font-size: var(--font-size-sm);
+}
+
+.errorText {
+  color: var(--status-wrong);
+  font-size: var(--font-size-sm);
+}

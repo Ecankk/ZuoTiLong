@@ -55,27 +55,40 @@ export const usePractice = (practiceId: string | undefined) =>
 export const usePreferences = () =>
   useQuery({ queryKey: queryKeys.preferences, queryFn: endpoints.preferences })
 
-export function useSavePreferences() {
+export const usePaperSummary = (paperId: string) =>
+  useQuery({
+    queryKey: ['papers', paperId, 'summary'],
+    queryFn: () => endpoints.paperSummary(paperId),
+  })
+
+export const useDataStatus = () =>
+  useQuery({ queryKey: ['data-status'], queryFn: endpoints.dataStatus, staleTime: 0 })
+
+/**
+ * 写入操作：成功后让相关资源失效。SSE 也会通知外部变更，这里先失效以便立即刷新。
+ */
+export function useAction<TArgs, TResult>(
+  action: (args: TArgs) => Promise<TResult>,
+  invalidate: readonly (readonly string[])[],
+) {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: ({ current, change }: { current: Preferences; change: Partial<Preferences> }) =>
-      endpoints.savePreferences(current, change),
-    onSuccess: (saved) => {
-      client.setQueryData(queryKeys.preferences, saved)
-      // 备考类别影响练习的遮挡规则
-      void client.invalidateQueries({ queryKey: ['practices'] })
+    mutationFn: action,
+    onSuccess: () => {
+      for (const key of invalidate) void client.invalidateQueries({ queryKey: key })
     },
   })
 }
 
-export function useImportPaper() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: ({ file, title, examDate }: { file: File; title: string; examDate: string }) =>
+export const useSavePreferences = () =>
+  useAction(
+    (change: Partial<Preferences>) => endpoints.savePreferences(change),
+    [queryKeys.preferences, ['practices']],
+  )
+
+export const useImportPaper = () =>
+  useAction(
+    ({ file, title, examDate }: { file: File; title: string; examDate: string }) =>
       endpoints.importPaper(file, title, examDate),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ['papers'] })
-      void client.invalidateQueries({ queryKey: queryKeys.tasks })
-    },
-  })
-}
+    [['papers'], queryKeys.tasks],
+  )

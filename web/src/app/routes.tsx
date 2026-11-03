@@ -1,12 +1,9 @@
 import type { RouteObject } from 'react-router'
 import { AppShell } from '../components/shell/AppShell'
 import { HomePage } from '../pages/home/HomePage'
-import {
-  FirstQuestionRedirect,
-  PaperLayout,
-  PaperOverview,
-  PaperSummary,
-} from '../pages/paper/PaperLayout'
+import { FirstQuestionRedirect, PaperLayout } from '../pages/paper/PaperLayout'
+import { PaperOverview } from '../pages/paper/PaperOverview'
+import { PaperSummary } from '../pages/paper/PaperSummary'
 import { QuestionAnalysisPage } from '../pages/paper/QuestionAnalysisPage'
 import { BankPage, NotFoundPage, ProfilePage, TopicsPage } from '../pages/Placeholder'
 import { PapersPage } from '../pages/paperList/PapersPage'

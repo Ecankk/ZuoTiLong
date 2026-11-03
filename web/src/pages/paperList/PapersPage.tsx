@@ -40,7 +40,7 @@ function UploadCard() {
     if (!file) return
     upload.mutate(
       { file, title: title.trim() || file.name.replace(/\.pdf$/i, ''), examDate },
-      { onSuccess: (result) => navigate(`/papers/${result.paper.id}/questions`) },
+      { onSuccess: (result) => navigate(`/papers/${result.paper.id}`) },
     )
   }
 

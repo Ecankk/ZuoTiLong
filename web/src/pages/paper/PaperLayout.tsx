@@ -1,9 +1,44 @@
+import { Archive, ArchiveRestore } from 'lucide-react'
+import { useState } from 'react'
 import { Navigate, Outlet, useParams } from 'react-router'
-import { usePaper, usePaperQuestions } from '../../api/queries'
+import { endpoints } from '../../api/endpoints'
+import { useAction, usePaper, usePaperQuestions } from '../../api/queries'
+import { Button } from '../../components/ui/Button'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { SegmentedLinks } from '../../components/ui/Segmented'
 import { monthDay, paperName } from '../../lib/labels'
 import { PlaceholderPage } from '../Placeholder'
+import styles from './PaperOverview.module.css'
+
+function ArchiveButton({ paperId, archived }: { paperId: string; archived: boolean }) {
+  const [open, setOpen] = useState(false)
+  const action = useAction(
+    () => (archived ? endpoints.restorePaper(paperId) : endpoints.archivePaper(paperId)),
+    [['papers'], ['practices'], ['questions']],
+  )
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+        {archived ? <ArchiveRestore size={16} aria-hidden /> : <Archive size={16} aria-hidden />}
+        {archived ? '恢复试卷' : '归档'}
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={archived ? '恢复这份试卷？' : '归档这份试卷？'}
+        confirmLabel={archived ? '确认恢复' : '确认归档'}
+        pending={action.isPending}
+        error={action.error?.message}
+        onConfirm={() => action.mutate(undefined, { onSuccess: () => setOpen(false) })}
+      >
+        {archived
+          ? '恢复后，这份试卷和它的练习会重新计入画像和待办。'
+          : '归档后，这份试卷和它的练习不再计入画像和待办。原卷、分析和作答都会保留，之后可以恢复。'}
+      </ConfirmDialog>
+    </>
+  )
+}
 
 export function PaperLayout() {
   const { paperId = '' } = useParams()
@@ -13,11 +48,12 @@ export function PaperLayout() {
     return (
       <PlaceholderPage
         title="没有找到这份试卷"
-        intro="它可能已经归档。可以回到："
+        intro="它可能已经删除。可以回到："
         items={['试卷列表']}
       />
     )
   const { paper } = data
+  const archived = Boolean(paper.archived_at)
   return (
     <>
       <PageHeader
@@ -27,17 +63,21 @@ export function PaperLayout() {
           <span className="tabular">
             {paper.exam_date ? `${monthDay(paper.exam_date)}作答` : '作答日期未填'}
             {paper.score !== null && ` · 得分 ${paper.score} / ${paper.total_score}`}
+            {archived && ' · 已归档'}
           </span>
         }
         actions={
-          <SegmentedLinks
-            label="试卷内容"
-            links={[
-              { to: `/papers/${paper.id}`, label: '概览', end: true },
-              { to: `/papers/${paper.id}/questions`, label: '逐题分析' },
-              { to: `/papers/${paper.id}/summary`, label: '本卷总结' },
-            ]}
-          />
+          <div className={styles.headerActions}>
+            <ArchiveButton paperId={paper.id} archived={archived} />
+            <SegmentedLinks
+              label="试卷内容"
+              links={[
+                { to: `/papers/${paper.id}`, label: '概览', end: true },
+                { to: `/papers/${paper.id}/questions`, label: '逐题分析' },
+                { to: `/papers/${paper.id}/summary`, label: '本卷总结' },
+              ]}
+            />
+          </div>
         }
       />
       <Outlet />
@@ -51,25 +91,6 @@ export function FirstQuestionRedirect() {
   const { data } = usePaperQuestions(paperId)
   if (!data) return null
   const first = data.items.find((question) => question.correctness === 'wrong') ?? data.items[0]
-  if (!first)
-    return <PlaceholderPage header={<></>} title="" intro="这份试卷还没有定位到题目。" items={[]} />
+  if (!first) return <Navigate replace to={`/papers/${paperId}`} />
   return <Navigate replace to={`/papers/${paperId}/questions/${first.number}`} />
 }
-
-export const PaperOverview = () => (
-  <PlaceholderPage
-    header={<></>}
-    title="概览"
-    intro="这里将展示本卷概览："
-    items={['得分与正误分布', '本卷薄弱考点，可直接进入对应练习']}
-  />
-)
-
-export const PaperSummary = () => (
-  <PlaceholderPage
-    header={<></>}
-    title="本卷总结"
-    intro="完成本卷练习后，这里会汇总："
-    items={['主要发现', '已有改善', '后续重点']}
-  />
-)

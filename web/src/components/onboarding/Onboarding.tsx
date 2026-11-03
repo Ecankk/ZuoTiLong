@@ -51,9 +51,7 @@ function StudyTypeStep() {
             { value: '3', label: '数学三' },
           ]}
           value={String(preferences.study_type)}
-          onChange={(value) =>
-            save.mutate({ current: preferences, change: { study_type: Number(value) as MathType } })
-          }
+          onChange={(value) => save.mutate({ study_type: Number(value) as MathType })}
         />
         {save.isSuccess && <span className={styles.saved}>已保存</span>}
       </div>

@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import sqlite3
 import re
+import ntpath
+import os
 from datetime import datetime,timezone
 from app.bank.source_records import digest
 from app.storage.paths import resolve_file
@@ -149,12 +151,38 @@ def upgrade(config,confirm=None):
 
 def status(config):
     from app.config import library_env_override
-    plan=preview(config)
+    # Settings must never parse mathematical/history JSON or hash file content.
+    invalid=[];legacy=[]
+    for owner,db in stores(config).items():
+        if not db.is_file() or not FIELDS[owner]:continue
+        root=config.library_dir if owner=='library' else config.data
+        with closing(sqlite3.connect(db.as_uri()+'?mode=ro',uri=True)) as conn:
+            tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            for table,key,field,_ in FIELDS[owner]:
+                if table not in tables:continue
+                for identity,value in conn.execute('SELECT '+key+','+field+' FROM '+table+' WHERE '+field+" IS NOT NULL AND "+field+"!=''"):
+                    text=str(value).replace('\\','/')
+                    old=bool(ntpath.splitdrive(text)[0] or text.startswith('/') or '..' in text.split('/'))
+                    # Existence only; strict symlink resolution and hashes belong
+                    # to preview/access, not to the settings read model.
+                    exists=not old and os.path.isfile(os.path.join(root,text))
+                    item=dict(store=owner,table=table,key=key,id=identity,field=field,old=value,
+                        relative=None if old else text,exists=exists,sha256=None,expected_sha256=None,
+                        change=old,valid_location=exists,verified=None,can_migrate=False)
+                    if not exists:invalid.append(item)
+                    if old:legacy.append(item)
+    from app.config import library_location
+    marker=config.data/'workspace.json'
+    config_pending=False
+    if marker.is_file():
+        value=json.loads(marker.read_text(encoding='utf8')).get('library','')
+        config_pending=Path(value).is_absolute() and Path(value)!=Path(library_location(config.data,config.library_dir))
+    count=len(legacy)+int(config_pending)
     backups=list((config.data/'backups').glob('*.zip'))
     return dict(data_dir=str(config.data),library_dir=str(config.library_dir),
         library_exists=config.library_dir.is_dir(),library_env_override=library_env_override(config.data),
         databases={k:dict(bytes=p.stat().st_size if p.is_file() else 0,exists=p.is_file()) for k,p in stores(config).items()},
-        invalid_file_references=dict(count=len(plan['invalid_references']),examples=plan['invalid_references'][:10]),
+        invalid_file_references=dict(count=len(invalid),examples=invalid[:10]),
         last_backup_at=datetime.fromtimestamp(max(p.stat().st_mtime for p in backups),timezone.utc).isoformat() if backups else None,
-        path_migration=dict(pending=bool(plan['changes'] or plan['unresolved']),ready_count=len(plan['changes']),
-            unresolved_count=len(plan['unresolved']),historical_reference_count=len(plan['historical_references']),plan_sha256=plan['plan_sha256']))
+        path_migration=dict(pending=bool(count),ready_count=0,
+            unresolved_count=count,historical_reference_count=0,plan_sha256=digest([legacy,config_pending])))

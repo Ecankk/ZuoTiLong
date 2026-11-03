@@ -266,6 +266,8 @@ def validate_result(payload, kind, version=None):
         if any(g not in goals for e in retained for g in e['goal_ids']):
             raise ValueError('保留练习引用不存在的本轮目标')
     elif kind == 'grade_attempt':
+        from app.learning.student_text import validate_student_text
+        validate_student_text({k:result[k] for k in ('feedback','reference_reasoning','observations','first_error','possible_causes','next_step','needs_material') if k in result})
         if result['correct'] is True and result['first_error'] is not None:
             raise ValueError('存在实质性过程错误不能判为完全正确')
         if result['correct'] is not None and not result['reference_reasoning'].strip():

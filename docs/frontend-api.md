@@ -123,3 +123,42 @@ GET `/api/data/status`：只读，不启动任务，不自动迁移。响应 `{d
 POST `/api/preferences` 仅合并实际传入字段，省略 reserved、mask_same_type、paper_marking_convention、study_type 均保留旧值；显式非法值返回400。
 
 文件路径升级为显式 CLI：`python scripts/migrate_file_paths.py --dry-run --report <私有报告路径>`，核对 changes/unresolved/historical_references 后用 `--confirm <plan_sha256>`。确认前自动执行现有完整备份；找不到或散列不匹配的引用不猜配、不删除。只对 workspace.json.library 这一个根目录位置配置开例外：同盘存相对工作区的位置（标准布局为 ../../library），跨盘允许绝对路径，迁移预演不会把已正确配置的跨盘绝对路径反复列为待迁移。预演 changes.relative 在该配置项跨盘时可为绝对目标；业务文件引用仍只允许所属根目录内的相对路径，拒绝绝对和越界路径。受散列保护的不可变历史证据单独报告，不能直接改写后继续宣称旧回执有效。
+
+## F5 写入契约
+
+全部 body 默认 JSON；上传使用 multipart/form-data。错误统一 `{error:string}`。结构/参数错误400，同源校验403，当前会话占用或状态冲突409；不向学生展示原始协议字段。下面标注404的入口明确区分资源不存在，其他旧写入口可能以400返回“不存在”。request_id 在出现时必须为 UUID（推荐 crypto.randomUUID()），同一次重试复用同一UUID，不同操作生成新UUID；缺少 request_id 的旧入口由服务器生成标识，不能宣称它们支持客户端幂等。
+
+| 方法/路径 | body | 成功响应 | 额外失败边界 |
+|---|---|---|---|
+| POST /api/preferences | 部分 `{study_type?,mask_same_type?,reserved?,paper_marking_convention?}`，类型同GET | 200 Preferences，未传字段保留 | 400 非法类别/预留范围/开关 |
+| POST /api/maintenance/backup | `{}` | 200 `{path:string,files:integer}` | 409 当前写入受占用 |
+| POST /api/papers/import | multipart `file:PDF,title?:string,exam_date?:string`，上限80MB | 201 `{paper,sha256,created_questions?,warnings?,agent_queued?,job_id?,analysis_warning?}`；重复PDF为200 `{paper,sha256,reused:true}` | 400 非可读PDF/超限；文件已保存但后续准备失败时保留paper并给analysis_warning |
+| POST /api/papers/{id}/analyze | `{confirmed?:boolean}` | 201 `{paper,questions,engine,message,warnings,created_questions,agent_task,agent_queued:true,job_id}` | 400 已有分析但未确认、归档/原卷不可读 |
+| POST /api/papers/{id}/archive | `{confirmed:true}` | 200 `{paper_id,archived:true,reused?:boolean,updated_at?:string}` | 400 未确认 |
+| POST /api/papers/{id}/restore | `{confirmed:true}` | 200 同archive，archived=false | 400 未确认 |
+| POST /api/papers/{id}/score | `{score:number,total_score:number,math_type:1\|2\|3,confirmed:true}` | 200 `{paper_id,score,total_score,score_confirmed_at}` | 400 分值非法、未确认、归档 |
+| POST /api/papers/{id}/confirm | `{numbers:(string\|number)[],scores?:(number\|string)[],subject?:string}` | 201 `{paper_id,created_questions,status:'analyzed'}` | 409 已有题目；纠正请用下方专用入口 |
+| POST /api/papers/{id}/resummarize | `{confirmed:true}` | 201 `{paper_id,agent_submitted:true}` | 400 未确认/未完成分析/助手未初始化 |
+| POST /api/papers/{id}/prepare-practice | `{request_id:UUID}` | 201 TasksResponse，结构同GET /api/tasks，无session_id、对话或票据 | 404 无卷；409 归档/会话占用；400 原卷尚未核对通过或原PDF变化 |
+| POST /api/agent/task（旧） | `{kind:'prepare_practice',paper_id,request_id:UUID}` | 200 旧会话快照，仅保留兼容；新前端改用上方入口 | 400 非UUID、任务前置不满足；409 会话冲突 |
+| POST /api/questions/{id}/review | `{request_id:UUID,report_id:string,note?:string,image_ids?:string[],image_roles?:object}` | 201 `{agent_queued:true,job_id}` | 400 过期报告/附件角色不符/无原题；409 会话占用 |
+| POST /api/bank/{id}/reveal | `{role:'question'\|'analysis',confirmed:true}` | 200 Access状态，沿用GET里的access结构 | 400 未确认、预留、题干尚未允许查看 |
+| POST /api/answer-images | multipart `files` 1–4张，每张<=8MB，PNG/JPEG/WebP | 201 `{images:[{id,url,width,height}]}` | 400 类型/像素/大小/数量非法 |
+| POST /api/probes/{id}/submit | AttemptBody | 201 `{attempt_id,status?,assessment:null,job:{id,status},reused?:boolean}` | 400 作答为空/已失效/预留/请求标识被用于不同内容；409 会话占用 |
+| POST /api/attempts/{id}/supplement | AttemptBody（response为本次追加文本） | 200 `{attempt_id,status:'awaiting_assessment',job:{id,status},reused?:boolean}` | 400 作答/附件非法、关联失效、请求标识冲突；409 会话占用 |
+| POST /api/probes/{id}/feedback | `{attempt_id:string}` | 200 `{attempt_id,job:{id,status}}` | 400 作答不属于该练习或已归档 |
+| POST /api/tasks/{id}/action | `{action:'retry'\|'cancel'}` | 200 TasksResponse | 404 无任务；409 不在allowed_actions或远端状态未核清 |
+
+AttemptBody=`{response?:string,image_ids?:string[],image_roles?:{[image_id]:'own_work'|'external_solution'|'marking'},answer_exposed?:boolean,elapsed_seconds?:number,request_id?:UUID}`。内部角色值只用于结构字段；面向学生分别显示“你的作答 / 参考解析 / 事后批改”。保存提交并不自动判对；批改状态通过tasks/SSE与练习读接口刷新。
+
+### 未分析切分纠正方案
+
+POST `/api/papers/{id}/questions/correct`，body=`{confirmed:true,questions:[{number:string,question_ids:string[]}],delete_question_ids?:string[]}`。请求完整分配本卷全部现有题目，每个ID恰好出现一次：一个ID一组即重新编号，多ID一组即合并，误切题须显式列入删除列表。每组保留首个ID、按页/坐标合并去重regions，并保存纠正前快照；不合成新的学生作答，不产生学习任务。返回200 `{paper_id,question_ids:string[],deleted_question_ids:string[],status:'corrected'}`。无卷404，未确认/重复编号/遗漏或跨卷ID400；归档、已有诊断/练习历史、有排队或运行任务409。本版只处理整卷尚未进入诊断/练习历史的切分，已诊断题一律保留。再次analyze保留纠正结果；原PDF变化则400，不能沿用旧纠正。前端需先结束/取消上传自动排入的分析任务再纠正。
+
+### 数据状态轻量检查
+
+GET `/api/data/status` 保持已有字段，仅查各库大小、定位列及文件存在性，不执行完整preview、不解析历史TEXT JSON、不计算内容散列。path_migration.unresolved_count 是格式上待预演确认的引用及配置数量，ready_count=0；historical_reference_count=0 表示此轻量入口不统计历史引用；示例中的 sha256/expected_sha256/verified 为 null 表示未做内容校验，不应显示为散列通过。plan_sha256 仅为轻量状态摘要，不能用于确认迁移，确认码必须取 CLI --dry-run 的完整预演。完整散列校验/候选映射/历史盘点仍由显式迁移命令执行。
+
+### 开发 Origin
+
+默认仅接受原有本机同源写入和SSE。开发进程可设置 `MATHLENS_DEV_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`，只允许明确的本机HTTP(S) Origin，不接受通配符、路径或外部域名。配置的Origin获得对应CORS响应与预检支持，暴露ETag/Cache-Control，仍检查API目标Host必须为本机；该配置不扩大业务文件路径权限。

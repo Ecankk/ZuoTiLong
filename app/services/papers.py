@@ -65,6 +65,14 @@ class PaperService:
         pdf_path = paper_path(self.config.data, source_path, self.config.root)
         if self.config.papers not in pdf_path.parents or not pdf_path.is_file():
             raise ValueError("试卷文件不在本地资料目录中")
+        correction=conn.execute("SELECT payload FROM record_versions WHERE record_id=? AND kind='question_segmentation' ORDER BY rowid DESC LIMIT 1",(paper_id,)).fetchone()
+        if correction:
+            saved=json.loads(correction[0])
+            if hashlib.sha256(pdf_path.read_bytes()).hexdigest()!=saved['source_sha256']:
+                raise ValueError('原PDF已变化，不能继续使用已纠正切分')
+            current=rows(conn,'SELECT * FROM questions WHERE paper_id=? ORDER BY created_at,id',(paper_id,))
+            return dict(paper=paper,questions=current,engine=paper['analysis_engine'],message='保留已确认的人工切分',
+                        warnings=[],created_questions=len(current),agent_task=None)
 
         bank_rows = []
         for item in rows(conn, "SELECT * FROM bank_questions"):
@@ -223,3 +231,55 @@ class PaperService:
                     (f'{paper_id}-q-{idx+1:02d}',paper_id,number,body.get('subject') or '数学一',f'第 {number} 题（待补充题干）',score,'unknown','待诊断',created))
             conn.execute("UPDATE papers SET import_status='analyzed',updated_at=? WHERE id=?",(created,paper_id))
             return {'paper_id':paper_id,'created_questions':len(numbers),'status':'analyzed'}
+
+    def correct_questions(self,paper_id,body):
+        from app.errors import ServiceError
+        if body.get('confirmed') is not True:raise ValueError('请明确确认题号纠正')
+        with self.database.session(write=True) as conn:
+            paper=conn.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()
+            if not paper:raise ServiceError('试卷不存在',404)
+            if paper['archived_at']:raise ServiceError('请先恢复已归档试卷',409)
+            if not paper['source_path']:raise ValueError('试卷缺少原PDF，不能纠正切分')
+            original=paper_path(self.config.data,paper['source_path'],self.config.root)
+            if not original.is_file():raise ValueError('原PDF文件缺失，请先恢复原卷')
+            old={r['id']:dict(r) for r in conn.execute('SELECT * FROM questions WHERE paper_id=?',(paper_id,))}
+            if not old:raise ValueError('尚无切分题，请先使用建立题号入口')
+            groups=body['questions'];deleted=body.get('delete_question_ids',[])
+            ids=[i for g in groups for i in g['question_ids']]+deleted
+            numbers=[g['number'].strip() for g in groups]
+            if len(ids)!=len(set(ids)) or set(ids)!=set(old) or len(numbers)!=len(set(numbers)) or not all(numbers):
+                raise ValueError('全部现有题目必须且只能分配一次；题号不得重复或为空')
+            # A paper with history must not be rewritten underneath reports,
+            # attempts, bindings or an in-flight analysis input.
+            checks=[('agent_reports','paper_id'),('diagnostic_probes','paper_id')]
+            if any(conn.execute('SELECT 1 FROM '+t+' WHERE '+k+'=? LIMIT 1',(paper_id,)).fetchone() for t,k in checks):
+                raise ServiceError('试卷已有诊断或练习历史，不能纠正切分',409)
+            if conn.execute("SELECT 1 FROM workflow_jobs WHERE paper_id=? AND status IN ('queued','dispatching','running')",(paper_id,)).fetchone():
+                raise ServiceError('请先结束或取消当前分析任务',409)
+            if conn.execute("SELECT 1 FROM learning_tasks WHERE paper_id=? AND status IN ('queued','running','repairing','result_saved')",(paper_id,)).fetchone():
+                raise ServiceError('当前任务仍在使用切分，不能纠正',409)
+            if conn.execute('SELECT 1 FROM question_diagnoses d JOIN questions q ON q.id=d.question_id WHERE q.paper_id=?',(paper_id,)).fetchone():
+                raise ServiceError('已有诊断的题不能纠正',409)
+            if any(q['correctness'] not in (None,'unknown') for q in old.values()) or any(
+                conn.execute('SELECT 1 FROM '+table+' h JOIN questions q ON q.id=h.question_id WHERE q.paper_id=? LIMIT 1',(paper_id,)).fetchone()
+                for table in ('reviews','learning_events')):
+                raise ServiceError('已有评价或学习证据的题不能纠正',409)
+            conn.execute('INSERT INTO record_versions VALUES(?,?,?,?,?,?)',('version-'+uuid.uuid4().hex,'question_segmentation',paper_id,
+                json.dumps(dict(questions=list(old.values()),source_sha256=hashlib.sha256(original.read_bytes()).hexdigest()),ensure_ascii=False),'用户确认重编号/合并/删除错切题',now_iso()))
+            removed=set(deleted);kept=[]
+            for group,number in zip(groups,numbers):
+                rows_=[old[i] for i in group['question_ids']];qid=rows_[0]['id'];kept.append(qid)
+                removed.update(r['id'] for r in rows_[1:])
+                regions=[]
+                for row in rows_:
+                    for region in json.loads(row['regions_json'] or '[]'):
+                        if region not in regions:regions.append(region)
+                regions.sort(key=lambda r:(r['page'],r['bbox'][1],r['bbox'][0]))
+                text='\n'.join(r['stem'] or '' for r in rows_)
+                conn.execute('''UPDATE questions SET number=?,stem=?,source_text=?,regions_json=?,page_start=?,page_end=?,bbox_json=?,
+                    match_bank_id=NULL,match_score=0 WHERE id=?''',(number,text,text,json.dumps(regions,ensure_ascii=False),
+                    regions[0]['page'] if regions else None,regions[-1]['page'] if regions else None,
+                    json.dumps(regions[0]['bbox']) if regions else None,qid))
+            for qid in removed:conn.execute('DELETE FROM questions WHERE id=?',(qid,))
+            conn.execute('UPDATE papers SET updated_at=? WHERE id=?',(now_iso(),paper_id))
+            return dict(paper_id=paper_id,question_ids=kept,deleted_question_ids=sorted(removed),status='corrected')

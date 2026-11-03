@@ -152,7 +152,7 @@ class PaperService:
             "agent_task": str(task_file),
         }
 
-    def import_pdf(self,filename,content,fields):
+    def import_pdf(self,filename,content,fields,*,queue_agent=True):
         import pymupdf
         if not filename or not content or len(content)>80*1024*1024:
             raise ValueError('PDF 上传大小须为 1 字节至 80 MB')
@@ -179,9 +179,11 @@ class PaperService:
             with self.database.session(write=True) as conn:
                 analysis=self.analyze(conn,paper_id)
                 result.update(paper=analysis['paper'],created_questions=analysis['created_questions'],warnings=analysis['warnings'])
-                job=enqueue(conn,self.config.root,self.config.data,'analyze_paper',paper_id,
-                    str(uuid.uuid5(uuid.NAMESPACE_URL,'mathlens:paper:'+digest)),auto_prepare=True,index_after=True,practice_contract_version='1.9',contract_version='2.0')
-                result.update(agent_queued=True,job_id=job['id'])
+                if queue_agent:
+                    job=enqueue(conn,self.config.root,self.config.data,'analyze_paper',paper_id,
+                        str(uuid.uuid5(uuid.NAMESPACE_URL,'mathlens:paper:'+digest)),auto_prepare=True,index_after=True,practice_contract_version='1.9',contract_version='2.0')
+                    result.update(agent_queued=True,job_id=job['id'])
+                else:result['agent_queued']=False
         except (ValueError,RuntimeError,ImportError) as exc:result['analysis_warning']=str(exc)
         return result,201
 

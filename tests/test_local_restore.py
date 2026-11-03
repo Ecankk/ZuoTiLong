@@ -24,6 +24,8 @@ class LocalRestoreTests(unittest.TestCase):
         raw=BytesIO();Image.new('RGB',(60,40),'white').save(raw,format='PNG')
         image=save_answer_image(f.conn,f.root,raw.getvalue());f.conn.commit()
         path=image_path(image_records(f.conn,[image['id']])[0],f.root)
+        from app.storage.library_backup import backup_library,restore_library
+        library_archive=backup_library(workspace_config(f.root).library_dir)['path']
         state={'session_id':'original-session','active_request':'request-1',
                'turns':[{'request_id':'request-1','status':'running','run_token':'old-ticket',
                          'inputs':[{'type':'localImage','path':str(path)}]}],
@@ -34,7 +36,8 @@ class LocalRestoreTests(unittest.TestCase):
         (f.root/'server.json').write_text('{"url":"http://127.0.0.1:1"}',encoding='utf8')
         archive=backup(f.root,fixtures.ROOT)['path']
         destination=tempfile.TemporaryDirectory(dir=fixtures.ROOT/'tmp',prefix='restore-test-')
-        target=Path(destination.name)/'restored';result=restore(archive,target)
+        library=Path(destination.name)/'library';restore_library(library_archive,library)
+        target=Path(destination.name)/'restored';result=restore(archive,target,library_dir=library)
         original=f.root;unavailable=original.with_name(original.name+'-unavailable')
         f.conn.close()
         self.assertEqual(unavailable.resolve().parent,(fixtures.ROOT/'tmp').resolve())

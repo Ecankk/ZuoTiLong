@@ -116,7 +116,7 @@ class StorageSeparationTests(unittest.TestCase):
             target=self.base/'restored'
             restore(archive,target)
             restored=workspace_config(target)
-            self.assertNotEqual(restored.library_dir,scoped.library_dir)
+            self.assertEqual(restored.library_dir,scoped.library_dir)
             self.assertEqual(library_root(target),restored.library_dir)
             self.assertEqual(material_path(target,'bank-assets/local.png').read_bytes(),b'local')
             with Database(restored).session() as conn:
@@ -185,7 +185,7 @@ class StorageSeparationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Mixed database'):
             Database(self.a).initialize()
 
-    def test_backup_restores_both_files_without_reusing_original_library(self):
+    def test_personal_backup_restores_workspace_with_verified_shared_library(self):
         from app.storage.maintenance import backup,restore
         from app.storage.boundaries import workspace_config
         db=Database(self.a);db.initialize()
@@ -196,7 +196,7 @@ class StorageSeparationTests(unittest.TestCase):
         target=self.base/'restored'
         restore(archive,target)
         config=workspace_config(target,ROOT)
-        self.assertNotEqual(config.library_dir,self.a.library_dir)
+        self.assertEqual(config.library_dir,self.a.library_dir)
         with Database(config).session() as conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM bank_questions').fetchone()[0],1)
             self.assertEqual(conn.execute('SELECT count(*) FROM papers').fetchone()[0],1)

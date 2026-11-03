@@ -1,31 +1,29 @@
-"""An explicit two-store backup; the original library is never a restore target."""
-from contextlib import closing
-import hashlib
-import json
+"""Personal workspace backup; the shared library is identified, not bundled."""
 from pathlib import Path
-import sqlite3
 import tempfile
-import time
-import uuid
-import zipfile
 
 from app.storage.boundaries import workspace_config
+from app.storage.backup_archive import PERSONAL, publish, snapshot, file_sha256
+
+
+def library_identity(library, staging):
+    source=Path(library)/'library.db'
+    if not source.is_file():raise ValueError('library_missing：通用库不存在，请先恢复备份清单所需题库')
+    target=Path(staging)/'library-identity.db'
+    snapshot(source,target)
+    return dict(scheme='sqlite-backup-sha256/v1',sha256=file_sha256(target),location=str(Path(library).resolve()))
 
 
 def backup(data, root):
     config=workspace_config(data,root)
     folder=data/'backups';folder.mkdir(exist_ok=True)
-    target=folder/('mathlens-'+time.strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:6]+'.zip')
-    manifest={'format':2,'data_root':str(data),'project_root':str(root),
-              'workspace_database':config.database.name,'sha256':{}}
     with tempfile.TemporaryDirectory(dir=folder) as temp:
         staging=Path(temp)
-        databases={config.database.name:config.database,'__library__/library.db':config.library_database}
+        identity=library_identity(config.library_dir,staging)
+        databases={config.database.name:config.database}
         if (data/'agent-session.db').exists():databases['agent-session.db']=data/'agent-session.db'
         for name,source in databases.items():
-            actual=staging/name;actual.parent.mkdir(parents=True,exist_ok=True)
-            with closing(sqlite3.connect(source.as_uri()+'?mode=ro',uri=True)) as old,closing(sqlite3.connect(actual)) as new:
-                old.backup(new)
+            snapshot(source,staging/name)
         files={}
         for source in data.rglob('*'):
             if (not source.is_file() or source.is_symlink() or source.is_relative_to(folder)
@@ -33,14 +31,6 @@ def backup(data, root):
                     or source.name.endswith(('-journal','-wal','-shm','.log'))):continue
             name=source.relative_to(data).as_posix()
             files[name]=staging/name if name in databases else source
-        for directory in ('bank-assets','knowledge-sources'):
-            for source in (config.library_dir/directory).rglob('*'):
-                if source.is_file() and not source.is_symlink():
-                    files['__library__/'+source.relative_to(config.library_dir).as_posix()]=source
-        files['__library__/library.db']=staging/'__library__/library.db'
-        with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as archive:
-            for name,source in files.items():
-                raw=source.read_bytes();archive.writestr(name,raw)
-                manifest['sha256'][name]=hashlib.sha256(raw).hexdigest()
-            archive.writestr('backup-manifest.json',json.dumps(manifest,ensure_ascii=False))
-    return {'path':str(target),'files':len(files)}
+        manifest=dict(kind='workspace',data_root=str(data),project_root=str(root),
+                      workspace_database=config.database.name,library=identity)
+        return publish(folder,'mathlens-personal',PERSONAL,manifest,files,keep=3)

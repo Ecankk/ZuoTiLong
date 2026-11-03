@@ -125,6 +125,9 @@ def upgrade(config,confirm=None):
     if not plan['changes']:return dict(plan,applied=False,backup=None)
     from app.storage.maintenance import backup
     saved=backup(config.data,config.root)
+    if any(e['store']=='library' for e in plan['changes']):
+        from app.storage.library_backup import backup_library
+        saved['library_backup']=backup_library(config.library_dir,workspaces=[config.data])
     # Revalidate all file bytes and rows after backup, before any write.
     if preview(config)['plan_sha256']!=confirm:raise ValueError('备份期间数据已变化，请重新预演')
     for owner,db in stores(config).items():
@@ -184,5 +187,6 @@ def status(config):
         databases={k:dict(bytes=p.stat().st_size if p.is_file() else 0,exists=p.is_file()) for k,p in stores(config).items()},
         invalid_file_references=dict(count=len(invalid),examples=invalid[:10]),
         last_backup_at=datetime.fromtimestamp(max(p.stat().st_mtime for p in backups),timezone.utc).isoformat() if backups else None,
+        backup_retention_count=3,
         path_migration=dict(pending=bool(count),ready_count=0,
             unresolved_count=count,historical_reference_count=0,plan_sha256=digest([legacy,config_pending])))

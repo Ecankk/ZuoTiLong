@@ -34,32 +34,43 @@ def backup(data,root):
         if staging.resolve().parent==folder.resolve():shutil.rmtree(staging)
 
 
-def restore(archive_path,destination):
+def restore(archive_path,destination,*,library_dir=None):
     destination=Path(destination).resolve()
     if destination.exists():raise ValueError('恢复目录必须不存在，不能覆盖当前个人资料')
+    selected_library=None
     with zipfile.ZipFile(archive_path) as archive:
-        entries=archive.infolist()
-        if len(entries)>30000 or sum(e.file_size for e in entries)>8*1024**3:raise ValueError('备份包过大')
-        names=[e.filename for e in entries]
-        if len(set(names))!=len(names):raise ValueError('备份包含重复文件')
-        for entry in entries:
-            path=(destination/entry.filename).resolve()
-            if '\\' in entry.filename or ':' in entry.filename or not path.is_relative_to(destination) or (entry.external_attr>>16)&0o170000==0o120000:raise ValueError('备份路径不合法')
-        manifest=json.loads(archive.read('backup-manifest.json'))
-        if manifest.get('format') not in (1,2) or set(names)!={*manifest['sha256'],'backup-manifest.json'}:raise ValueError('备份清单不完整')
-        # Validate every checksum before creating the destination.
-        for name,digest in manifest['sha256'].items():
-            if hashlib.sha256(archive.read(name)).hexdigest()!=digest:raise ValueError('备份文件校验失败：'+name)
+        from app.storage.backup_archive import PERSONAL,validate,extract
+        manifest=validate(archive)
+        if manifest['format']==3 and (manifest.get('producer')!=PERSONAL or manifest.get('kind')!='workspace'):
+            raise ValueError('请选择个人备份；题库备份须用维护命令恢复')
+        database_name=manifest.get('workspace_database','mathlens.db')
+        if Path(database_name).name!=database_name or database_name not in manifest['sha256']:
+            raise ValueError('备份数据库名称不合法')
+        if manifest['format']==3:
+            identity=manifest.get('library',{})
+            if identity.get('scheme')!='sqlite-backup-sha256/v1' or not identity.get('location') or not identity.get('sha256'):
+                raise ValueError('个人备份缺少通用库身份')
+            selected_library=Path(library_dir or identity['location']).resolve()
+            from app.config import resolve_library_dir
+            if resolve_library_dir(destination,selected_library)!=selected_library:
+                raise ValueError('library_override_conflict：恢复目录的环境变量指向其他通用库，请先核对 MATHLENS_LIBRARY_DIR')
+            from app.storage.split_backup import library_identity
+            import tempfile
+            with tempfile.TemporaryDirectory() as staging:
+                actual=library_identity(selected_library,staging)
+            if actual['sha256']!=identity['sha256']:
+                raise ValueError('library_mismatch：通用库身份与备份不一致；请先恢复对应题库备份，再显式指定其 library_dir')
         destination.mkdir(parents=True)
-        for name in manifest['sha256']:
-            path=destination/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(archive.read(name))
+        extract(archive,destination,manifest)
     old_data=Path(manifest['data_root']);old_root=Path(manifest['project_root'])
-    database_name=manifest.get('workspace_database','mathlens.db')
-    if Path(database_name).name!=database_name:raise ValueError('备份数据库名称不合法')
     if manifest['format']==2:
         from app.config import AppConfig
         from app.storage.boundaries import save_location
         save_location(AppConfig(old_root,destination,old_root/'dist',destination/database_name,library=destination/'__library__'))
+    elif manifest['format']==3:
+        from app.config import library_location
+        (destination/'workspace.json').write_text(json.dumps(dict(database=database_name,
+            library=library_location(destination,selected_library)),ensure_ascii=False),encoding='utf8')
     with closing(sqlite3.connect(destination/database_name)) as conn,conn:
         for pid,relative in conn.execute('SELECT id,source_path FROM papers WHERE source_path IS NOT NULL'):
             if str(relative).replace('\\','/').startswith('papers/'):continue
@@ -76,6 +87,8 @@ def restore(archive_path,destination):
             row=conn.execute('SELECT payload FROM session WHERE id=1').fetchone()
             if row:
                 state=_rebase_paths(json.loads(row[0]),old_data,destination)
+                if selected_library:
+                    state=_rebase_paths(state,Path(manifest['library']['location']),selected_library)
                 for turn in state.get('turns',[]):
                     if turn.get('request_id')==state.get('active_request'):
                         turn.update(status='interrupted',error='从备份恢复，原执行身份已失效；请按保存材料重新发起当前阶段。')
@@ -100,7 +113,8 @@ def restore(archive_path,destination):
     # A backup's PID/address belongs to the old service, never the restored one.
     (destination/'server.json').unlink(missing_ok=True)
     return {'restored_to':str(destination),'files':len(manifest['sha256']),
-            'session_policy':'preserve_id_require_reconnect','pending_tasks':'restart_from_saved_materials'}
+            'session_policy':'preserve_id_require_reconnect','pending_tasks':'restart_from_saved_materials',
+            **({'library':dict(manifest['library'],location=str(selected_library))} if selected_library else {})}
 
 
 def _rebase_paths(value,old_data,destination):

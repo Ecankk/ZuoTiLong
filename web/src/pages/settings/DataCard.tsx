@@ -27,7 +27,7 @@ export function DataCard() {
     <Card padded className={styles.section} aria-label="数据与备份">
       <h2>数据与备份</h2>
       {error && <p className={styles.error}>{error.message}</p>}
-      {isPending && <p className={styles.note}>正在检查数据状态，可能需要几十秒…</p>}
+      {isPending && <p className={styles.note}>正在读取…</p>}
       {data && (
         <>
           <dl className={styles.facts}>
@@ -58,7 +58,7 @@ export function DataCard() {
                 data.path_migration.ready_count > 0 &&
                   `有 ${data.path_migration.ready_count} 个文件位置需要更新，请按配置教程运行一次路径整理（整理前会自动备份）。`,
                 data.path_migration.unresolved_count > 0 &&
-                  `有 ${data.path_migration.unresolved_count} 个文件无法自动核对，需要人工确认。`,
+                  `有 ${data.path_migration.unresolved_count} 个文件位置待整理，请按配置教程运行一次路径整理（整理前会自动备份）。`,
               ]
                 .filter(Boolean)
                 .join('')}

@@ -43,7 +43,7 @@ export function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={styles.brand}>
-        <img src="/brand/logo-round.png" alt="" />
+        <img src="/brand/logo-icon.png" alt="" />
         <div>
           <strong className={styles.brandName}>做题龙</strong>
           <small className={styles.brandSub}>

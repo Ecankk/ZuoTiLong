@@ -20,11 +20,14 @@ export function AttemptForm({
   practiceId,
   attemptId,
   showExposure,
+  onSubmitted,
 }: {
   practiceId: string
   /** 有值时为补充作答 */
   attemptId?: string
   showExposure: boolean
+  /** 提交成功后（如收起补充表单） */
+  onSubmitted?: () => void
 }) {
   const [text, setText] = useState('')
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -84,6 +87,7 @@ export function AttemptForm({
         setPhotos([])
         setExposed(false)
         setRequest(requestId())
+        onSubmitted?.()
       },
     })
 

@@ -143,6 +143,10 @@ button.card:hover {
 }
 
 .section li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
   color: var(--text-strong);
   font-size: var(--font-size-sm);
 }

@@ -67,7 +67,7 @@ export function SubmittedAttempt({ attempt }: { attempt: Attempt }) {
   )
 }
 
-function Analysis({ detail }: { detail: PracticeResponse }) {
+export function ReferenceAnalysis({ detail }: { detail: PracticeResponse }) {
   const question = detail.question
   const hasAnalysis =
     question &&
@@ -158,7 +158,12 @@ export function GradedCard({
           )}
           {supplementing && (
             <>
-              <AttemptForm practiceId={practice.id} attemptId={attempt.id} showExposure={false} />
+              <AttemptForm
+                practiceId={practice.id}
+                attemptId={attempt.id}
+                showExposure={false}
+                onSubmitted={() => setSupplementing(false)}
+              />
               <Button size="sm" variant="ghost" onClick={() => setSupplementing(false)}>
                 取消补充
               </Button>
@@ -235,7 +240,7 @@ export function GradedCard({
                 <MathText text={assessment.reference_reasoning} />
               </Fold>
             )}
-            <Analysis detail={detail} />
+            <ReferenceAnalysis detail={detail} />
           </div>
         </div>
       </div>

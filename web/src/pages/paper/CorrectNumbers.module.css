@@ -1,0 +1,119 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(4px);
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-raised);
+  transform: translate(-50%, -50%);
+}
+
+.title {
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-h3);
+}
+
+.text {
+  color: var(--text-regular);
+  line-height: 1.8;
+}
+
+.text + .text {
+  margin-top: var(--space-2);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--status-partial-soft);
+  font-size: var(--font-size-sm);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  margin: var(--space-4) 0 0;
+  padding: 0 var(--space-1) 0 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 180px 110px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.row.merge {
+  margin-left: var(--space-6);
+  background: var(--color-primary-faint);
+}
+
+.row.delete {
+  opacity: 0.55;
+}
+
+.crop {
+  width: 100%;
+  height: 56px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-placeholder);
+  object-fit: cover;
+  object-position: left top;
+}
+
+.numberField {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.numberField input,
+.row select {
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+}
+
+.error {
+  margin-top: var(--space-3);
+  color: var(--status-wrong);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}

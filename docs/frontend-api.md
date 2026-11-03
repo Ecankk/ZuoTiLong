@@ -132,8 +132,8 @@ POST `/api/preferences` 仅合并实际传入字段，省略 reserved、mask_sam
 |---|---|---|---|
 | POST /api/preferences | 部分 `{study_type?,mask_same_type?,reserved?,paper_marking_convention?}`，类型同GET | 200 Preferences，未传字段保留 | 400 非法类别/预留范围/开关 |
 | POST /api/maintenance/backup | `{}` | 200 `{path:string,files:integer}` | 409 当前写入受占用 |
-| POST /api/papers/import | multipart `file:PDF,title?:string,exam_date?:string`，上限80MB | 201 `{paper,sha256,created_questions?,warnings?,agent_queued?,job_id?,analysis_warning?}`；重复PDF为200 `{paper,sha256,reused:true}` | 400 非可读PDF/超限；文件已保存但后续准备失败时保留paper并给analysis_warning |
-| POST /api/papers/{id}/analyze | `{confirmed?:boolean}` | 201 `{paper,questions,engine,message,warnings,created_questions,agent_task,agent_queued:true,job_id}` | 400 已有分析但未确认、归档/原卷不可读 |
+| POST /api/papers/import | multipart `file:PDF,title?:string,exam_date?:string`，上限80MB | 201 `{paper,sha256,created_questions?,warnings?,agent_queued:false,analysis_warning?}`，只保存PDF并本地切题，不排AI任务；重复PDF为200 `{paper,sha256,reused:true}` | 400 非可读PDF/超限；文件已保存但后续准备失败时保留paper并给analysis_warning |
+| POST /api/papers/{id}/analyze | `{confirmed:true}` | 201 `{paper,questions,engine,message,warnings,created_questions,agent_task,agent_queued:true,job_id}`；唯一的开始分析入口，首次也须确认 | 400 未确认、归档/原卷不可读 |
 | POST /api/papers/{id}/archive | `{confirmed:true}` | 200 `{paper_id,archived:true,reused?:boolean,updated_at?:string}` | 400 未确认 |
 | POST /api/papers/{id}/restore | `{confirmed:true}` | 200 同archive，archived=false | 400 未确认 |
 | POST /api/papers/{id}/score | `{score:number,total_score:number,math_type:1\|2\|3,confirmed:true}` | 200 `{paper_id,score,total_score,score_confirmed_at}` | 400 分值非法、未确认、归档 |

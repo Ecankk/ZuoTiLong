@@ -13,6 +13,7 @@ PIPELINE_VERSION = "regions-3-rapidocr-1.4.4"
 CACHE_ROOT = Path(__file__).resolve().parents[2] / ".mathlens" / "ocr-cache"
 OCR_LOCK = threading.Lock()
 QUESTION_START = re.compile(r"^\s*(?:[（(]\s*(?P<bracket>\d{1,2})\s*[)）]|(?P<plain>\d{1,2})\s*[．、.]\s+(?=\D))")
+SECTION_START = re.compile(r'^\s*[一二三四五六七八九十]+\s*[、.．]\s*(?:选择题|填空题|解答题|计算题|证明题)')
 
 
 def normalize_text(value: str) -> str:
@@ -74,15 +75,21 @@ def _read_page(page, index, allow_ocr):
 
 def segment_pages(pages: list[dict], expected_count: int | None = None) -> tuple[list[dict], list[str]]:
     candidates = []
+    sections=[]
     for page in pages:
         for block in page["blocks"]:
+            if SECTION_START.match(block['text']):
+                sections.append((page['page_number'],block['bbox'][1]))
             match = QUESTION_START.match(block["text"])
             if not match or block["bbox"][0] > page["width"] * .24:
                 continue
             number = int(match.group("bracket") or match.group("plain"))
             if 1 <= number <= 99:
-                candidates.append({"number": number, "page": page["page_number"], "y": block["bbox"][1], "x": block["bbox"][0], "style": "bracket" if match.group("bracket") else "plain"})
+                candidates.append({"number": number, "page": page["page_number"], "y": block["bbox"][1],
+                    'height':block['bbox'][3]-block['bbox'][1],
+                    "x": block["bbox"][0], "style": "bracket" if match.group("bracket") else "plain"})
     candidates.sort(key=lambda x: (x["page"], x["y"], x["x"]))
+    sections.sort()
     anchors = []
     for candidate in candidates:
         if not anchors:
@@ -99,18 +106,27 @@ def segment_pages(pages: list[dict], expected_count: int | None = None) -> tuple
     questions = []
     for idx, anchor in enumerate(anchors):
         next_anchor = anchors[idx + 1] if idx + 1 < len(anchors) else None
+        section=next((s for s in sections if s>(anchor['page'],anchor['y']) and
+                      (next_anchor is None or s<(next_anchor['page'],next_anchor['y']))),None)
         end_page = next_anchor["page"] if next_anchor else len(pages)
+        if section:end_page=min(end_page,section[0])
         regions, text = [], []
         for page_num in range(anchor["page"], end_page + 1):
             page = pages[page_num - 1]
             top = max(0, anchor["y"] - 5) if page_num == anchor["page"] else 25
             bottom = next_anchor["y"] - 3 if next_anchor and page_num == next_anchor["page"] else page["height"] - 38
+            if section and page_num==section[0]:bottom=min(bottom,section[1]-3)
             if bottom <= top:
                 continue
             selected = [b for b in page["blocks"] if not b.get("anchor_only") and top <= b["bbox"][1] < bottom]
             if page_num != anchor["page"] and not selected:
                 continue
-            regions.append({"page": page_num, "bbox": [20, round(top, 2), page["width"] - 15, round(bottom, 2)], "role": "question_and_work"})
+            # Image context may overlap the preceding crop to retain tall math
+            # above the number baseline. Keep OCR ownership at the original top;
+            # moving the previous crop's end would truncate its last text line.
+            crop_top=max(0,anchor['y']-max(5,min(24,anchor['height']*1.5))) if page_num==anchor['page'] else top
+            # Handwritten work can extend into either printed margin.
+            regions.append({"page": page_num, "bbox": [0, round(crop_top, 2), page["width"], round(bottom, 2)], "role": "question_and_work"})
             text.extend(b["text"] for b in selected)
         if regions:
             questions.append({"number": str(anchor["number"]), "stem": "\n".join(text)[:9000],

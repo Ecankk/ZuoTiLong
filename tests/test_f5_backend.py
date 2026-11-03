@@ -74,6 +74,45 @@ class F5BackendTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.service.correct_questions('paper-test',dict(confirmed=True,questions=[dict(number='1',question_ids=ids[:1])]))
         with self.assertRaisesRegex(Exception,'诊断'):self.service.correct_questions('paper-test',dict(confirmed=True,questions=[dict(number='1',question_ids=ids)]))
 
+    def test_corrected_2023_and_2026_exam_fragments_are_rematched_atomically(self):
+        for year,source in ((2023,'S01'),(2026,'S02')):
+            with self.subTest(year=year):
+                self.service.analyze(self.f.conn,'paper-test')
+                ids=[r[0] for r in self.f.conn.execute('SELECT id FROM questions ORDER BY id')]
+                self.f.conn.execute('UPDATE papers SET title=?,source_name=? WHERE id=?',
+                    (f'{year}年数一',f'{year}年数一.pdf','paper-test'))
+                self.f.conn.execute('UPDATE questions SET number=?,stem=? WHERE id=?',('2','A',ids[0]))
+                self.f.conn.execute('UPDATE questions SET number=?,stem=? WHERE id=?',('1','Another question.',ids[1]))
+                self.f.conn.execute('''INSERT INTO questions(id,paper_id,number,stem,correctness,created_at)
+                    VALUES('fragment','paper-test','3','question.','unknown','now')''')
+                for number,stem in ((1,'A question.'),(2,'Another question.')):
+                    bid=f'{source}-{year}-{number}'
+                    self.f.conn.execute('INSERT INTO bank_questions(id,source,stem,created_at) VALUES(?,?,?,?)',(bid,source,stem,'now'))
+                    self.f.conn.execute('INSERT INTO bank_resources VALUES(?,?,?,NULL,NULL)',(bid,json.dumps({'source_id':source}),'unused.png'))
+                    self.f.conn.execute('INSERT INTO bank_identity VALUES(?,?,?,?,NULL)',(bid,1,str(year),number))
+                self.f.conn.commit()
+                body=dict(confirmed=True,questions=[dict(number='1',question_ids=[ids[0],'fragment']),dict(number='2',question_ids=[ids[1]])])
+                # A failed matcher must roll back the correction and its history.
+                with patch('app.services.papers.match_bank_questions',side_effect=RuntimeError('match failure')):
+                    with self.assertRaisesRegex(RuntimeError,'match failure'):self.service.correct_questions('paper-test',body)
+                with Database(self.config).session() as conn:
+                    self.assertEqual(conn.execute('SELECT count(*) FROM questions').fetchone()[0],3)
+                    self.assertEqual(conn.execute("SELECT count(*) FROM record_versions WHERE kind='question_segmentation'").fetchone()[0],0)
+                self.service.correct_questions('paper-test',body)
+                with Database(self.config).session(write=True) as conn:
+                    result=list(conn.execute('SELECT number,match_bank_id,match_score FROM questions ORDER BY number'))
+                    self.assertEqual([r['match_bank_id'] for r in result],[f'{source}-{year}-1',f'{source}-{year}-2'])
+                    self.assertEqual([r['match_score'] for r in result],[.99,.99])
+                    conn.execute('UPDATE questions SET match_bank_id=NULL,match_score=0')
+                    with patch('app.services.papers.extract_pdf',side_effect=AssertionError('must preserve manual regions')):
+                        repeated=self.service.analyze(conn,'paper-test')
+                    self.assertEqual([q['match_bank_id'] for q in repeated['questions']],[f'{source}-{year}-1',f'{source}-{year}-2'])
+                    # Correct number alone must not assert mathematical identity.
+                    conn.execute("UPDATE questions SET stem='unrelated handwritten OCR' WHERE number='1'")
+                    self.service.analyze(conn,'paper-test')
+                    self.assertIsNone(conn.execute("SELECT match_bank_id FROM questions WHERE number='1'").fetchone()[0])
+                    conn.execute('DELETE FROM questions');conn.execute('DELETE FROM record_versions')
+
     def test_correction_http_can_explicitly_remove_wrong_split(self):
         self.service.analyze(self.f.conn,'paper-test')
         ids=[r[0] for r in self.f.conn.execute('SELECT id FROM questions ORDER BY number')]

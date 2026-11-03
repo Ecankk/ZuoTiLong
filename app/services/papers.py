@@ -54,6 +54,32 @@ def confirm_paper_score(conn, paper_id, body):
 class PaperService:
     def __init__(self,config,database):self.config,self.database=config,database
 
+    def _match_questions(self,conn,paper,questions):
+        from app.bank.paper_candidates import location
+        from app.bank.exam_identity import candidates
+        bank_rows=rows(conn,'SELECT * FROM bank_questions')
+        for item in bank_rows:
+            item['tags']=json_load(item.pop('tags_json',None),[])
+            item['fingerprint']=json_load(item.pop('fingerprint_json',None),{})
+        source=location(dict(paper))
+        for question in questions:
+            pool=bank_rows
+            # An explicit exam locator restricts the text comparison. It does
+            # not itself confirm mathematical identity or raise the score.
+            if source['status']=='located' and source['math_type'] is not None:
+                number=str(question['number'])
+                ids=set(candidates(conn,source['year'],source['math_type'],int(number))) if number.isascii() and number.isdecimal() else set()
+                pool=[b for b in bank_rows if b['id'] in ids]
+            match_bank_questions([question],pool)
+        return questions
+
+    def _rematch_saved(self,conn,paper):
+        questions=rows(conn,'SELECT * FROM questions WHERE paper_id=? ORDER BY created_at,id',(paper['id'],))
+        for question in self._match_questions(conn,paper,questions):
+            conn.execute('UPDATE questions SET match_bank_id=?,match_score=? WHERE id=?',
+                         (question['match_bank_id'],question['match_score'],question['id']))
+        return questions
+
     def analyze(self,conn: sqlite3.Connection,paper_id: str) -> dict:
         paper = as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())
         if not paper:
@@ -70,15 +96,10 @@ class PaperService:
             saved=json.loads(correction[0])
             if hashlib.sha256(pdf_path.read_bytes()).hexdigest()!=saved['source_sha256']:
                 raise ValueError('原PDF已变化，不能继续使用已纠正切分')
-            current=rows(conn,'SELECT * FROM questions WHERE paper_id=? ORDER BY created_at,id',(paper_id,))
+            current=self._rematch_saved(conn,paper)
             return dict(paper=paper,questions=current,engine=paper['analysis_engine'],message='保留已确认的人工切分',
                         warnings=[],created_questions=len(current),agent_task=None)
 
-        bank_rows = []
-        for item in rows(conn, "SELECT * FROM bank_questions"):
-            item["tags"] = json_load(item.pop("tags_json", None), [])
-            item["fingerprint"] = json_load(item.pop("fingerprint_json", None), {})
-            bank_rows.append(item)
         write_progress(self.config.data,paper_id,status='running',phase='opening',pages_done=0,pages_total=None,
                        questions=0,warnings=[],message='正在读取原PDF')
         try:
@@ -87,7 +108,7 @@ class PaperService:
         except Exception as exc:
             write_progress(self.config.data,paper_id,status='failed',message=str(exc))
             raise
-        extracted = match_bank_questions(result["questions"], bank_rows)
+        extracted = self._match_questions(conn,paper,result["questions"])
         existing = rows(conn, "SELECT * FROM questions WHERE paper_id=? ORDER BY created_at", (paper_id,))
         created = now_iso()
         for index, item in enumerate(extracted):
@@ -281,5 +302,6 @@ class PaperService:
                     regions[0]['page'] if regions else None,regions[-1]['page'] if regions else None,
                     json.dumps(regions[0]['bbox']) if regions else None,qid))
             for qid in removed:conn.execute('DELETE FROM questions WHERE id=?',(qid,))
+            self._rematch_saved(conn,paper)
             conn.execute('UPDATE papers SET updated_at=? WHERE id=?',(now_iso(),paper_id))
             return dict(paper_id=paper_id,question_ids=kept,deleted_question_ids=sorted(removed),status='corrected')

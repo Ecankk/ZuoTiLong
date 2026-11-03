@@ -7,7 +7,7 @@ import sqlite3
 import tempfile
 import zipfile
 
-from app.storage.backup_archive import LIBRARY, publish, validate, extract
+from app.storage.backup_archive import LIBRARY, publish, validate, extract, snapshot
 from app.storage.boundaries import workspace_config
 from app.storage.split_backup import library_identity
 
@@ -35,6 +35,8 @@ def maintenance_guard(library, workspaces=()):
                                        ('learning_tasks',"'queued','running','repairing','result_saved'")):
                     if table in tables and conn.execute('SELECT 1 FROM '+table+' WHERE status IN ('+statuses+') LIMIT 1').fetchone():
                         raise ValueError('工作区仍有待执行或未完成学习任务，请先完成或取消后再备份通用库')
+    # Initialize metadata only after the workspace write guards have passed.
+    library_identity(library)
     path=library/'library.db'
     if not path.is_file():raise ValueError('library_missing：指定通用库不存在')
     with closing(sqlite3.connect(path.as_uri()+'?mode=rw',uri=True,timeout=0)) as guard:
@@ -53,8 +55,9 @@ def backup_library(library, *, workspaces=()):
         folder=library.parent/'backups';folder.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(dir=folder) as temporary:
             staging=Path(temporary)
-            identity=library_identity(library,staging)
-            files={'library.db':staging/'library-identity.db'}
+            identity=library_identity(library)
+            snapshot(library/'library.db',staging/'library.db')
+            files={'library.db':staging/'library.db'}
             for directory in ('bank-assets','knowledge-sources'):
                 for source in (library/directory).rglob('*'):
                     if source.is_file() and not source.is_symlink() and source.resolve().is_relative_to(library):
@@ -68,7 +71,7 @@ def restore_library(archive_path, destination):
     with zipfile.ZipFile(archive_path) as archive:
         manifest=validate(archive,formats=(3,))
         if (manifest.get('producer')!=LIBRARY or manifest.get('kind')!='library'
-                or manifest.get('library',{}).get('sha256')!=manifest['sha256'].get('library.db')
+                or 'library.db' not in manifest['sha256']
                 or any(name!='library.db' and not name.startswith(('bank-assets/','knowledge-sources/')) for name in manifest['sha256'])):
             raise ValueError('不是完整的通用库备份')
         destination.parent.mkdir(parents=True,exist_ok=True)
@@ -77,5 +80,8 @@ def restore_library(archive_path, destination):
             extract(archive,staged,manifest)
             with closing(sqlite3.connect((staged/'library.db').as_uri()+'?mode=ro',uri=True)) as conn:
                 if conn.execute('PRAGMA quick_check').fetchone()[0]!='ok':raise ValueError('题库数据库完整性校验失败')
+            from app.storage.library_identity import compare
+            actual=library_identity(staged)
+            if compare(manifest['library'],actual)!='same':raise ValueError('题库备份标识或版本与清单不一致')
             staged.rename(destination)
     return dict(restored_to=str(destination),files=len(manifest['sha256']),library=dict(manifest['library'],location=str(destination)))

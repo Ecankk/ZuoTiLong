@@ -144,6 +144,8 @@ def _apply(conn, config, batch, report, asset_root):
     from app.storage.split import template, copy_schema
     with closing(template()) as schema:
         copy_schema(schema, conn, LIBRARY_TABLES)
+    from app.storage.library_identity import initialize
+    initialize(conn)
     excluded = {r['source_uid'] for r in report['excluded']}
     for record in batch:
         bid = records.bank_id(record)

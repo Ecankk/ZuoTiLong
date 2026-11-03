@@ -38,7 +38,7 @@ class BackupSplitTests(unittest.TestCase):
             manifest=json.loads(archive.read('backup-manifest.json'))
             self.assertTrue({'learning.db','agent-session.db','papers/one.pdf','practice-materials/fixture'}.issubset(archive.namelist()))
             self.assertFalse(any(n.startswith(('__library__/','bank-assets/','knowledge-sources/','library/')) or n=='library.db' for n in archive.namelist()))
-            self.assertEqual(manifest['library']['scheme'],'sqlite-backup-sha256/v1')
+            self.assertEqual(manifest['library']['scheme'],'mathlens.library-identity/v1')
         target=self.base/'restored';restore(saved['path'],target)
         self.assertEqual(workspace_config(target).library_dir,self.library)
         self.assertEqual((target/'practice-materials'/'fixture').read_bytes(),b'frozen bytes')
@@ -61,11 +61,15 @@ class BackupSplitTests(unittest.TestCase):
         self.assertTrue(all(p.exists() for p in paths[-3:]))
         self.assertEqual(len(list(folder.glob('*.partial'))),0)
 
-    def test_restore_refuses_changed_or_missing_library_before_creating_target(self):
+    def test_restore_accepts_newer_but_refuses_other_or_missing_library(self):
         archive=backup(self.data,ROOT)['path']
         with self.db.session(write=True,library_write=True) as conn:
             conn.execute("UPDATE bank_questions SET stem='changed' WHERE id='q'")
-        with self.assertRaisesRegex(ValueError,'library_mismatch'):restore(archive,self.base/'wrong')
+        result=restore(archive,self.base/'newer')
+        self.assertEqual(result['library_status'],'newer');self.assertIn('比备份时新',result['library_notice'])
+        other=self.base/'different-library'
+        Database(AppConfig(ROOT,self.base/'other-workspace',ROOT/'dist',self.base/'other-workspace'/'learning.db',library=other)).initialize()
+        with self.assertRaisesRegex(ValueError,'library_mismatch'):restore(archive,self.base/'wrong',library_dir=other)
         self.assertFalse((self.base/'wrong').exists())
         with self.assertRaisesRegex(ValueError,'library_missing'):restore(archive,self.base/'missing',library_dir=self.base/'not-present')
         self.assertFalse((self.base/'missing').exists())
@@ -154,7 +158,7 @@ class BackupSplitTests(unittest.TestCase):
             copied=self.base/'matching-library';restore_library(library_archive,copied)
             with self.db.session(write=True,library_write=True) as conn:conn.execute("UPDATE bank_questions SET stem='later'")
             rejected=http.post('/api/maintenance/restore',json=dict(name=name))
-            self.assertEqual(rejected.status_code,400);self.assertIn('library_mismatch',rejected.json()['error'])
+            self.assertEqual(rejected.status_code,200,rejected.text);self.assertEqual(rejected.json()['library_status'],'newer')
             restored=http.post('/api/maintenance/restore',json=dict(name=name,library_dir=str(copied)))
             self.assertEqual(restored.status_code,200,restored.text)
             self.assertEqual(workspace_config(Path(restored.json()['restored_to'])).library_dir,copied)
@@ -165,6 +169,26 @@ class BackupSplitTests(unittest.TestCase):
             for name in old.namelist():new.writestr(name,b'bad' if name=='learning.db' else old.read(name))
         with self.assertRaisesRegex(ValueError,'校验失败'):restore(corrupt,self.base/'corrupt-restore')
         self.assertFalse((self.base/'corrupt-restore').exists())
+
+    def test_older_library_requires_real_confirmation(self):
+        older=self.base/'older-library';restore_library(backup_library(self.library)['path'],older)
+        with self.db.session(write=True,library_write=True) as conn:conn.execute("UPDATE bank_questions SET stem='new content'")
+        personal=backup(self.data,ROOT)['path']
+        for flag in (False,1,'true'):
+            with self.assertRaisesRegex(ValueError,'library_older'):
+                restore(personal,self.base/'not-confirmed',library_dir=older,confirm_older_library=flag)
+        result=restore(personal,self.base/'confirmed',library_dir=older,confirm_older_library=True)
+        self.assertEqual(result['library_status'],'older')
+
+    def test_personal_identity_never_snapshots_library_and_survives_vacuum(self):
+        from app.storage.library_identity import read
+        before=read(self.library)
+        def personal_only(source,target):
+            self.assertNotEqual(Path(source),self.config.library_database)
+            snapshot(source,target)
+        with patch('app.storage.split_backup.snapshot',side_effect=personal_only):backup(self.data,ROOT)
+        with closing(sqlite3.connect(self.config.library_database)) as conn:conn.execute('VACUUM')
+        self.assertEqual(read(self.library),before)
 
     def test_explicit_library_cli_backup_restore_and_required_argument(self):
         import subprocess,sys

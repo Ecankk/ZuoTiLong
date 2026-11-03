@@ -14,7 +14,7 @@ annotation_cache_imports knowledge_nodes knowledge_source_versions
 knowledge_source_entries knowledge_catalog_releases knowledge_catalog_state
 knowledge_catalog_nodes knowledge_catalog_redirects knowledge_catalog_packages
 knowledge_package_sources knowledge_package_entries knowledge_package_activations
-annotation_provenance bank_source_records bank_source_versions
+annotation_provenance bank_source_records bank_source_versions library_state
 '''.split())
 
 

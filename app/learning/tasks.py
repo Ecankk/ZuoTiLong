@@ -608,9 +608,8 @@ def finish_task(conn, task_id):
     if task['kind']=='annotate_questions':
         from app.storage.boundaries import table_exists
         if table_exists(conn,'annotation_provenance'):
-            for row in conn.execute('SELECT p.annotation_id,p.payload_json FROM annotation_provenance p JOIN question_annotations a ON a.id=p.annotation_id WHERE a.result_id=?',(task['result_id'],)).fetchall():
-                value=json.loads(row['payload_json']);value['published']=True
-                conn.execute('UPDATE annotation_provenance SET payload_json=? WHERE annotation_id=?',(encode(value),row['annotation_id']))
+            from app.storage.provenance import publish_provenance
+            publish_provenance(conn,task['result_id'])
     return saved
 
 

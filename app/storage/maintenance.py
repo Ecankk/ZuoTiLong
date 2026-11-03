@@ -34,10 +34,11 @@ def backup(data,root):
         if staging.resolve().parent==folder.resolve():shutil.rmtree(staging)
 
 
-def restore(archive_path,destination,*,library_dir=None):
+def restore(archive_path,destination,*,library_dir=None,confirm_older_library=False):
     destination=Path(destination).resolve()
     if destination.exists():raise ValueError('恢复目录必须不存在，不能覆盖当前个人资料')
     selected_library=None
+    library_status=None
     with zipfile.ZipFile(archive_path) as archive:
         from app.storage.backup_archive import PERSONAL,validate,extract
         manifest=validate(archive)
@@ -48,18 +49,18 @@ def restore(archive_path,destination,*,library_dir=None):
             raise ValueError('备份数据库名称不合法')
         if manifest['format']==3:
             identity=manifest.get('library',{})
-            if identity.get('scheme')!='sqlite-backup-sha256/v1' or not identity.get('location') or not identity.get('sha256'):
+            if not identity.get('location') or not identity.get('library_id') or not identity.get('version'):
                 raise ValueError('个人备份缺少通用库身份')
             selected_library=Path(library_dir or identity['location']).resolve()
             from app.config import resolve_library_dir
             if resolve_library_dir(destination,selected_library)!=selected_library:
                 raise ValueError('library_override_conflict：恢复目录的环境变量指向其他通用库，请先核对 MATHLENS_LIBRARY_DIR')
             from app.storage.split_backup import library_identity
-            import tempfile
-            with tempfile.TemporaryDirectory() as staging:
-                actual=library_identity(selected_library,staging)
-            if actual['sha256']!=identity['sha256']:
-                raise ValueError('library_mismatch：通用库身份与备份不一致；请先恢复对应题库备份，再显式指定其 library_dir')
+            actual=library_identity(selected_library)
+            from app.storage.library_identity import compare
+            library_status=compare(identity,actual)
+            if library_status=='older' and confirm_older_library is not True:
+                raise ValueError('library_older：当前题库比备份时旧，请显式 confirm_older_library=true 确认，或先恢复对应题库备份')
         destination.mkdir(parents=True)
         extract(archive,destination,manifest)
     old_data=Path(manifest['data_root']);old_root=Path(manifest['project_root'])
@@ -114,7 +115,9 @@ def restore(archive_path,destination,*,library_dir=None):
     (destination/'server.json').unlink(missing_ok=True)
     return {'restored_to':str(destination),'files':len(manifest['sha256']),
             'session_policy':'preserve_id_require_reconnect','pending_tasks':'restart_from_saved_materials',
-            **({'library':dict(manifest['library'],location=str(selected_library))} if selected_library else {})}
+            **({'library':actual,'library_status':library_status,
+                'library_notice':{'same':'题库与备份时版本一致','newer':'题库比备份时新，已允许恢复',
+                                  'older':'已明确确认使用比备份时旧的题库，部分新题或目录可能不可用'}[library_status]} if selected_library else {})}
 
 
 def _rebase_paths(value,old_data,destination):

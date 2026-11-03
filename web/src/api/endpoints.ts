@@ -94,12 +94,24 @@ export const endpoints = {
     postJson(`/api/papers/${enc(paperId)}/confirm`, { numbers, scores, subject }),
   summarizePaper: (paperId: string) =>
     postJson(`/api/papers/${enc(paperId)}/resummarize`, { confirmed: true }),
+  /** 返回任务摘要（同 GET /api/tasks） */
   preparePractice: (paperId: string) =>
-    postJson('/api/agent/task', {
-      kind: 'prepare_practice',
-      paper_id: paperId,
+    postJson<TasksResponse>(`/api/papers/${enc(paperId)}/prepare-practice`, {
       request_id: requestId(),
     }),
+  /**
+   * 纠正分析前的切分：questions 必须覆盖本卷全部题目（单个 ID 为重新编号，多个为合并），
+   * 误切的题放进 deleteIds。后端会保存纠正前的切分。
+   */
+  correctQuestions: (
+    paperId: string,
+    questions: { number: string; question_ids: string[] }[],
+    deleteIds: string[],
+  ) =>
+    postJson<{ question_ids: string[]; deleted_question_ids: string[] }>(
+      `/api/papers/${enc(paperId)}/questions/correct`,
+      { confirmed: true, questions, delete_question_ids: deleteIds },
+    ),
   reviewQuestion: (questionId: string, reportId: string, note: string) =>
     postJson(`/api/questions/${enc(questionId)}/review`, {
       request_id: requestId(),

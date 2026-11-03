@@ -10,6 +10,7 @@ import { Chip } from '../../components/ui/Chip'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { cx } from '../../lib/cx'
 import { correctnessLabel, mathTypeName } from '../../lib/labels'
+import { CorrectNumbersButton } from './CorrectNumbers'
 import styles from './PaperOverview.module.css'
 
 const countOrder: Correctness[] = ['correct', 'partial', 'wrong', 'unknown']
@@ -278,7 +279,15 @@ export function PaperOverview() {
               <ButtonLink size="sm" to={`/papers/${paper.id}/questions`}>
                 查看逐题分析
               </ButtonLink>
+              {!archived && data.analysis.report_id === null && (
+                <CorrectNumbersButton paperId={paper.id} />
+              )}
             </div>
+            {!archived && data.analysis.report_id === null && (
+              <p className={styles.muted} style={{ marginTop: 'var(--space-2)' }}>
+                分析开始前，如果题号切得不对，可以先纠正。
+              </p>
+            )}
           </Card>
         )}
       </div>

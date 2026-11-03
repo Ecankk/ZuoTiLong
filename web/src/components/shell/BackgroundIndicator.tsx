@@ -97,25 +97,30 @@ function TaskList({ title, items }: { title: string; items: Task[] }) {
 export function BackgroundIndicator() {
   const { data } = useTasks()
   if (!data) return null
-  if (data.availability.status === 'unavailable')
-    return <SetupGuide availability={data.availability} />
   const { active, queued_count: waiting, failed_count: failed } = data
-  if (!active && failed === 0) return null
+  const unavailable = data.availability.status === 'unavailable'
+  // 未就绪且没有待处理任务时只显示引导
+  if (unavailable && waiting === 0 && failed === 0)
+    return <SetupGuide availability={data.availability} />
+  if (!unavailable && !active && failed === 0 && waiting === 0) return null
 
+  const title = unavailable
+    ? '做题龙还不能开始工作'
+    : active
+      ? null
+      : failed > 0
+        ? `有 ${failed} 项没有完成`
+        : `有 ${waiting} 项在等待`
   return (
     <Popover.Root>
       <Popover.Trigger className={styles.card} aria-label="后台进度，点开查看全部">
         <span className={styles.row}>
-          <span className={`${styles.dot} ${active ? '' : styles.problem}`} />
+          <span className={`${styles.dot} ${active && !unavailable ? '' : styles.problem}`} />
           <span className={styles.text}>
-            {active ? (
-              <Message text={`做题龙${active.progress.message}`} />
-            ) : (
-              `有 ${failed} 项没有完成`
-            )}
+            {title ?? <Message text={`做题龙${active?.progress.message ?? ''}`} />}
           </span>
         </span>
-        {active && (
+        {active && !unavailable && (
           <span className={styles.bar}>
             <span />
           </span>
@@ -133,6 +138,17 @@ export function BackgroundIndicator() {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content side="right" align="end" sideOffset={12} className={styles.popover}>
+          {unavailable && (
+            <section className={styles.section}>
+              <h3>需要先准备 AI 服务</h3>
+              <span className={styles.problemText}>
+                {setupMessages[data.availability.reason ?? ''] ?? data.availability.message}
+              </span>
+              <a href={setupGuideUrl} target="_blank" rel="noreferrer">
+                查看配置教程
+              </a>
+            </section>
+          )}
           <TaskList title="进行中" items={active ? [active] : []} />
           <TaskList title="等待中" items={data.items.filter((task) => task.status === 'queued')} />
           <TaskList title="没有完成" items={data.items.filter(needsAttention)} />

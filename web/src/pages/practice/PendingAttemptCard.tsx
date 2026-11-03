@@ -1,3 +1,5 @@
+import { Upload } from 'lucide-react'
+import { useState } from 'react'
 import { endpoints } from '../../api/endpoints'
 import { useAction, useTasks } from '../../api/queries'
 import type { PracticeCard, PracticeResponse } from '../../api/types'
@@ -7,7 +9,9 @@ import { Chip } from '../../components/ui/Chip'
 import { cx } from '../../lib/cx'
 import { sourceName } from '../../lib/labels'
 import { QuestionContent } from './AnswerCard'
-import { SubmittedAttempt } from './GradedCard'
+import { AttemptForm } from './AttemptForm'
+import { ReferenceAnalysis, SubmittedAttempt } from './GradedCard'
+import { RevealButton } from './RevealButton'
 import styles from './PracticeCard.module.css'
 
 /** 已提交、还没有批改结果的作答：批改中，或需要重新排入批改。 */
@@ -21,6 +25,7 @@ export function PendingAttemptCard({
   position: { index: number; total: number }
 }) {
   const { data: tasks } = useTasks()
+  const [supplementing, setSupplementing] = useState(false)
   const attempt = detail.latest_attempt
   const regrade = useAction(
     () => endpoints.requestGrading(card.id, attempt?.id ?? ''),
@@ -55,6 +60,28 @@ export function PendingAttemptCard({
         </div>
       )}
       {regrade.error && <p className={styles.formError}>{regrade.error.message}</p>}
+      <div className={styles.gradedActions}>
+        {detail.actions.includes('supplement') && !supplementing && (
+          <Button size="sm" onClick={() => setSupplementing(true)}>
+            <Upload size={16} aria-hidden />
+            补充步骤或照片
+          </Button>
+        )}
+        {detail.actions.includes('reveal_analysis') && (
+          <RevealButton bankId={card.bank_id} kind="analysis" label="查看参考解析" variant="ghost">
+            查看后会记下“看过解析”。之后的补充作答会和独立完成的作答分开统计。
+          </RevealButton>
+        )}
+      </div>
+      {supplementing && (
+        <>
+          <AttemptForm practiceId={card.id} attemptId={attempt.id} showExposure={false} />
+          <Button size="sm" variant="ghost" onClick={() => setSupplementing(false)}>
+            取消补充
+          </Button>
+        </>
+      )}
+      <ReferenceAnalysis detail={detail} />
     </Card>
   )
 }

@@ -67,7 +67,7 @@ export function SubmittedAttempt({ attempt }: { attempt: Attempt }) {
   )
 }
 
-function Analysis({ detail }: { detail: PracticeResponse }) {
+export function ReferenceAnalysis({ detail }: { detail: PracticeResponse }) {
   const question = detail.question
   const hasAnalysis =
     question &&
@@ -235,7 +235,7 @@ export function GradedCard({
                 <MathText text={assessment.reference_reasoning} />
               </Fold>
             )}
-            <Analysis detail={detail} />
+            <ReferenceAnalysis detail={detail} />
           </div>
         </div>
       </div>

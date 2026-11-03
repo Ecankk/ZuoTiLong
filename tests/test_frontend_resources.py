@@ -79,6 +79,30 @@ class FrontendResourceTests(unittest.TestCase):
         self.assertIsNone(metadata(self.conn,'bank-test')['question_type'])
         self.conn.rollback()
 
+    def test_standard_text_source_matches_paper_and_practice_with_masking(self):
+        from test_source_import import question
+        from app.bank.source_records import canonical,bank_id
+        from app.bank.source_import import import_source
+        value=question(); bid=bank_id(value)
+        path=self.f.root/'standard.jsonl';path.write_text(canonical(value),encoding='utf8')
+        config=self.app.state.runtime.config
+        plan=import_source(config,'S02',path)
+        import_source(config,'S02',path,confirm=plan['plan_sha256'])
+        self.conn.execute("UPDATE papers SET title='2026 数学一',source_name='2026 数学一.pdf' WHERE id='paper-test'")
+        self.conn.execute("UPDATE diagnostic_probes SET bank_id=?",(bid,));self.conn.commit()
+        card=self.http.get('/api/papers/paper-test/questions').json()['items'][0]
+        self.assertEqual((card['matched_bank_id'],card['question_type'],card['max_score']),(bid,'选择题',5))
+        practice='/api/practices/paper-test-probe-test'
+        self.assertIsNone(self.http.get(practice).json()['question'])
+        reveal(self.conn,bid,'question',True);self.conn.commit()
+        visible=self.http.get(practice).json()['question']
+        self.assertIn('A. $2$',visible['question_text'])
+        self.assertNotIn('question_image',visible)
+        reveal(self.conn,bid,'analysis',True);self.conn.commit()
+        self.assertNotIn('analysis_text',self.http.get(practice).json()['question'])
+        submit_probe(self.conn,'paper-test-probe-test',{'response':'independent steps'});self.conn.commit()
+        self.assertEqual(self.http.get(practice).json()['question']['analysis_text'],'$1+1=2$')
+
     def test_practice_mask_reveal_submission_analysis_and_history(self):
         self.conn.execute("UPDATE bank_identity SET math_type=1,year='2023' WHERE bank_id='bank-test'")
         self.conn.execute("DELETE FROM bank_views WHERE bank_id='bank-test'"); self.conn.commit()

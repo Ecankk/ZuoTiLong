@@ -1,5 +1,6 @@
 """Resolve private files through their saved identities and access policy."""
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from app.common import as_json,json_load
 from app.errors import ServiceError
@@ -44,7 +45,13 @@ class ResourceService:
                         raise ServiceError('旧练习原题版本待核，不能用当前题库材料代替；历史作答保留',409)
                 if binding:
                     try:
-                        from app.storage.practice_materials import image_path
+                        from app.storage.practice_materials import image_path,load
+                        manifest=load(self.config.data,binding['snapshot_key'],binding['snapshot_sha256'],(role,))
+                        item=manifest['resources'].get(role)
+                        if item and not item['image_file'] and item['text']:
+                            record_view(conn,bank_id,role)
+                            return Resource(json.dumps({'bank_id':bank_id,'role':role,'text':item['text'],
+                                'sha256':item['sha256']},ensure_ascii=False).encode('utf8'),'application/json')
                         path=image_path(self.config.data,binding,role)
                     except ValueError as error:raise ServiceError(str(error),404) from None
                     record_view(conn,bank_id,role)
@@ -56,6 +63,13 @@ class ResourceService:
                 if path.is_relative_to((self.config.library_dir/'bank-assets').resolve()) and path.is_file():
                     record_view(conn,bank_id,role)
                     return Resource(path,'image/png')
+            if row and not row[role+'_path']:
+                from app.bank.annotations import materials
+                item=materials(conn,self.config.data,bank_id).get(role)
+                if item and item['text']:
+                    record_view(conn,bank_id,role)
+                    return Resource(json.dumps({'bank_id':bank_id,'role':role,'text':item['text'],
+                        'sha256':item['sha256']},ensure_ascii=False).encode('utf8'),'application/json')
         raise ServiceError('题库资源缺失',404)
     def evidence(self,question_id,index=0):
         import pymupdf

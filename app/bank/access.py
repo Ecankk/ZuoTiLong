@@ -74,10 +74,10 @@ def register_identity(conn, bid, math_type, year, number, path):
     conn.execute('INSERT INTO bank_identity VALUES(?,?,?,?,?) ON CONFLICT(bank_id) DO UPDATE SET math_type=excluded.math_type,year=excluded.year,number=excluded.number,sha256=excluded.sha256',(bid,math_type,str(year),number,digest))
 
 
-def aliases(conn,bid):
+def _related(conn,bid,exam=False):
     group={bid}
     changed=True
-    identities=list(conn.execute('SELECT bank_id,sha256 FROM bank_identity'))
+    identities=list(conn.execute('SELECT * FROM bank_identity'))
     links=list(conn.execute('SELECT left_id,right_id FROM bank_links'))
     from app.bank.identity_reviews import confirmed_pairs
     links.extend(confirmed_pairs(conn))
@@ -85,16 +85,31 @@ def aliases(conn,bid):
         old=len(group)
         digests={r['sha256'] for r in identities if r['bank_id'] in group and r['sha256']}
         group.update(r['bank_id'] for r in identities if r['sha256'] in digests)
+        if exam:
+            exam_key=lambda r:(r['math_type'],r['year'],r['number'])
+            exams={exam_key(r) for r in identities if r['bank_id'] in group and r['math_type'] in (1,2,3)
+                   and re.fullmatch(r'\d{4}',str(r['year'])) and r['number'] and r['number']>0}
+            group.update(r['bank_id'] for r in identities if exam_key(r) in exams)
         for left,right in links:
             if left in group or right in group:group.update((left,right))
         changed=len(group)!=old
     return group
 
 
+def aliases(conn,bid):
+    """Confirmed mathematical identities; exam labels alone never reuse annotations."""
+    return _related(conn,bid)
+
+
+def policy_group(conn,bid):
+    """Conservative exam/exposure protection, including sources imported later."""
+    return _related(conn,bid,exam=True)
+
+
 def access(conn,bid):
     row=conn.execute('SELECT * FROM bank_identity WHERE bank_id=?',(bid,)).fetchone()
     if not row:raise ValueError('题库题目不存在')
-    meta=dict(row);policy=preferences(conn);group=aliases(conn,bid)
+    meta=dict(row);policy=preferences(conn);group=policy_group(conn,bid)
     related=[dict(r) for r in conn.execute('SELECT * FROM bank_identity') if r['bank_id'] in group]
     reserved=any({'math_type':r['math_type'],'year':r['year']} in policy['reserved'] for r in related)
     views=[dict(r) for r in conn.execute('SELECT * FROM bank_views') if r['bank_id'] in group]
@@ -123,17 +138,17 @@ def reveal(conn,bid,role,confirmed):
     if role=='question' and state['math_type'] == preferences(conn)['study_type'] and state['confirmed']:
         return state
     if role=='analysis' and not state['can_view']:raise ValueError('请先确认查看题干')
-    for item in aliases(conn,bid):
+    for item in policy_group(conn,bid):
         conn.execute('INSERT OR IGNORE INTO bank_views VALUES(?,?,?)',(item,role,now()))
         if role=='analysis':conn.execute('INSERT OR IGNORE INTO bank_exposures VALUES(?,?)',(item,now()))
     return access(conn,bid)
 
 
 def record_view(conn,bid,role):
-    """Track actual image loads without granting probe reveal permission."""
+    """Track actual material reads without granting probe reveal permission."""
     if role not in ('question','analysis','answer'):raise ValueError('资源类别不合法')
     if not conn.execute('SELECT bank_id FROM bank_identity WHERE bank_id=?',(bid,)).fetchone():raise ValueError('题库题目不存在')
-    for item in aliases(conn,bid):
+    for item in policy_group(conn,bid):
         conn.execute('INSERT OR IGNORE INTO bank_views VALUES(?,?,?)',(item,'seen_question' if role=='question' else 'analysis',now()))
         if role!='question':conn.execute('INSERT OR IGNORE INTO bank_exposures VALUES(?,?)',(item,now()))
 
@@ -142,16 +157,37 @@ def public_bank(conn,bid,view='probe'):
     if view=='library':
         row=conn.execute('SELECT b.*,i.math_type,i.year,i.number FROM bank_questions b JOIN bank_identity i ON i.bank_id=b.id WHERE b.id=?',(bid,)).fetchone()
         if not row:raise ValueError('题库题目不存在')
-        return {'id':bid,'math_type':row['math_type'],'year':row['year'],'number':row['number'],
+        result={'id':bid,'math_type':row['math_type'],'year':row['year'],'number':row['number'],
                 'can_view':True,'reserved':{'math_type':row['math_type'],'year':row['year']} in preferences(conn)['reserved'],
                 'reason':'','analysis_allowed':True,'stem':row['stem'],'tags':json.loads(row['tags_json'] or '[]'),
                 'question_image':f'/api/bank/{bid}/question?view=library','analysis_image':f'/api/bank/{bid}/analysis?view=library'}
+        # Lists never inline reference solutions; reading a reference is a
+        # separate, recorded action even for text-only sources.
+        return text_resources(conn,bid,result)
     state=access(conn,bid)
     if not state['can_view']:return state
     row=conn.execute('SELECT * FROM bank_questions WHERE id=?',(bid,)).fetchone()
-    return {**state,'stem':row['stem'],'tags':json.loads(row['tags_json'] or '[]'),
+    result={**state,'stem':row['stem'],'tags':json.loads(row['tags_json'] or '[]'),
             'question_image':f'/api/bank/{bid}/question',
             **({'analysis_image':f'/api/bank/{bid}/analysis','answer':row['answer'],'explanation':row['explanation']} if state['analysis_allowed'] else {})}
+    return text_resources(conn,bid,result,reference=state['analysis_allowed'])
+
+
+def text_resources(conn,bid,result,*,reference=False):
+    """Add readable text for real text-only bank resources; preserve legacy URLs."""
+    resource=conn.execute('SELECT * FROM bank_resources WHERE bank_id=?',(bid,)).fetchone()
+    if resource:
+        question=conn.execute('SELECT stem,explanation,answer FROM bank_questions WHERE id=?',(bid,)).fetchone()
+        standard=json.loads(resource['metadata_json']).get('schema')=='mathlens.bank-record/v1'
+        if not resource['question_path']:
+            result.pop('question_image',None)
+        if not resource['question_path'] or standard and question['stem']:
+            result['question_text']=question['stem']
+        if not resource['analysis_path']:
+            result.pop('analysis_image',None)
+        if reference and (not resource['analysis_path'] or standard):
+            result['analysis_text']=question['explanation'] or question['answer'] or ''
+    return result
 
 
 def review_cross(conn,bid,reason,distinct=True,other_id=None):

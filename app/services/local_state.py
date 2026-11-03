@@ -26,7 +26,7 @@ class LocalStateService:
     def backup(self):return backup(self.config.data,self.config.root)
     def cleanup(self):
         with self.database.session(write=True) as conn:return cleanup_images(conn,self.config.data)
-    def restore(self,name):
+    def restore(self,name,library_dir=None):
         archive=self.config.data/'backups'/Path(name).name
         if archive.parent.resolve()!=(self.config.data/'backups').resolve() or not archive.is_file() or archive.suffix!='.zip':raise ValueError('本地备份不存在')
-        return restore(archive,self.config.data.parent/('mathlens-restored-'+uuid.uuid4().hex[:8]))
+        return restore(archive,self.config.data.parent/('mathlens-restored-'+uuid.uuid4().hex[:8]),library_dir=library_dir)

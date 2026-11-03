@@ -176,12 +176,12 @@ class ServerRuntimeTests(unittest.TestCase):
                 target = Path(folder)/'restored'
                 restore(archive, target)
                 restored = workspace_config(target, ROOT)
-                self.assertNotEqual(restored.library_database, config.library_database)
+                self.assertEqual(restored.library_database, config.library_database)
                 with closing(sqlite3.connect(restored.database)) as conn:
                     self.assertEqual(conn.execute('SELECT count(*) FROM papers').fetchone()[0], 1)
-                # Restoring never targets the running library or leaves handles
-                # in its new copy. The live read observers remain active here.
-                restored.library_database.rename(restored.library_dir/'released.db')
+                # The personal restore shares the verified live library and
+                # leaves no handles on its independent personal database.
+                restored.database.rename(target/'released.db')
             finally:
                 runtime.close()
             self.assertFalse(observer.is_alive())

@@ -76,6 +76,10 @@ def main():
         database.initialize()
         conn=database.connect(library_write=args.command in ('import-bank','prepare'))
     try:
+        if args.command in ('prepare','import-bank'):
+            # Reserve both stores before a legacy importer can replace assets.
+            # Library maintenance holds the same SQLite write reservation.
+            conn.execute('BEGIN IMMEDIATE')
         if args.command=="prepare":
             source=args.pdf.resolve();digest=hashlib.sha256(source.read_bytes()).hexdigest()
             old=None

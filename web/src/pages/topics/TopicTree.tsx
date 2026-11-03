@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import type { CatalogNode } from '../../api/types'
 import { ancestors, type CatalogIndex } from '../../lib/catalog'
@@ -18,6 +18,11 @@ export function TopicTree({ index, selected }: { index: CatalogIndex; selected?:
       ]),
     [index, selected],
   )
+  const listRef = useRef<HTMLUListElement>(null)
+  // 选中的考点滚到可视区域（只操作 DOM，不改状态）
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
+  }, [selected])
   const expanded = { has: (id: string) => overrides.get(id) ?? defaults.has(id) }
   const toggle = (id: string) =>
     setOverrides((before) => new Map(before).set(id, !expanded.has(id)))
@@ -57,5 +62,9 @@ export function TopicTree({ index, selected }: { index: CatalogIndex; selected?:
       </li>
     )
   }
-  return <ul className={styles.tree}>{index.roots.map((node) => renderNode(node, 0))}</ul>
+  return (
+    <ul ref={listRef} className={styles.tree}>
+      {index.roots.map((node) => renderNode(node, 0))}
+    </ul>
+  )
 }

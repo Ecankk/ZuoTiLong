@@ -66,6 +66,10 @@ describe('app shell', () => {
     expect(await screen.findByText('应该是')).toBeInTheDocument()
     expect(screen.getByText('选择题')).toBeInTheDocument()
     expect(screen.getByText('第 2 步 · 首个错误')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '泰勒公式求极限' })).toHaveAttribute(
+      'href',
+      '/topics/topic-taylor-limit',
+    )
     expect(mainText()).not.toMatch(forbidden)
   })
 

@@ -193,11 +193,11 @@ class AnnotationPackageTests(unittest.TestCase):
         self.assertEqual(packages.export_package(self.conn,self.data),self.package)
         self.assertEqual(self.protected(),before)
 
-    def test_unfinished_source_delivery_or_missing_reads_cannot_be_exported(self):
+    def test_published_shared_proof_survives_removal_of_private_execution_evidence(self):
         self.source.conn.execute("UPDATE learning_tasks SET status='result_saved' WHERE kind='annotate_questions'")
-        with self.assertRaisesRegex(ValueError,'没有'): packages.export_package(self.source.conn,self.source.data)
-        self.source.conn.execute("UPDATE learning_tasks SET status='completed' WHERE kind='annotate_questions'")
         self.source.conn.execute("DELETE FROM task_reads WHERE kind='bank_preparation' AND role='analysis'")
+        self.assertEqual(packages.export_package(self.source.conn,self.source.data),self.package)
+        self.source.conn.execute("UPDATE annotation_provenance SET payload_json=json_set(payload_json,'$.published',0)")
         with self.assertRaisesRegex(ValueError,'没有'): packages.export_package(self.source.conn,self.source.data)
 
     def test_material_paths_are_local_but_question_and_reference_content_must_match(self):

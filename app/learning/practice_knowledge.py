@@ -186,10 +186,7 @@ def require_reviewed_references(conn,annotation,manifest):
         raise ValueError('历史练习标注规则不受支持，须先复核')
     from app.storage.provenance import reviewed_source
     proof = reviewed_source(conn, annotation)
-    row=conn.execute('''SELECT t.input_json FROM learning_results r JOIN learning_tasks t ON t.id=r.task_id
-        WHERE r.id=? AND r.kind='annotate_questions' ''',(annotation['result_id'],)).fetchone()
-    inputs=({'rule_revision':proof['rule_revision'],'bank_questions':[proof['source']]}
-            if proof else json.loads(row[0]) if row else {})
+    inputs={'rule_revision':proof['rule_revision'],'bank_questions':[proof['source']]} if proof else {}
     source=next((q for q in inputs.get('bank_questions',[]) if q['bank_id']==annotation['bank_id']),None)
     if (not source or inputs.get('rule_revision')!=annotation['rule_revision']
             or source['material_revision']!=annotation['material_revision']

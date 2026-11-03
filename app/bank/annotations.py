@@ -310,8 +310,10 @@ def current(conn, data, bank_id, *, read_view=None):
             continue
         item = json.loads(row['payload_json'])
         if table_exists(conn,'annotation_provenance'):
-            proof=conn.execute('SELECT payload_json FROM annotation_provenance WHERE annotation_id=?',(row['id'],)).fetchone()
-            if proof and not json.loads(proof[0]).get('published'):continue
+            from app.storage.provenance import reviewed_source
+            try:
+                if not reviewed_source(conn,row):continue
+            except ValueError:continue
         if row['rule_revision'] not in SUPPORTED_RULE_REVISIONS:continue
         try:
             if not _unchanged_materials(conn,data,bank_id,row,read_view=read_view):continue

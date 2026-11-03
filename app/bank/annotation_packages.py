@@ -92,36 +92,14 @@ def validate_package(package):
 
 
 def _local_proof(conn, annotation, actual):
-    from app.storage.provenance import reviewed_source
+    from app.storage.provenance import reviewed_source,evidence_digest
     proof = reviewed_source(conn, annotation)
-    local=conn.execute('SELECT 1 FROM learning_results r JOIN question_annotations a ON a.result_id=r.id WHERE a.id=?',(annotation['id'],)).fetchone()
-    if proof and not local:
-        source = proof['source']
-        if (source['identity'].get(annotation['bank_id']) != actual['question']['sha256']
-                or role_hashes(source['materials']) != role_hashes(actual)):
-            raise ValueError('通用标注出处未核验该题干及全部参考版本')
-        return catalog.digest(proof)
-    row = conn.execute('''SELECT t.*,r.payload_sha256,r.payload_json AS result_json
-        FROM question_annotations a JOIN learning_results r ON r.id=a.result_id
-        JOIN learning_tasks t ON t.id=r.task_id WHERE a.id=?''', (annotation['id'],)).fetchone()
-    if not row or row['status'] != 'completed' or row['kind'] != 'annotate_questions':
-        raise ValueError('标注尚缺已完成的原始Agent交付，不能作为共享就绪索引')
-    inputs = json.loads(row['input_json'])
-    source = next((q for q in inputs['bank_questions'] if q['bank_id'] == annotation['source_bank_id']), None)
-    if (not source or source['identity'].get(annotation['bank_id']) != actual['question']['sha256']
-            or role_hashes(source['materials']) != role_hashes(actual)
-            or source['material_revision'] != catalog.digest(source['materials'])):
-        raise ValueError('标注原交付未核验该题干及全部参考版本')
-    result = json.loads(row['result_json'])
-    if annotation['analysis'] not in result['result']['questions']:
-        raise ValueError('标注与原交付内容不一致')
-    for role, value in source['materials'].items():
-        read = conn.execute('''SELECT sha256 FROM task_reads WHERE task_id=? AND run_token=?
-            AND kind='bank_preparation' AND record_id=? AND role=?''', (row['id'], row['run_token'], source['bank_id'], role)).fetchone()
-        if not read or read[0] != value['sha256']:
-            raise ValueError('标注原材料阅读凭据缺失，不能导出')
-    return catalog.digest({'input_revision': row['input_revision'], 'result_sha256': row['payload_sha256'],
-                           'reviewed_roles': role_hashes(source['materials'])})
+    if not proof:raise ValueError('标注尚缺完整的已发布出处')
+    source=proof['source']
+    if (source['identity'].get(annotation['bank_id'])!=actual['question']['sha256']
+            or role_hashes(source['materials'])!=role_hashes(actual)):
+        raise ValueError('通用标注出处未核验该题干及全部参考版本')
+    return evidence_digest(proof)
 
 
 def export_package(conn, data):

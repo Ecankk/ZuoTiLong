@@ -67,13 +67,13 @@ def _current(conn, data, entry):
     require_access(conn, entry['bank_id'], internal=True)
     if annotations.materials(conn, data, entry['bank_id']) != entry['materials']:
         raise ValueError('原卷参考材料已变化；勿替换固定版本，可独立分析或另建任务')
+    row = annotation_cache.record(conn, entry['binding']['annotation_id'])
+    if row is None or catalog.digest(dict(row)) != entry['annotation_record_sha256']:
+        raise ValueError('原卷参考出处已变化')
     annotation = annotations.current(conn, data, entry['bank_id'])
     if (not annotation or annotation['analysis']['status'] != 'ready'
             or annotation['id'] != entry['binding']['annotation_id']):
         raise ValueError('原卷参考标注已变化或不再就绪，请重新核对')
-    row = annotation_cache.record(conn, annotation['id'])
-    if row is None or catalog.digest(dict(row)) != entry['annotation_record_sha256']:
-        raise ValueError('原卷参考出处已变化')
 
 
 def prepared_context(conn, data, task, lease, bank_ids):

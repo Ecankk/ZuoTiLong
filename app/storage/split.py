@@ -130,7 +130,8 @@ def _migrate_legacy_to(source_dir, config, final_config):
                         copy_rows(snapshot,target,name)
                     if path == config.library_database:
                         for annotation in snapshot.execute('SELECT * FROM question_annotations'):
-                            proof = capture_provenance(snapshot, annotation)
+                            try:proof = capture_provenance(snapshot, annotation)
+                            except ValueError:proof = None
                             if proof is not None:
                                 target.execute('INSERT INTO annotation_provenance VALUES(?,?)',
                                                (annotation['id'],json.dumps(proof,ensure_ascii=False,sort_keys=True)))

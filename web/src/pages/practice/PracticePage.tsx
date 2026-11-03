@@ -11,6 +11,7 @@ import { cx } from '../../lib/cx'
 import { paperName, sourceName } from '../../lib/labels'
 import { AnswerCard } from './AnswerCard'
 import { GradedCard } from './GradedCard'
+import { PendingAttemptCard } from './PendingAttemptCard'
 import styles from './PracticePage.module.css'
 
 const stateLabel: Record<PracticeCard['status'], string> = {
@@ -110,12 +111,6 @@ function SelectedPractice({ card, group }: { card: PracticeCard; group: Practice
     total: group.items.length,
   }
   if (isPending) return null
-  if (card.status === 'grading')
-    return (
-      <Card padded className={styles.notice}>
-        做题龙正在批改这道练习，一般 1～2 分钟出结果。批改完成后会显示在这里。
-      </Card>
-    )
   if (!detail)
     return (
       <Card padded className={styles.notice}>
@@ -124,7 +119,10 @@ function SelectedPractice({ card, group }: { card: PracticeCard; group: Practice
     )
   const stopped = card.status === 'inactive' || !detail.is_current
   const note = stopped ? (detail.review_reason ?? '这道练习已停用，历史作答仍然保留。') : undefined
-  if (detail.latest_attempt?.assessment)
+  const attempt = detail.latest_attempt
+  if (attempt && !stopped && (card.status === 'grading' || !attempt.assessment))
+    return <PendingAttemptCard card={card} detail={detail} position={position} />
+  if (attempt?.assessment)
     return <GradedCard detail={detail} position={position} group={group} note={note} />
   if (stopped)
     return (

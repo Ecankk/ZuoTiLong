@@ -1,5 +1,6 @@
-import { BookOpen, Check, Upload } from 'lucide-react'
-import type { PracticeGroup, PracticeResponse } from '../../api/types'
+import { Check, Upload } from 'lucide-react'
+import { useState } from 'react'
+import type { Attempt, PracticeGroup, PracticeResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button, ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -7,9 +8,21 @@ import { Chip, CorrectnessChip } from '../../components/ui/Chip'
 import { Fold } from '../../components/ui/Fold'
 import { cx } from '../../lib/cx'
 import { assessmentCorrectness, sourceName } from '../../lib/labels'
+import { QuestionContent } from './AnswerCard'
+import { AttemptForm } from './AttemptForm'
+import { RevealButton } from './RevealButton'
 import styles from './PracticeCard.module.css'
 
-function gradedTime(iso: string) {
+/** 作答照片沿用旧的图片入口 */
+export const answerImageUrl = (id: string) => `/api/answer-images/${encodeURIComponent(id)}`
+
+const roleLabel: Record<string, string> = {
+  own_work: '我的作答',
+  marking: '事后批改',
+  external_solution: '参考解析',
+}
+
+function submittedTime(iso: string) {
   const date = new Date(iso)
   const today = new Date().toDateString() === date.toDateString()
   const time = date.toLocaleTimeString('zh-CN', {
@@ -20,8 +33,70 @@ function gradedTime(iso: string) {
   return `${today ? '今天' : `${date.getMonth() + 1}月${date.getDate()}日`} ${time} 提交`
 }
 
-/** 作答照片沿用旧的图片入口 */
-const answerImageUrl = (id: string) => `/api/answer-images/${encodeURIComponent(id)}`
+/** 已提交的作答：文字与照片。 */
+export function SubmittedAttempt({ attempt }: { attempt: Attempt }) {
+  return (
+    <div className={styles.mineBlock}>
+      <small className={styles.mineLabel}>
+        你的作答{attempt.image_ids.length > 0 && `（照片 ${attempt.image_ids.length} 张）`}
+      </small>
+      {attempt.response && (
+        <div className="read">
+          <MathText text={attempt.response} />
+        </div>
+      )}
+      {attempt.image_ids.length > 0 && (
+        <div className={styles.photos}>
+          {attempt.image_ids.map((id) => (
+            <a
+              key={id}
+              className={styles.thumb}
+              href={answerImageUrl(id)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img src={answerImageUrl(id)} alt="作答照片" />
+              <span className={styles.thumbRole}>
+                {roleLabel[attempt.image_roles[id]] ?? '我的作答'}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Analysis({ detail }: { detail: PracticeResponse }) {
+  const question = detail.question
+  const hasAnalysis =
+    question &&
+    (question.analysis_text ||
+      question.analysis_image ||
+      question.expected ||
+      question.solution_note)
+  if (hasAnalysis)
+    return (
+      <Fold title="参考解析" defaultOpen>
+        {question.expected && (
+          <p>
+            <b>参考答案：</b>
+            <MathText text={question.expected} />
+          </p>
+        )}
+        {question.analysis_image && (
+          <img className={styles.questionImage} src={question.analysis_image} alt="参考解析" />
+        )}
+        {question.analysis_text && <MathText text={question.analysis_text} />}
+        {question.solution_note && (
+          <p>
+            <MathText text={question.solution_note} />
+          </p>
+        )}
+      </Fold>
+    )
+  return null
+}
 
 export function GradedCard({
   detail,
@@ -35,6 +110,7 @@ export function GradedCard({
   /** 练习已停用时的说明 */
   note?: string
 }) {
+  const [supplementing, setSupplementing] = useState(false)
   const { practice, latest_attempt: attempt } = detail
   const assessment = attempt?.assessment
   if (!attempt || !assessment) return null
@@ -42,7 +118,8 @@ export function GradedCard({
   const valid = (assessment.observations ?? []).filter((item) => item.status === 'valid')
   const nextIndex = group.items.findIndex((item) => item.status === 'pending')
   const next = nextIndex >= 0 ? group.items[nextIndex] : undefined
-  const photoCount = attempt.image_ids.length
+  const needsMaterial = assessment.needs_material ?? []
+  const canSupplement = detail.actions.includes('supplement')
 
   return (
     <Card className={styles.card} aria-label="已批改的练习">
@@ -54,50 +131,38 @@ export function GradedCard({
               题
             </Chip>
             <CorrectnessChip value={correctness} />
-            <span className={styles.when}>{gradedTime(attempt.created_at)}</span>
+            <span className={styles.when}>{submittedTime(attempt.created_at)}</span>
           </div>
           {note && <p className={styles.stopped}>{note}</p>}
-          {detail.question?.question_image && (
-            <img
-              className={styles.questionImage}
-              src={detail.question.question_image}
-              alt="练习原题"
-            />
-          )}
-          {detail.question?.question_text && (
-            <div className={cx('read', styles.question)}>
-              <MathText text={detail.question.question_text} />
-            </div>
-          )}
-          <div className={cx(styles.mine, photoCount === 0 && styles.noPhoto)}>
-            {photoCount > 0 && (
-              <a href={answerImageUrl(attempt.image_ids[0])} target="_blank" rel="noreferrer">
-                <img
-                  className={styles.minePhoto}
-                  src={answerImageUrl(attempt.image_ids[0])}
-                  alt="你的作答照片"
-                />
-              </a>
-            )}
-            <div>
-              <small>你的作答{photoCount > 0 && `（照片 ${photoCount} 张）`}</small>
-              <div className="read">
-                <MathText text={attempt.response || '只提交了照片'} />
-              </div>
-            </div>
-          </div>
+          <QuestionContent question={detail.question} />
+          <SubmittedAttempt attempt={attempt} />
           {!note && (
             <div className={styles.gradedActions}>
-              <Button size="sm" disabled title="补充作答即将开放">
-                <Upload size={16} aria-hidden />
-                补充步骤或照片
-              </Button>
-              <Button size="sm" variant="ghost" disabled title="查看解析即将开放">
-                <BookOpen size={16} aria-hidden />
-                查看参考解析
-              </Button>
-              <span className={styles.soon}>补充作答和查看解析即将开放</span>
+              {canSupplement && !supplementing && (
+                <Button size="sm" onClick={() => setSupplementing(true)}>
+                  <Upload size={16} aria-hidden />
+                  补充步骤或照片
+                </Button>
+              )}
+              {detail.actions.includes('reveal_analysis') && (
+                <RevealButton
+                  bankId={practice.bank_id}
+                  kind="analysis"
+                  label="查看参考解析"
+                  variant="ghost"
+                >
+                  查看后会记下“看过解析”。之后的补充作答会和独立完成的作答分开统计。
+                </RevealButton>
+              )}
             </div>
+          )}
+          {supplementing && (
+            <>
+              <AttemptForm practiceId={practice.id} attemptId={attempt.id} showExposure={false} />
+              <Button size="sm" variant="ghost" onClick={() => setSupplementing(false)}>
+                取消补充
+              </Button>
+            </>
           )}
         </div>
 
@@ -110,6 +175,18 @@ export function GradedCard({
             <p className={styles.feedbackSection}>
               <MathText text={assessment.feedback} />
             </p>
+            {needsMaterial.length > 0 && (
+              <div className={styles.feedbackSection}>
+                <h4>请补充这些内容</h4>
+                <ul className={styles.needList}>
+                  {needsMaterial.map((item, index) => (
+                    <li key={index}>
+                      <MathText text={item} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {valid.length > 0 && (
               <div className={styles.feedbackSection}>
                 <h4>做对的部分</h4>
@@ -145,7 +222,7 @@ export function GradedCard({
                   <span>
                     <MathText text={assessment.next_step} />
                   </span>
-                  {next && (
+                  {next && next.id !== practice.id && (
                     <ButtonLink size="sm" variant="soft" to={`/practice?item=${next.id}`}>
                       去做第 {nextIndex + 1} 道
                     </ButtonLink>
@@ -158,6 +235,7 @@ export function GradedCard({
                 <MathText text={assessment.reference_reasoning} />
               </Fold>
             )}
+            <Analysis detail={detail} />
           </div>
         </div>
       </div>

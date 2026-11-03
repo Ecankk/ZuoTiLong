@@ -1,6 +1,8 @@
 import * as Popover from '@radix-ui/react-popover'
 import { ChevronRight } from 'lucide-react'
-import { useTasks } from '../../api/queries'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { endpoints } from '../../api/endpoints'
+import { queryKeys, useTasks } from '../../api/queries'
 import type { Task, TasksResponse } from '../../api/types'
 import { setupGuideUrl } from '../../app/config'
 import { Button } from '../ui/Button'
@@ -45,6 +47,34 @@ function Message({ text }: { text: string }) {
 
 const needsAttention = (task: Task) => task.status === 'failed' || task.status === 'blocked'
 
+/** 没完成的任务只给一个处理按钮：能重试就重试，排队中的可以取消。 */
+function TaskButton({ task }: { task: Task }) {
+  const client = useQueryClient()
+  const action = useMutation({
+    mutationFn: (name: 'retry' | 'cancel') => endpoints.taskAction(task.id, name),
+    onSuccess: (summary) => {
+      client.setQueryData(queryKeys.tasks, summary)
+      void client.invalidateQueries({ queryKey: ['practices'] })
+      void client.invalidateQueries({ queryKey: ['papers'] })
+    },
+  })
+  const name =
+    needsAttention(task) && task.allowed_actions.includes('retry')
+      ? 'retry'
+      : task.status === 'queued' && task.allowed_actions.includes('cancel')
+        ? 'cancel'
+        : null
+  if (!name) return null
+  return (
+    <>
+      <Button size="sm" disabled={action.isPending} onClick={() => action.mutate(name)}>
+        {name === 'retry' ? '再试一次' : '取消等待'}
+      </Button>
+      {action.error && <span className={styles.problemText}>{action.error.message}</span>}
+    </>
+  )
+}
+
 function TaskList({ title, items }: { title: string; items: Task[] }) {
   if (items.length === 0) return null
   return (
@@ -55,9 +85,7 @@ function TaskList({ title, items }: { title: string; items: Task[] }) {
           <li key={task.id}>
             {task.progress.message}
             {task.error && <span className={styles.problemText}>{task.error}</span>}
-            {needsAttention(task) && task.allowed_actions.includes('retry') && (
-              <Button size="sm">再试一次</Button>
-            )}
+            <TaskButton task={task} />
           </li>
         ))}
       </ul>

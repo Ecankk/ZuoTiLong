@@ -418,3 +418,70 @@
   color: var(--text-faint);
   font-size: var(--font-size-xs);
 }
+
+.mineBlock {
+  margin-top: var(--space-4);
+}
+
+.mineLabel {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+a.thumb {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.thumbRole {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+.needList {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.formError {
+  margin-top: var(--space-2);
+  color: var(--status-wrong);
+  font-size: var(--font-size-sm);
+}
+
+.pendingStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-faint);
+  color: var(--text-strong);
+}
+
+.pendingStatus.warn {
+  background: var(--status-partial-soft);
+}
+
+.spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-primary-soft);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

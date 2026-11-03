@@ -45,6 +45,7 @@ export function mockServer(overrides: { tasks?: TasksResponse } = {}) {
       const found = practiceDetails.find((p) => p.practice.id === match![1])
       return found ? json(found) : notFound
     }
+    if (init?.method === 'POST') return json({ ok: true })
     return notFound
   })
   vi.stubGlobal('fetch', fetch)

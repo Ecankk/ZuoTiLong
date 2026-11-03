@@ -69,12 +69,15 @@ describe('app shell', () => {
     expect(mainText()).not.toMatch(forbidden)
   })
 
-  it('keeps practice writes disabled until submission is wired', async () => {
-    mockServer()
+  it('asks before revealing a masked practice question', async () => {
+    const fetch = mockServer()
     renderAt('/practice')
     expect(await screen.findByText('数学一真题，默认遮挡')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '查看题目' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '提交并批改' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: '查看题目' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: '确认查看题目' }))
+    const reveal = fetch.mock.calls.find(([url]) => String(url).includes('/reveal'))
+    expect(JSON.parse(String(reveal?.[1]?.body))).toEqual({ role: 'question', confirmed: true })
     expect(await screen.findByText('思路对了，最后一步算错了系数')).toBeInTheDocument()
     expect(mainText()).not.toMatch(forbidden)
   })

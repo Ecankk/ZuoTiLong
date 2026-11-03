@@ -6,6 +6,8 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
+import { DataCard } from './DataCard'
+import { ConventionCard, MaskCard } from './PreferenceCards'
 import styles from './SettingsPage.module.css'
 
 function StudyType() {
@@ -52,14 +54,12 @@ export function SettingsPage() {
           <AiServiceStatus />
           <Button onClick={openOnboarding}>重新查看新手引导</Button>
         </Card>
-        <Card padded className={styles.section} aria-label="即将提供">
-          <h2>即将提供</h2>
-          <ul>
-            <li>同类别真题模糊显示的开关</li>
-            <li>笔迹约定的自定义说明</li>
-            <li>数据备份与恢复</li>
-            <li>关于做题龙</li>
-          </ul>
+        <MaskCard />
+        <ConventionCard />
+        <DataCard />
+        <Card padded className={styles.section} aria-label="关于">
+          <h2>关于做题龙</h2>
+          <p>版本信息和更新说明即将提供。</p>
         </Card>
       </div>
     </>

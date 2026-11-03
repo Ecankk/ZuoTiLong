@@ -417,6 +417,8 @@ def submit_probe(conn, probe_id, body):
 
 
 def assess_attempt(conn, attempt_id, assessment):
+    from app.learning.student_text import validate_student_text
+    validate_student_text({k:v for k,v in assessment.items() if k not in ('author','method','topic_ids')})
     row = conn.execute("""SELECT a.*,p.paper_id,p.question_id,p.skill_id,p.payload_json FROM probe_attempts a
       JOIN diagnostic_probes p ON p.id=a.probe_id WHERE a.id=?""", (attempt_id,)).fetchone()
     if not row:

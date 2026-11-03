@@ -374,7 +374,7 @@ def deliver(conn, root, data, payload, lease):
             result_projection = save(conn, task, current, result)
         elif task['kind'] == 'annotate_questions':
             from app.bank.annotations import save
-            result_projection = save(conn, rid, current, result)
+            result_projection = save(conn, rid, current, result, data=data)
         elif task['kind']=='review_practice':
             from app.learning.practice_review import save
             result_projection=save(conn,task,rid,current,result)

@@ -127,6 +127,52 @@ class AnnotationRevisionTests(unittest.TestCase):
         value['result']['questions'][0].update(status='needs_catalog', limitations=['Missing concept.'])
         with self.assertRaisesRegex(ValueError, '未匹配'): self.f.tool('apply_report', {'result': value})
 
+    def needs_review_base(self):
+        self.start(); self.read(); value = self.payload()
+        value['result']['questions'][0].update(status='needs_review', limitations=['The reference step needs verification.'])
+        value['result']['questions'][0]['answer_check'] = {'status':'conflict','note':'Unresolved reference step.'}
+        self.save(value)
+        return annotations.current(self.conn,self.data,self.ids[0])
+
+    def test_review_resolution_requires_explicit_base_reads_ticket_and_preserves_history(self):
+        previous = self.needs_review_base()
+        scope = self.scope(['reference_reasoning','answer_check.note','limitations'])
+        with self.assertRaisesRegex(ValueError,'修订基线'):
+            annotations.capture(self.conn,self.data,scope)
+        scope['revision'].update(resolve_review=True,allowed_fields=['reference_reasoning','answer_check.note','answer_check.status','limitations'])
+        self.f.start('annotate_questions',scope); self.inputs=json.loads(self.f.task['input_json'])
+        value=self.payload(); item=value['result']['questions'][0]
+        item.update(status='ready',limitations=[],reference_reasoning=item['reference_reasoning']+' 已独立复核原有疑点。')
+        item['answer_check']={'status':'consistent','note':'独立推导排除了原有疑点。'}
+        with self.assertRaisesRegex(ValueError,'尚未读取'):self.f.tool('apply_report',{'result':value})
+        self.read()
+        stale=copy.deepcopy(value);stale['input_revision']='0'*64
+        with self.assertRaises(ValueError):self.f.tool('apply_report',{'result':stale})
+        for status in ('needs_review','needs_catalog'):
+            invalid=copy.deepcopy(value);invalid['result']['questions'][0].update(status=status,limitations=['Still unresolved.'])
+            invalid['result']['questions'][0]['unmatched_topics']=['Missing atom.'] if status=='needs_catalog' else []
+            with self.assertRaisesRegex(ValueError,'只授权'):self.f.tool('apply_report',{'result':invalid})
+        self.assertIsNone(receipt(self.conn,self.f.task['id']))
+        self.save(value)
+        current=annotations.current(self.conn,self.data,self.ids[0])
+        self.assertEqual(current['analysis']['status'],'ready')
+        self.assertNotEqual(previous['id'],current['id'])
+        historical=json.loads(self.conn.execute('SELECT payload_json FROM question_annotations WHERE id=?',(previous['id'],)).fetchone()[0])
+        self.assertEqual(historical,previous['analysis'])
+        with self.assertRaisesRegex(ValueError,'修订基线'):annotations.capture(self.conn,self.data,scope)
+
+    def test_plain_annotation_cannot_promote_needs_review_or_supply_a_fake_base(self):
+        previous=self.needs_review_base()
+        self.f.start('annotate_questions',{'bank_ids':[self.ids[0]]});self.f.read_annotation_material()
+        value=self.f.envelope(self.f.annotation_result())
+        with self.assertRaisesRegex(ValueError,'resolve_review'):self.f.tool('apply_report',{'result':value})
+        self.assertIsNone(receipt(self.conn,self.f.task['id']))
+        self.assertEqual(annotations.current(self.conn,self.data,self.ids[0])['id'],previous['id'])
+        good=self.scope()['revision']
+        for flag in (False,1,'true',None):
+            with self.subTest(flag=flag),self.assertRaises(ValueError):
+                normalize_scope('annotate_questions',{'bank_ids':self.ids,'revision':dict(good,resolve_review=flag)})
+
     def test_each_requested_alias_base_is_checked_before_alias_deduplication(self):
         scope = self.scope(); scope['revision']['expected_annotations'][self.ids[1]] = 'annotation-stale'
         with self.assertRaisesRegex(ValueError, '修订基线'): annotations.capture(self.conn, self.data, scope)

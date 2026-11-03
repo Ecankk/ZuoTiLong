@@ -1,9 +1,26 @@
 """HTTP request models; Agent result contracts remain independently versioned."""
 from typing import Any,Literal
 from pydantic import BaseModel,ConfigDict,Field,StrictBool,StrictFloat,StrictInt
+import uuid
+from pydantic import field_validator
 
 class RequestModel(BaseModel):
     model_config=ConfigDict(extra='forbid')
+    @field_validator('request_id',check_fields=False)
+    @classmethod
+    def uuid_request(cls,value):
+        if value is None:return value
+        try:uuid.UUID(value);return value
+        except (ValueError,TypeError,AttributeError):raise ValueError('request_id 必须是 UUID') from None
+
+class PreparePractice(RequestModel):request_id:str
+class CorrectQuestion(RequestModel):
+    number:str=Field(min_length=1,max_length=20)
+    question_ids:list[str]=Field(min_length=1)
+class CorrectQuestions(RequestModel):
+    confirmed:StrictBool
+    questions:list[CorrectQuestion]=Field(min_length=1)
+    delete_question_ids:list[str]=Field(default_factory=list)
 class Confirmation(RequestModel):confirmed:StrictBool=False
 class KnowledgeOrganize(RequestModel):
     source_ids:list[str]|None=None

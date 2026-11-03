@@ -492,6 +492,7 @@ class CodexBridge:
                 if json.loads(task['input_json']).get('contract_version')=='1.8':
                     prompt+=' 本任务绑定捕获的目录和规则版本；先knowledge_query定位，再task_context(topic_ids)实际读所引用定义。标题摘要不算阅读；只重整本任务范围，不重评原始正误。'
             if kind=='grade_attempt':
+                prompt+='面向学生的反馈、补拍要求和最终回复只用“你的作答”“事后批改”“参考解析”等自然用语，不输出own_work、external_solution、marking等内部字段名。'
                 prompt+='用read_attempt读取真实作答，以probe.prompt限定本次回答范围，再read_bank独立核验原题和参考解析。未布置的小问不算漏做；保留正确步骤并定位首个实质性错误，终值错不等于方法错。材料不足给具体补拍缺口，明确不知道可正常评价；不自行重分析整卷或追加练习。'
             if kind in ('maintain_catalog','annotate_questions'):
                 prompt+='这是通用资料准备任务，paper_id为空，不读取或伪造学生试卷/作答/画像。只处理task_scope，不给学生布置练习或产生掌握判断。用task_context读取固定来源、查询规范目录或读取topic_ids定义；实际数学依据不足须在固定结果保留待核。目录维护才可提出节点变更，题目标注只能引用既有已发布原子。读取与交付均使用现有工具，无需Shell；取得保存回执后结束本轮。'

@@ -5,7 +5,22 @@ from starlette.concurrency import run_in_threadpool
 from app.api.dependencies import runtime
 from app.api.schemas import Confirmation,Score,PaperDraft,Numbers,QuestionReview
 from app.api.responses import resource_response
+from app.api.schemas import PreparePractice,CorrectQuestions
 router=APIRouter(prefix='/api',tags=['papers'])
+@router.post('/papers/{paper_id}/prepare-practice',status_code=201)
+def prepare_practice(paper_id:str,body:PreparePractice,rt=Depends(runtime)):
+    from app.errors import ServiceError
+    with rt.database.session() as conn:
+        paper=conn.execute('SELECT archived_at FROM papers WHERE id=?',(paper_id,)).fetchone()
+        if not paper:raise ServiceError('试卷不存在',404)
+        if paper[0]:raise ServiceError('请先恢复已归档试卷',409)
+    rt.agent.invoke('task',{'kind':'prepare_practice','paper_id':paper_id,'request_id':body.request_id})
+    rt.wake()
+    return rt.tasks.read()
+
+@router.post('/papers/{paper_id}/questions/correct')
+def correct_questions(paper_id:str,body:CorrectQuestions,rt=Depends(runtime)):
+    return rt.mutate(rt.papers.correct_questions,paper_id,body.model_dump())
 @router.get('/papers')
 def papers(request:Request,archived:str='0',offset:int|None=Query(None,ge=0),limit:int|None=Query(None,ge=1,le=100),rt=Depends(runtime)):
     if offset is None and limit is None:return rt.workspace.papers(archived)

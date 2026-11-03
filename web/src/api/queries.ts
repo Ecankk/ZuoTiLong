@@ -62,7 +62,7 @@ export const usePaperSummary = (paperId: string) =>
   })
 
 export const useDataStatus = () =>
-  useQuery({ queryKey: ['data-status'], queryFn: endpoints.dataStatus, staleTime: 0 })
+  useQuery({ queryKey: ['data-status'], queryFn: endpoints.dataStatus, staleTime: 5 * 60_000 })
 
 /**
  * 写入操作：成功后让相关资源失效。SSE 也会通知外部变更，这里先失效以便立即刷新。

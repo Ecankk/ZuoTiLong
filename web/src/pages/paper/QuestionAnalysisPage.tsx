@@ -367,9 +367,8 @@ export function QuestionAnalysisPage() {
   const { data: list } = usePaperQuestions(paperId)
   const { data: tasks } = useTasks()
   const summary = list?.items.find((question) => question.number === number)
-  const { data: detail, isPending } = useQuestion(
-    summary?.analysis_available ? summary.id : undefined,
-  )
+  // 没有分析的题也读取详情，用来显示原卷切图
+  const { data: detail, isPending } = useQuestion(summary?.id)
   if (!list) return null
   const analyzing = tasks?.active?.paper_id === paperId
   return (
@@ -383,13 +382,13 @@ export function QuestionAnalysisPage() {
           images={detail?.evidence_urls ?? []}
         />
         <div className={styles.analysis}>
-          {detail ? (
+          {detail && summary?.analysis_available && detail.diagnosis ? (
             <>
               <Analysis detail={detail} />
               <ReviewCard paperId={paperId} detail={detail} />
             </>
           ) : (
-            (!summary?.analysis_available || !isPending) && (
+            !isPending && (
               <Card padded className={styles.notice}>
                 {!summary
                   ? '这份试卷里没有这道题。'

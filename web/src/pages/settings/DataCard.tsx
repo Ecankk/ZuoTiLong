@@ -21,12 +21,13 @@ function when(iso: string | null) {
 
 /** 数据与备份：只读状态（GET /api/data/status）加“立即备份”。 */
 export function DataCard() {
-  const { data, error } = useDataStatus()
+  const { data, error, isPending } = useDataStatus()
   const backup = useAction(() => endpoints.backup(), [['data-status']])
   return (
     <Card padded className={styles.section} aria-label="数据与备份">
       <h2>数据与备份</h2>
       {error && <p className={styles.error}>{error.message}</p>}
+      {isPending && <p className={styles.note}>正在检查数据状态，可能需要几十秒…</p>}
       {data && (
         <>
           <dl className={styles.facts}>
@@ -53,23 +54,27 @@ export function DataCard() {
           )}
           {data.path_migration.pending && (
             <p className={styles.warnBox}>
-              有 {data.path_migration.ready_count} 个文件位置需要更新
-              {data.path_migration.unresolved_count > 0 &&
-                `，另有 ${data.path_migration.unresolved_count} 个无法自动核对`}
-              。请按配置教程运行一次路径整理，整理前会自动备份。
+              {[
+                data.path_migration.ready_count > 0 &&
+                  `有 ${data.path_migration.ready_count} 个文件位置需要更新，请按配置教程运行一次路径整理（整理前会自动备份）。`,
+                data.path_migration.unresolved_count > 0 &&
+                  `有 ${data.path_migration.unresolved_count} 个文件无法自动核对，需要人工确认。`,
+              ]
+                .filter(Boolean)
+                .join('')}
             </p>
           )}
-          <div className={styles.row}>
-            <Button disabled={backup.isPending} onClick={() => backup.mutate(undefined)}>
-              {backup.isPending ? '正在备份…' : '立即备份'}
-            </Button>
-            {backup.data && <span className={styles.saved}>已备份 {backup.data.files} 个文件</span>}
-          </div>
-          {backup.data && <p className={styles.path}>{backup.data.path}</p>}
-          {backup.error && <p className={styles.error}>{backup.error.message}</p>}
-          <p className={styles.note}>备份包含原卷、照片、分析和练习记录，请自己妥善保管。</p>
         </>
       )}
+      <div className={styles.row}>
+        <Button disabled={backup.isPending} onClick={() => backup.mutate(undefined)}>
+          {backup.isPending ? '正在备份…' : '立即备份'}
+        </Button>
+        {backup.data && <span className={styles.saved}>已备份 {backup.data.files} 个文件</span>}
+      </div>
+      {backup.data && <p className={styles.path}>{backup.data.path}</p>}
+      {backup.error && <p className={styles.error}>{backup.error.message}</p>}
+      <p className={styles.note}>备份包含原卷、照片、分析和练习记录，请自己妥善保管。</p>
     </Card>
   )
 }

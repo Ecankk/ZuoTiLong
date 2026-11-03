@@ -37,10 +37,12 @@
 
 前端按需选择，例如公式变化：
 
-    node --test tests/math_render.test.mjs
+    npm --prefix web test -- src/lib/math.test.ts
     npm --prefix web run build -- --outDir ../tmp/validation-dist
 
-完整前端测试用npm --prefix web test，但不自动追加。已有环境直接使用，首次配置或依赖改变才安装。
+改动前端代码时运行npm --prefix web run lint与npm --prefix web run typecheck；完整前端测试用npm --prefix web test，但不自动追加。已有环境直接使用，首次配置或依赖改变才安装（npm --prefix web ci）。
+
+隔离数据上看验证构建：后端启动前设置MATHLENS_DIST_DIR指向上面的validation-dist，由后端同源提供页面；Vite开发代理不满足同源检查，不用于写入验证。定稿后才更新版本库内的dist。
 
 自动测试按[测试目录](../tests/README.md)定位。旧的真实模型、固定试卷和旧协议验证脚本已[归档](../scripts/archive/README.md)，不再作为可运行的默认入口。覆盖审计只随明确覆盖任务运行，不随日常开发启动。
 

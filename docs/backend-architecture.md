@@ -8,7 +8,7 @@
 
 | 部分 | 实际实现 |
 | --- | --- |
-| Web | React 19、TypeScript、Vite 7；普通CSS，本地KaTeX渲染数学公式；URL查询参数与History API导航 |
+| Web | React 19、TypeScript、Vite 7；CSS Modules与CSS变量，KaTeX随构建离线打包；React Router 7导航，TanStack Query按资源获取与失效；细节见[前端设计](frontend-design.md) |
 | HTTP后端 | FastAPI、Pydantic请求校验、Uvicorn服务进程；AppConfig显式路径配置，AppRuntime持有服务，通过FastAPI依赖注入供路由调用 |
 | 业务/存储 | Python领域模块、SQLite直接SQL、本地文件；没有ORM、Redis或独立消息队列服务 |
 | PDF/OCR | PyMuPDF提取/裁切，RapidOCR/ONNX辅助扫描件定位，Pillow处理照片；数学理解交学习Agent |

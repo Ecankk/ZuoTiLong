@@ -19,6 +19,8 @@ def template():
         annotation_id TEXT PRIMARY KEY REFERENCES question_annotations(id),
         payload_json TEXT NOT NULL)''')
     conn.execute('CREATE TABLE IF NOT EXISTS tool_audit(id INTEGER PRIMARY KEY,action TEXT,record_id TEXT,created_at TEXT)')
+    from app.storage.library_identity import initialize
+    initialize(conn)
     conn.commit()
     return conn
 
@@ -57,6 +59,9 @@ def initialize_split(config):
                 if unexpected:
                     raise ValueError('Mixed database requires migration: '+', '.join(sorted(unexpected)))
                 copy_schema(schema, conn, names)
+                if 'library_state' in names:
+                    from app.storage.library_identity import initialize
+                    initialize(conn)
                 if 'papers' in names:
                     columns={r[1] for r in conn.execute('PRAGMA table_info(papers)')}
                     for name,kind in (('updated_at','TEXT'),('archived_at','TEXT'),('score_confirmed_at','TEXT'),('math_type','INTEGER')):

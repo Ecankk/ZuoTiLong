@@ -3,15 +3,8 @@ from pathlib import Path
 import tempfile
 
 from app.storage.boundaries import workspace_config
-from app.storage.backup_archive import PERSONAL, publish, snapshot, file_sha256
-
-
-def library_identity(library, staging):
-    source=Path(library)/'library.db'
-    if not source.is_file():raise ValueError('library_missing：通用库不存在，请先恢复备份清单所需题库')
-    target=Path(staging)/'library-identity.db'
-    snapshot(source,target)
-    return dict(scheme='sqlite-backup-sha256/v1',sha256=file_sha256(target),location=str(Path(library).resolve()))
+from app.storage.backup_archive import PERSONAL, publish, snapshot
+from app.storage.library_identity import read as library_identity
 
 
 def backup(data, root):
@@ -19,7 +12,7 @@ def backup(data, root):
     folder=data/'backups';folder.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=folder) as temp:
         staging=Path(temp)
-        identity=library_identity(config.library_dir,staging)
+        identity=library_identity(config.library_dir)
         databases={config.database.name:config.database}
         if (data/'agent-session.db').exists():databases['agent-session.db']=data/'agent-session.db'
         for name,source in databases.items():

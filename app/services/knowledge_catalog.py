@@ -10,6 +10,16 @@ class KnowledgeCatalogService:
         with self.database.session() as conn:
             return catalog.search(conn, **query)
 
+    def tree(self):
+        with self.database.session() as conn:
+            release=catalog.document(conn)
+            if not release:return dict(release_id=None,items=[],total=0)
+            nodes=release['document']['nodes'];counts={n['id']:0 for n in nodes}
+            for node in nodes:
+                if node['parent_id'] in counts:counts[node['parent_id']]+=1
+            return dict(release_id=release['id'],total=len(nodes),items=[
+                {**{k:n[k] for k in ('id','parent_id','name','kind','aliases')},'child_count':counts[n['id']]} for n in nodes])
+
     def summary(self):
         with self.database.session() as conn:
             current = catalog.document(conn)

@@ -1,7 +1,6 @@
 """SPA files and unmatched routes, registered after the application API."""
 
 import mimetypes
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -26,15 +25,13 @@ def unknown_post(path: str):
 
 @router.get('/{path:path}')
 def frontend(path: str, rt: AppRuntime = Depends(runtime)):
-    if path.startswith('api/'):
+    if path=='api' or path.startswith('api/'):
         raise HTTPException(404, 'not found')
     dist = rt.config.dist
     candidate = (dist / (path or 'index.html')).resolve()
     if not candidate.is_relative_to(dist):
         raise HTTPException(404, 'not found')
     if not candidate.is_file():
-        if Path(path).suffix:
-            raise HTTPException(404, 'not found')
         candidate = dist / 'index.html'
     if not candidate.is_file():
         raise HTTPException(404, 'Frontend build unavailable')

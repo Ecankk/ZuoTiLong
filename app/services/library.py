@@ -8,6 +8,7 @@ class LibraryService:
     def browse(self,category='',year=''):
         with self.database.session() as conn:
             bank=[public_bank(conn,r[0],view='library') for r in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id")]
+            bank.sort(key=lambda b:(-int(b['year']) if str(b['year']).isdecimal() else 0,b['math_type'],b['number'],b['id']))
             return {'bank':[b for b in bank if (not category or str(b['math_type'])==category) and (not year or b['year']==year)]}
     def search(self,**query):
         from app.bank.retrieval import recall

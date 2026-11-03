@@ -20,7 +20,7 @@ export function RevealButton({
   variant?: 'soft' | 'ghost'
 }) {
   const [open, setOpen] = useState(false)
-  const reveal = useAction(() => endpoints.reveal(bankId, kind), [['practices']])
+  const reveal = useAction(() => endpoints.reveal(bankId, kind), [['practices'], ['bank']])
   return (
     <>
       <Button

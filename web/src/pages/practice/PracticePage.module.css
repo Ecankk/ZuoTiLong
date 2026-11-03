@@ -188,3 +188,11 @@
   height: 16px;
   accent-color: var(--color-primary);
 }
+
+.topicLink {
+  color: inherit;
+}
+
+.topicLink:hover {
+  color: var(--color-primary);
+}

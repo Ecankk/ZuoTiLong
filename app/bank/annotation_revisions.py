@@ -11,18 +11,23 @@ EDITABLE_FIELDS = ('reference_reasoning', 'answer_check.note', 'limitations',
 
 
 def normalize(value, bank_ids):
-    if not isinstance(value, dict) or set(value) != {'expected_annotations', 'allowed_fields'}:
+    if (not isinstance(value, dict) or not {'expected_annotations', 'allowed_fields'}.issubset(value)
+            or not set(value).issubset({'expected_annotations', 'allowed_fields', 'resolve_review'})
+            or ('resolve_review' in value and value['resolve_review'] is not True)):
         raise ValueError('窄修订须明确expected_annotations和allowed_fields')
     expected, fields = value['expected_annotations'], value['allowed_fields']
     if (not isinstance(expected, dict) or set(expected) != set(bank_ids)
             or any(not isinstance(nid, str) or not catalog.ID.fullmatch(nid) for nid in expected.values())):
         raise ValueError('窄修订须逐题指定有效的原标注ID，范围须与bank_ids一致')
-    if (not isinstance(fields, list) or not 1 <= len(fields) <= len(EDITABLE_FIELDS)
+    allowed = EDITABLE_FIELDS + (('answer_check.status',) if value.get('resolve_review') else ())
+    if (not isinstance(fields, list) or not 1 <= len(fields) <= len(allowed)
             or any(not isinstance(field, str) for field in fields)
-            or len(set(fields)) != len(fields) or not set(fields).issubset(EDITABLE_FIELDS)):
+            or len(set(fields)) != len(fields) or not set(fields).issubset(allowed)):
         raise ValueError('窄修订须指定不同的可修改字段，不能修改材料身份或直接升级就绪状态')
-    return {'expected_annotations': {bid: expected[bid] for bid in sorted(expected)},
-            'allowed_fields': sorted(fields)}
+    result = {'expected_annotations': {bid: expected[bid] for bid in sorted(expected)},
+              'allowed_fields': sorted(fields)}
+    if value.get('resolve_review'): result['resolve_review'] = True
+    return result
 
 
 def capture_bases(conn, data, bank_ids, request):
@@ -30,9 +35,10 @@ def capture_bases(conn, data, bank_ids, request):
     bases = {}
     for bid in bank_ids:
         value = current(conn, data, bid)
-        if (not value or value.get('cache_provenance') or value['analysis']['status'] != 'ready'
+        status = 'needs_review' if request.get('resolve_review') else 'ready'
+        if (not value or value.get('cache_provenance') or value['analysis']['status'] != status
                 or value['id'] != request['expected_annotations'][bid]):
-            raise ValueError('原标注已变化、失效或不是本机完整就绪标注，须重新核对修订基线：' + bid)
+            raise ValueError('原标注已变化、失效或不符合本机修订基线状态（'+status+'），须重新核对修订基线：' + bid)
         bases[bid] = value
     return bases
 
@@ -43,8 +49,10 @@ def frozen_base(previous, source, request):
     # verified mathematics is retained, but the delivery identity is this task's.
     value.update(bank_id=source['bank_id'], content_revision=source['content_revision'],
                  material_revision=source['material_revision'])
-    return {'annotation_id': previous['id'], 'source_bank_id': previous['source_bank_id'],
-            'allowed_fields': request['allowed_fields'], 'analysis': value}
+    result = {'annotation_id': previous['id'], 'source_bank_id': previous['source_bank_id'],
+              'allowed_fields': request['allowed_fields'], 'analysis': value}
+    if request.get('resolve_review'): result['resolve_review'] = True
+    return result
 
 
 def existing_binding_ids(source):
@@ -66,6 +74,10 @@ def validate(source, incoming):
     if not saved:
         return
     baseline, fields = saved['analysis'], set(saved['allowed_fields'])
+    if saved.get('resolve_review'):
+        if baseline['status'] != 'needs_review' or incoming['status'] != 'ready':
+            raise ValueError('待核修订只授权 needs_review → ready；未解决问题时请保留原标注')
+        fields.add('status')
     # A newly discovered uncertainty must be able to remove this question from
     # the ready pool. It cannot be turned into an unauthorized promotion.
     downgrade = incoming['status'] in ('needs_review', 'needs_catalog')

@@ -150,20 +150,24 @@ def concept_dependencies(conn, topic_ids, release_id=None, *, read_view=None):
     return result
 
 
-def save(conn, result_id, inputs, result):
+def save(conn, result_id, inputs, result, *, data):
     from app.learning.tasks import require_read
     from app.learning.loop import stamp
     available = {q['bank_id']: q for q in inputs['bank_questions']}
     questions = result['questions']
     if len({q['bank_id'] for q in questions}) != len(questions) or {q['bank_id'] for q in questions} != set(available):
         raise ValueError('题目标注必须覆盖本批全部题目，不能遗漏或夹带其他题')
-    current = catalog.document(conn, inputs['catalog_revision'])
-    nodes = {n['id']: n for n in current['document']['nodes']}
+    release = catalog.document(conn, inputs['catalog_revision'])
+    nodes = {n['id']: n for n in release['document']['nodes']}
     task = conn.execute('SELECT * FROM learning_tasks WHERE id=(SELECT task_id FROM learning_results WHERE id=?)', (result_id,)).fetchone()
     saved = []
     for item in questions:
         source = available[item['bank_id']]
         from app.bank.annotation_revisions import validate, existing_binding_ids, introduces_binding_collision
+        previous = current(conn, data, item['bank_id'])
+        if (previous and previous['analysis']['status'] == 'needs_review' and item['status'] == 'ready'
+                and not source.get('revision_base', {}).get('resolve_review')):
+            raise ValueError('待核标注升级须使用明确的resolve_review修订基线和写入票据')
         validate(source, item)
         if (item['content_revision'], item['material_revision']) != (source['content_revision'], source['material_revision']):
             raise ValueError('标注题目或材料版本不匹配')

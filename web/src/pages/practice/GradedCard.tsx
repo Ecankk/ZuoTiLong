@@ -158,7 +158,12 @@ export function GradedCard({
           )}
           {supplementing && (
             <>
-              <AttemptForm practiceId={practice.id} attemptId={attempt.id} showExposure={false} />
+              <AttemptForm
+                practiceId={practice.id}
+                attemptId={attempt.id}
+                showExposure={false}
+                onSubmitted={() => setSupplementing(false)}
+              />
               <Button size="sm" variant="ghost" onClick={() => setSupplementing(false)}>
                 取消补充
               </Button>

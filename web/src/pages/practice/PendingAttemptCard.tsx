@@ -75,7 +75,12 @@ export function PendingAttemptCard({
       </div>
       {supplementing && (
         <>
-          <AttemptForm practiceId={card.id} attemptId={attempt.id} showExposure={false} />
+          <AttemptForm
+            practiceId={card.id}
+            attemptId={attempt.id}
+            showExposure={false}
+            onSubmitted={() => setSupplementing(false)}
+          />
           <Button size="sm" variant="ghost" onClick={() => setSupplementing(false)}>
             取消补充
           </Button>

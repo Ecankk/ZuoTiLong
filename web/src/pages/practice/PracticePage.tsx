@@ -110,7 +110,12 @@ function SelectedPractice({ card, group }: { card: PracticeCard; group: Practice
     index: group.items.findIndex((item) => item.id === card.id) + 1,
     total: group.items.length,
   }
-  if (isPending) return null
+  if (isPending)
+    return (
+      <Card padded className={styles.notice}>
+        正在读取…
+      </Card>
+    )
   if (!detail)
     return (
       <Card padded className={styles.notice}>

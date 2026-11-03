@@ -1,0 +1,128 @@
+.card {
+  position: relative;
+  overflow: hidden;
+  padding-left: var(--space-8);
+}
+
+/* 当前主步骤：左侧主色竖条，与首页“下一步”一致 */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--color-primary);
+}
+
+.card h2 {
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.text {
+  max-width: var(--read-max);
+  color: var(--text-regular);
+  line-height: 1.8;
+}
+
+.numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.number {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.number:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-faint);
+  color: var(--color-primary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.note {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(4px);
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(820px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-raised);
+  transform: translate(-50%, -50%);
+}
+
+.dialogHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialogHead h2 {
+  font-size: var(--font-size-h3);
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.close:hover {
+  background: var(--surface-sunken);
+}
+
+.crop {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}

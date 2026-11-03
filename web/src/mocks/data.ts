@@ -444,3 +444,52 @@ export const preferences: Preferences = {
   paper_marking_convention: '黑笔为考试作答，红笔为事后批改。',
   reserved: [],
 }
+
+/* 刚上传、已切题、还没开始分析的试卷 */
+const freshPaper = { id: 'paper-fresh', title: '2025 数学一' }
+questions.push(
+  ...[1, 2, 3].map((number) => ({
+    id: `${freshPaper.id}-q${number}`,
+    paper_id: freshPaper.id,
+    number: String(number),
+    question_type: null,
+    max_score: null,
+    score_earned: null,
+    correctness: 'unknown' as Correctness,
+    review_state: 'needs_review',
+    analysis_available: false,
+    matched_bank_id: null,
+  })),
+)
+papers.push({
+  paper: {
+    ...freshPaper,
+    exam_date: '2026-11-03',
+    score: null,
+    total_score: 150,
+    score_confirmed: false,
+    archived_at: null,
+    created_at: now,
+    updated_at: null,
+    analysis_status: 'needs_review',
+    counts: { correct: 0, wrong: 0, partial: 0, unknown: 3, total: 3 },
+  },
+  analysis: {
+    report_id: null,
+    completion: null,
+    review_status: null,
+    summary: '',
+    limitations: [],
+  },
+  weak_topics: [],
+  practice_counts: {
+    pending: 0,
+    grading: 0,
+    graded: 0,
+    needs_supplement: 0,
+    inactive: 0,
+    total: 0,
+  },
+  summary_status: 'missing',
+  actions: ['analyze', 'archive'],
+})

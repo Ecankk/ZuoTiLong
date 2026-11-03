@@ -10,7 +10,7 @@ import { Chip } from '../../components/ui/Chip'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { cx } from '../../lib/cx'
 import { correctnessLabel, mathTypeName } from '../../lib/labels'
-import { CorrectNumbersButton } from './CorrectNumbers'
+import { awaitingSplitConfirm, ConfirmSplitCard } from './ConfirmSplit'
 import styles from './PaperOverview.module.css'
 
 const countOrder: Correctness[] = ['correct', 'partial', 'wrong', 'unknown']
@@ -240,6 +240,7 @@ export function PaperOverview() {
     (t) => t.paper_id === paper.id && (t.status === 'running' || t.status === 'queued'),
   )
   const practice = data.practice_counts
+  const awaiting = awaitingSplitConfirm(data, tasks?.items)
   return (
     <div className={styles.grid}>
       <div className={styles.column}>
@@ -248,9 +249,9 @@ export function PaperOverview() {
             <p>这份试卷已归档，可以查看但不能继续分析和练习。需要时点右上角“恢复试卷”。</p>
           </Card>
         )}
-        {!archived && <AnalysisCard data={data} />}
+        {awaiting ? <ConfirmSplitCard data={data} /> : !archived && <AnalysisCard data={data} />}
         {!archived && counts.total === 0 && !busy && <NumberCard data={data} />}
-        {counts.total > 0 && (
+        {counts.total > 0 && !awaiting && (
           <Card padded className={styles.card} aria-label="正误分布">
             <h2>正误分布</h2>
             <div className={styles.bar} aria-hidden>
@@ -279,15 +280,7 @@ export function PaperOverview() {
               <ButtonLink size="sm" to={`/papers/${paper.id}/questions`}>
                 查看逐题分析
               </ButtonLink>
-              {!archived && data.analysis.report_id === null && (
-                <CorrectNumbersButton paperId={paper.id} />
-              )}
             </div>
-            {!archived && data.analysis.report_id === null && (
-              <p className={styles.muted} style={{ marginTop: 'var(--space-2)' }}>
-                分析开始前，如果题号切得不对，可以先纠正。
-              </p>
-            )}
           </Card>
         )}
       </div>

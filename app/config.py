@@ -5,12 +5,24 @@ import os
 import json
 
 
+def library_env_override(data):
+    selected=os.environ.get('MATHLENS_DATA_DIR')
+    return bool(selected and Path(data).resolve()==Path(selected).resolve() and 'MATHLENS_LIBRARY_DIR' in os.environ)
+
+
+def library_location(data, library):
+    """Only the library root locator may cross volumes or contain parents."""
+    data,library=Path(data).resolve(),Path(library).resolve()
+    if data.drive.casefold()!=library.drive.casefold():return library.as_posix()
+    return Path(os.path.relpath(library,data)).as_posix()
+
+
 def resolve_library_dir(data, default):
     """Scope the environment's library override to its selected workspace."""
-    selected = os.environ.get('MATHLENS_DATA_DIR')
-    if selected and Path(data).resolve() == Path(selected).resolve():
-        default = os.environ.get('MATHLENS_LIBRARY_DIR', default)
-    return Path(default).resolve()
+    if library_env_override(data):
+        default = os.environ['MATHLENS_LIBRARY_DIR']
+    candidate=Path(default)
+    return (candidate if candidate.is_absolute() else Path(data)/candidate).resolve()
 
 
 @dataclass(frozen=True)

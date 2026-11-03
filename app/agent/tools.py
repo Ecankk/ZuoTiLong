@@ -1,4 +1,5 @@
 """Bounded, local learning operations used by the Codex MCP connection."""
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import base64
 from contextlib import closing
 import hashlib
@@ -223,7 +224,7 @@ def execute(root,data,action,payload,*,lease=None):
             import math
             row=conn.execute('SELECT * FROM papers WHERE id=?',(payload['paper_id'],)).fetchone()
             if not row:raise ValueError('试卷不存在')
-            path=(root/row['source_path']).resolve()
+            path=paper_path(data,row['source_path'],root)
             if not path.is_relative_to(data):raise ValueError('试卷不在个人目录')
             scope=None
             if payload.get('question_id'):
@@ -457,7 +458,7 @@ def execute(root,data,action,payload,*,lease=None):
         elif action=='replace_probe':result=replace_probe(conn,payload['probe_id'],payload)
         elif action=='review_cross':result=review_cross(conn,**payload)
         else:
-            path=(data/'memory'/payload['path']).resolve()
+            path=resolve_file(data/'memory',payload['path'])
             if not path.is_relative_to((data/'memory').resolve()) or path.suffix not in ('.md','.json'):raise ValueError('记忆路径不合法')
             if action=='memory_write':
                 text=payload.get('text','')

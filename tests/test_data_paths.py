@@ -1,0 +1,128 @@
+from contextlib import closing
+import hashlib,json,tempfile,unittest
+from pathlib import Path
+from unittest.mock import patch
+from app.config import AppConfig,library_location
+from app.storage.database import Database
+from app.storage.paths import resolve_file
+from app.storage.path_upgrade import preview,upgrade,status
+from app.bank.access import save_preferences,preferences
+
+class DataPathsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)
+        self.config=AppConfig(self.root,self.root/'data',self.root/'dist',self.root/'data'/'learning.db')
+        self.db=Database(self.config);self.db.initialize()
+        path=self.config.papers/'one.pdf';path.write_bytes(b'invented PDF fixture')
+        self.sha=hashlib.sha256(path.read_bytes()).hexdigest()
+        with self.db.session(write=True) as conn:
+            conn.execute('INSERT INTO papers(id,title,source_path,source_sha256,created_at) VALUES(?,?,?,?,?)',
+                         ('one','fixture',str(self.root/'old'/'papers'/'one.pdf'),self.sha,'now'))
+
+    def test_preview_confirmation_backup_and_repeat(self):
+        plan=preview(self.config)
+        self.assertEqual(len(plan['changes']),1)
+        self.assertEqual(plan['changes'][0]['relative'],'papers/one.pdf')
+        with self.assertRaises(ValueError):upgrade(self.config,'wrong')
+        result=upgrade(self.config,plan['plan_sha256'])
+        self.assertTrue(result['applied']);self.assertTrue(Path(result['backup']['path']).is_file())
+        self.assertEqual(preview(self.config)['changes'],[])
+        self.assertFalse(upgrade(self.config,preview(self.config)['plan_sha256'])['applied'])
+        self.assertFalse(status(self.config)['path_migration']['pending'])
+
+    def test_missing_or_changed_file_never_guessed(self):
+        (self.config.papers/'one.pdf').write_bytes(b'changed')
+        plan=preview(self.config)
+        self.assertEqual(plan['changes'],[]);self.assertEqual(len(plan['unresolved']),1)
+
+    def test_invalid_relative_paths_and_symlink_escape(self):
+        for path in ('../outside','C:/outside','/outside'):
+            with self.assertRaises(ValueError):resolve_file(self.config.data,path)
+
+    def test_partial_preferences_preserve_reserved_and_prompt(self):
+        with self.db.session(write=True) as conn:
+            save_preferences(conn,dict(study_type=1,reserved=[dict(math_type=1,year='2026')],paper_marking_convention='fixture convention'))
+            save_preferences(conn,dict(mask_same_type=False))
+            value=preferences(conn)
+            self.assertEqual(value['reserved'],[dict(math_type=1,year='2026')])
+            self.assertEqual(value['paper_marking_convention'],'fixture convention')
+
+    def test_status_http_is_readonly_and_partial_preferences_http_preserves_state(self):
+        from app.main import create_app
+        from fastapi.testclient import TestClient
+        app=create_app(self.config,agent_factory=None);self.addCleanup(app.state.runtime.close)
+        with TestClient(app,base_url='http://127.0.0.1') as http:
+            response=http.get('/api/data/status');self.assertEqual(response.status_code,200)
+            self.assertTrue(response.json()['library_exists'])
+            self.assertFalse(response.json()['library_env_override'])
+            self.assertTrue(response.json()['path_migration']['pending'])
+            self.assertEqual(response.json()['invalid_file_references']['count'],1)
+            self.assertEqual(http.post('/api/preferences',json={'reserved':[{'math_type':1,'year':'2026'}]}).status_code,200)
+            self.assertEqual(http.post('/api/preferences',json={'mask_same_type':False}).status_code,200)
+            self.assertEqual(http.get('/api/preferences').json()['reserved'],[{'math_type':1,'year':'2026'}])
+
+    def test_session_storage_paths_are_relative_and_load_resolves_current_root(self):
+        from app.agent.session_store import SessionStore
+        store=SessionStore(self.config.data/'agent-session.db');store.load()
+        store.save(dict(turns=[dict(inputs=[dict(type='localImage',path=str(self.config.papers/'one.pdf'))])]))
+        with closing(__import__('sqlite3').connect(store.path)) as conn:
+            raw=conn.execute('SELECT payload FROM session').fetchone()[0]
+        self.assertNotIn(str(self.config.data).replace('\\','\\\\'),raw)
+        self.assertEqual(store.load()['turns'][0]['inputs'][0]['path'],str(self.config.papers/'one.pdf'))
+
+    def test_explicit_upgrade_of_existing_mutable_session_projection(self):
+        from app.agent.session_store import SessionStore
+        import sqlite3
+        store=SessionStore(self.config.data/'agent-session.db');store.load()
+        value=dict(turns=[dict(inputs=[dict(type='localImage',path=str(self.config.papers/'one.pdf'))])])
+        with closing(sqlite3.connect(store.path)) as conn,conn:
+            conn.execute('INSERT OR REPLACE INTO session VALUES(1,?)',(json.dumps(value),))
+        plan=preview(self.config)
+        self.assertTrue(any(e['store']=='session' for e in plan['changes']))
+        upgrade(self.config,plan['plan_sha256'])
+        self.assertEqual(store.load()['turns'],value['turns'])
+        self.assertEqual(preview(self.config)['changes'],[])
+
+    def test_nested_library_files_keep_library_ownership(self):
+        from app.storage.paths import session_paths
+        value={'path':str(self.config.library_dir/'bank-assets'/'fixture.png')}
+        packed=session_paths(value,self.config.data)
+        self.assertEqual(packed,{'path':{'$file':'bank-assets/fixture.png','root':'library'}})
+        self.assertEqual(session_paths(packed,self.config.data,unpack=True),value)
+
+    def test_library_locator_supports_standard_layout_and_cross_volume(self):
+        self.assertEqual(library_location(Path('F:/path-fixture/workspaces/default'),
+            Path('F:/path-fixture/library')),'../../library')
+        other_library=Path('D:/')/(self.root.name+'-library-fixture')
+        self.assertEqual(Path(library_location(Path('F:/workspace-fixture'),other_library)),other_library)
+        # Neither example is opened or created; this checks Windows path syntax.
+        from dataclasses import replace
+        from app.storage.boundaries import save_location
+        cfg=replace(self.config,data=self.root/'cross-workspace',database=self.root/'cross-workspace'/'learning.db',library=other_library)
+        cfg.data.mkdir()
+        save_location(cfg)
+        self.assertEqual(Path(json.loads((cfg.data/'workspace.json').read_text(encoding='utf8'))['library']),cfg.library_dir)
+        with patch('app.storage.path_upgrade.inventory',return_value=([],[])):
+            self.assertEqual(preview(cfg)['changes'],[])
+
+    def test_standard_absolute_library_is_proposed_as_portable_locator(self):
+        library=self.root/'layout'/'library';library.mkdir(parents=True)
+        data=self.root/'layout'/'workspaces'/'default';data.mkdir(parents=True)
+        (data/'workspace.json').write_text(json.dumps(dict(database='learning.db',library=str(library))),encoding='utf8')
+        cfg=AppConfig(self.root,data,self.root/'dist',data/'learning.db',library=library)
+        change=preview(cfg)['changes'][0]
+        self.assertEqual(change['old'],str(library))
+        self.assertEqual(change['relative'],'../../library')
+
+    def test_status_reports_library_existence_and_scoped_environment_override(self):
+        missing=self.root/'missing-library'
+        with patch.dict('os.environ',{'MATHLENS_DATA_DIR':str(self.config.data), 'MATHLENS_LIBRARY_DIR':str(missing)}):
+            selected=AppConfig.from_env(self.root)
+            value=status(selected)
+            self.assertEqual(Path(value['library_dir']),missing)
+            self.assertFalse(value['library_exists']);self.assertTrue(value['library_env_override'])
+            other=status(self.config.__class__(self.root,self.root/'other',self.root/'dist',self.root/'other'/'learning.db',library=self.config.library_dir))
+            self.assertTrue(other['library_exists']);self.assertFalse(other['library_env_override'])
+        with patch.dict('os.environ',{},clear=True):
+            self.assertFalse(status(self.config)['library_env_override'])

@@ -42,7 +42,7 @@ class LocalRestoreTests(unittest.TestCase):
         try:
             with closing(connect_workspace(workspace_config(target),library_write=True)) as conn:
                 conn.row_factory=sqlite3.Row
-                self.assertTrue(Path(conn.execute('SELECT source_path FROM papers').fetchone()[0]).is_file())
+                self.assertTrue((target/conn.execute('SELECT source_path FROM papers').fetchone()[0]).is_file())
                 self.assertTrue(image_path(image_records(conn,[image['id']])[0],target).is_file())
                 self.assertEqual(conn.execute('SELECT COUNT(*) FROM agent_reports').fetchone()[0],1)
             with closing(sqlite3.connect(target/'agent-session.db')) as conn:
@@ -51,7 +51,9 @@ class LocalRestoreTests(unittest.TestCase):
             self.assertIsNone(saved['active_request'])
             self.assertNotIn('pending_chain',saved)
             self.assertNotIn('run_token',saved['turns'][0])
-            self.assertEqual(saved['turns'][0]['inputs'][0]['path'],str(target/path.relative_to(f.root)))
+            self.assertFalse(Path(saved['turns'][0]['inputs'][0]['path']['$file']).is_absolute())
+            from app.agent.session_store import SessionStore
+            self.assertEqual(SessionStore(target/'agent-session.db').load()['turns'][0]['inputs'][0]['path'],str(target/path.relative_to(f.root)))
             self.assertFalse((target/'server.json').exists())
             self.assertEqual(result['session_policy'],'preserve_id_require_reconnect')
             with self.assertRaises(ValueError):restore(archive,target)
@@ -76,4 +78,4 @@ class LocalRestoreTests(unittest.TestCase):
                 self.assertEqual(saved['status'],'blocked')
                 self.assertEqual(saved['recovery_required'],1)
                 self.assertIn('资料已恢复',saved['error'])
-                self.assertTrue(Path(db.execute('SELECT source_path FROM papers').fetchone()[0]).is_file())
+                self.assertTrue((target/db.execute('SELECT source_path FROM papers').fetchone()[0]).is_file())

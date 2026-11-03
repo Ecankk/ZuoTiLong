@@ -136,7 +136,7 @@ def _migrate_legacy_to(source_dir, config, final_config):
                             if not old.is_absolute():old = config.root/old
                             if old.resolve().is_relative_to(source_dir):
                                 target.execute('UPDATE papers SET source_path=? WHERE id=?',
-                                               (str(final_config.data/old.resolve().relative_to(source_dir)),row[0]))
+                                               (old.resolve().relative_to(source_dir).as_posix(),row[0]))
             for entry in source_dir.iterdir():
                 if entry.name in ('mathlens.db','backups','trash','server.json','workspace.json') or entry.name.endswith(('-journal','-wal','-shm','.log')):
                     continue

@@ -8,7 +8,8 @@ class SessionStore:
         with closing(sqlite3.connect(self.path)) as conn,conn:
             conn.execute('CREATE TABLE IF NOT EXISTS session(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)')
             saved=conn.execute('SELECT payload FROM session WHERE id=1').fetchone()
-        state=json.loads(saved[0]) if saved else {'session_id':None,'turns':[],'active_request':None}
+        from app.storage.paths import session_paths
+        state=session_paths(json.loads(saved[0]),self.path.parent,unpack=True) if saved else {'session_id':None,'turns':[],'active_request':None}
         state['revision']=self._revision(state)
         return state
 
@@ -25,5 +26,6 @@ class SessionStore:
             saved={**state,'revision':max(self._revision(state),self._revision(previous))+1}
             from app.learning.loop import stamp
             saved['updated_at']=stamp()
-            conn.execute('INSERT OR REPLACE INTO session VALUES(1,?)',(json.dumps(saved,ensure_ascii=False),))
+            from app.storage.paths import session_paths
+            conn.execute('INSERT OR REPLACE INTO session VALUES(1,?)',(json.dumps(session_paths(saved,self.path.parent),ensure_ascii=False),))
         state.update(revision=saved['revision'],updated_at=saved['updated_at'])

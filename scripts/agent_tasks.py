@@ -9,6 +9,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from app.storage.paths import paper_path, relative_file
 from app.config import AppConfig
 from app.storage.database import Database
 from app.services.papers import PaperService
@@ -79,7 +80,7 @@ def main():
             source=args.pdf.resolve();digest=hashlib.sha256(source.read_bytes()).hexdigest()
             old=None
             for row in conn.execute("SELECT * FROM papers WHERE source_path IS NOT NULL ORDER BY created_at"):
-                path=(ROOT/row["source_path"]).resolve()
+                path=paper_path(config.data,row["source_path"],ROOT)
                 if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==digest:
                     old=row;break
             if old:
@@ -88,7 +89,7 @@ def main():
                 pid="paper-"+digest[:14];target=config.papers/pid/source.name
                 target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
                 conn.execute("INSERT INTO papers(id,title,source_name,source_path,source_sha256,import_status,created_at) VALUES(?,?,?,?,?,?,?)",
-                             (pid,source.stem,source.name,str(target.resolve()),digest,"needs_review",now_iso()))
+                             (pid,source.stem,source.name,relative_file(config.data,target),digest,"needs_review",now_iso()))
             if args.bank:
                 print(json.dumps(import_image_bank(conn,args.bank,config.data),ensure_ascii=False))
             conn.commit();result=PaperService(config,database).analyze(conn,pid)

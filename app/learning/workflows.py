@@ -6,6 +6,7 @@ without a job are never retroactively chained on upgrade.
 """
 from __future__ import annotations
 
+from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import json
 import uuid
 
@@ -55,7 +56,7 @@ def guard(conn, root, data, kind, paper_id, attempt_id=None, *, review_request=N
     paper = conn.execute('SELECT * FROM papers WHERE id=?', (paper_id,)).fetchone()
     if not paper or paper['archived_at'] or not paper['source_path']:
         raise ValueError('试卷不存在、已归档或缺少原PDF')
-    result = {'source_sha256': resource_digest(root / paper['source_path'], data)}
+    result = {'source_sha256': resource_digest(paper_path(data,paper['source_path'],root), data)}
     if knowledge_request is not None:
         if kind!='organize_knowledge':raise ValueError('只有知识整理可以携带证据范围')
         from app.knowledge.mapping_versions import select_sources,RULE_REVISION

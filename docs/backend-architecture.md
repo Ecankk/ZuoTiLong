@@ -52,7 +52,7 @@ flowchart LR
 Agent参与过程：
 
 1. 用户上传/点击分析、选题或提交作答，后端先保存材料或作答，再排入持久阶段任务。上传照片本身不批改。
-2. 调度器为每个任务启动本机`codex app-server --listen stdio://`并新建一个会话（thread/start），按任务档位设置模型与推理强度（app/agent/models.py），交付或失败后关闭本次执行；bridge只持有当前一次执行，会话ID只作记录。登录和模型调用由Codex负责，不要求网页填写模型API URL。
+2. 调度器为每个任务启动本机`codex app-server --listen stdio://`并新建一个会话（thread/start），按任务档位设置模型与推理强度（app/agent/models.py），交付或失败后关闭本次执行；bridge只持有当前一次执行，会话ID只作记录。执行进程与会话使用工作区下的空目录agent-runtime并以只读沙箱运行（规则见[Agent协议](agent-workflow.md#执行入口与会话)）。登录和模型调用由Codex负责，不要求网页填写模型API URL。
 3. 任务创建时捕获明确的试卷/作答范围、材料版本、schema和写入身份。app/agent/material_package.py把任务头与所需材料组装为初始输入，并为实际提供的材料生成阅读回执；选题候选由app/learning/selection.py按规范原子召回、排除和排序，Agent只判断适配并选择。需补看时通过动态mathlens工具读取。
 4. Agent按固定JSON契约交付，可先preflight（与保存同一套校验后回滚）。后端校验身份、材料/引用及结构，在同一事务内保存结果、业务投影和回执；标注任务同时发布出处。模型聊天文字不自动成为报告，Agent不直接修改用户数据库。
 5. 保存回执写入即任务完成，应用派发下一阶段；重启或断线时有回执直接完成，无回执失败、重试新建会话。单题复核的逐题语义依赖（正误、首错、考点）由app/learning/semantic_dependencies.py比较并写入record_versions，不改写历史输入和散列。网页展示已保存的逐题分析/练习/反馈及必要进度，不展示内部思考或要求用户维护JSON。

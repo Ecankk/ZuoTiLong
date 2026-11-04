@@ -115,6 +115,27 @@ class ExecutionTests(unittest.TestCase):
         self.assertTrue(scope['targets'])
         self.assertEqual(scope['targets'][0]['candidate_ids'],['a','b','c','d','f'])
 
+    def test_missing_reference_roles_fall_back_and_missing_question_is_excluded(self):
+        from app.bank.annotations import materials
+        from app.bank.retrieval import recall
+        from app.learning.selection import capture
+        from app.learning.practice_knowledge import material_binding
+        _,scope=self.selection();inputs=json.loads(self.task['input_json'])
+        items=recall(self.conn,self.data,topic_ids=[prepared.TOPIC],limit=100,internal=True)['items']
+        actual=materials(self.conn,self.data,prepared.BANK)
+        binding=material_binding(self.conn,self.data,prepared.BANK,self.case.annotation)
+        for provided in ({'question':actual['question']},{}, {'analysis':actual['analysis']}):
+            with patch('app.bank.retrieval.recall',return_value={'items':items,'next_offset':None}), \
+                 patch('app.learning.selection.annotations.current',return_value=self.case.annotation), \
+                 patch('app.learning.selection.annotations.materials',return_value=provided), \
+                 patch('app.learning.practice_knowledge.material_binding',return_value=binding):
+                selected=capture(self.conn,self.data,inputs)
+            if 'question' in provided:
+                candidate=selected['candidates'][prepared.BANK]
+                self.assertEqual(candidate['reference_answer'],self.case.annotation['analysis']['reference_reasoning'])
+                self.assertEqual(candidate['reference_analysis'],candidate['reference_answer'])
+            else:self.assertEqual(selected['candidates'],{})
+
     def test_local_delivery_finishes_before_remote_end_and_closes_execution(self):
         b=self.bridge();b.submit_task('summarize_paper','paper-test',str(uuid.uuid4()))
         self.wait(lambda:b._active() and not b._active()['codex_turn_id'].startswith('pending-'))
@@ -125,7 +146,7 @@ class ExecutionTests(unittest.TestCase):
             'overview':'已保存证据的小结。','key_findings':[],'improvements':[],'unknowns':[],
             'unfinished':[],'next_focus':[]})
         b.event({'method':'item/tool/call','id':'delivery','params':{'threadId':turn['session_id'],
-            'turnId':turn['codex_turn_id'],'tool':'mathlens','arguments':{'action':'deliver_result','payload':value}}})
+            'turnId':turn['codex_turn_id'],'tool':'mathlens','arguments':{'action':'deliver_result','payload':{'result':value}}}})
         self.assertTrue(transport.sent[-1]['result']['success'],transport.sent[-1])
         self.wait(lambda:not b.finishing)
         self.assertIsNone(b._active());self.assertTrue(transport.closed)
@@ -197,9 +218,11 @@ class ExecutionTests(unittest.TestCase):
                 if method in ('thread/start','turn/start'):
                     cwd=Path(params['cwd']);case.assertEqual(cwd,self.process_cwd)
                     case.assertFalse(cwd.is_relative_to(case.root))
-                    case.assertEqual(list(cwd.iterdir()),[])
+                    case.assertEqual([p.name for p in cwd.iterdir()],['AGENTS.md'])
+                    case.assertIn('做题龙任务执行器',(cwd/'AGENTS.md').read_text(encoding='utf-8'))
                     case.assertEqual(params['approvalPolicy'],'never')
                     if method=='thread/start':
+                        case.assertNotIn('developerInstructions',params)
                         case.assertEqual(params['sandbox'],'read-only')
                         for key in ('skills.include_instructions','skills.bundled.enabled','features.plugins','features.apps'):
                             case.assertIs(params['config'][key],False)
@@ -226,7 +249,7 @@ class ExecutionTests(unittest.TestCase):
             b=CodexBridge(self.root,Path(directory),FakeServer)
             try:
                 self.assertEqual(b._runtime_directory(),Path(directory).resolve()/'agent-runtime')
-                self.assertEqual(list(b._runtime_directory().iterdir()),[])
+                self.assertEqual([p.name for p in b._runtime_directory().iterdir()],['AGENTS.md'])
             finally:b.close()
     def test_unavailable_model_fails_job_without_fallback(self):
         save_preferences(self.conn,{'execution_profiles':{'organization':{'model':'missing-model','effort':'high'}}});self.conn.commit()
@@ -306,6 +329,19 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse([s for s in select_sources(self.conn,'paper-test') if s['kind']=='question'])
         continue_job(self.conn,self.root,self.data,{'id':'test','auto_prepare':1},task)
         self.assertEqual(self.conn.execute('SELECT count(*) FROM workflow_jobs').fetchone()[0],0)
+
+    def test_review_inheritance_survives_navigation_snapshot_and_topic_read(self):
+        self.save_selection();self.review(False)
+        from app.runtime import AppRuntime
+        from app.storage.knowledge_reads import navigation_snapshot
+        from app.knowledge.index import snapshot
+        runtime=AppRuntime(server.config(),agent_factory=None);self.addCleanup(runtime.close)
+        expected=snapshot(self.conn)
+        with navigation_snapshot(runtime.database) as copied:
+            self.assertEqual(snapshot(copied),expected)
+        detail=runtime.frontend.topic(prepared.TOPIC)
+        self.assertEqual(detail['topic']['id'],prepared.TOPIC)
+        self.assertGreater(runtime.knowledge_links.resource_snapshot()['counts'][prepared.TOPIC]['bank'],0)
 
     def test_changed_review_only_invalidates_dependent_goal(self):
         self.save_selection()

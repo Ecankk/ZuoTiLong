@@ -58,9 +58,11 @@ class AppRuntime:
                 self.bridge.auto_connect = True
                 self.bridge.workflow_wakeup.set()
         self.events.start()
+        self.frontend.start_warmup()
 
     def close(self) -> None:
         self.events.close()
+        self.frontend.close()
         self.workspace.close()
         if self.mobile:
             self.mobile.stop()

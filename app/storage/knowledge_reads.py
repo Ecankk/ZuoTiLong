@@ -5,9 +5,18 @@ preparation-task inputs and tool history. This is an ephemeral query-only SQLite
 snapshot, never a restored learner database or a second execution identity.
 """
 from contextlib import contextmanager,closing
+from contextvars import ContextVar
+from concurrent.futures import CancelledError
 import sqlite3
 from app.knowledge.catalog import atomic
 from app.storage.boundaries import schema_rows
+
+# Set only in the startup warmer. Foreground navigation has no cancellation.
+WARMUP_CANCEL = ContextVar('navigation_warmup_cancel',default=None)
+
+def check_warmup_cancelled():
+    signal=WARMUP_CANCEL.get()
+    if signal is not None and signal.is_set():raise CancelledError()
 
 TABLES=('bank_questions','bank_resources','bank_identity','bank_links','bank_identity_reviews',
         'bank_views','bank_cross_reviews','preferences','question_annotations','question_annotation_links',
@@ -17,13 +26,14 @@ TABLES=('bank_questions','bank_resources','bank_identity','bank_links','bank_ide
         'knowledge_catalog_state','knowledge_catalog_releases','knowledge_catalog_nodes','knowledge_catalog_redirects',
         'papers','questions','question_diagnoses','agent_reports','diagnostic_probes','probe_attempts',
         'learning_events','retired_probes','record_versions','learning_results','learning_tasks',
-        'practice_plan_members','practice_deferred_probes','paper_question_bindings','annotation_provenance')
+        'practice_plan_members','practice_goals','probe_goals','goal_questions','practice_deferred_probes',
+        'paper_question_bindings','annotation_provenance')
 
 FILTERS={
     'knowledge_catalog_releases':'id IN (SELECT release_id FROM knowledge_catalog_state)',
     'knowledge_catalog_nodes':'release_id IN (SELECT release_id FROM knowledge_catalog_state)',
     'knowledge_catalog_redirects':'release_id IN (SELECT release_id FROM knowledge_catalog_state)',
-    'record_versions':"kind='attempt'",
+    'record_versions':"kind IN ('attempt','knowledge_semantic_adoption')",
     'learning_results':"kind='prepare_practice'",
     'learning_tasks':"id IN (SELECT task_id FROM learning_results WHERE kind='prepare_practice')",
 }
@@ -37,6 +47,7 @@ def navigation_snapshot(database):
             schemas={r['name']:r['sql'] for r in schema_rows(source)}
             copied=[]
             for table in TABLES:
+                check_warmup_cancelled()
                 if table not in schemas:continue
                 target.execute(schemas[table]);copied.append(table)
                 query='SELECT rowid,* FROM '+table
@@ -45,7 +56,9 @@ def navigation_snapshot(database):
                 columns=[r[0] for r in cursor.description]
                 quoted=','.join('"'+c.replace('"','""')+'"' for c in columns)
                 insert='INSERT INTO '+table+'('+quoted+') VALUES('+','.join('?' for _ in columns)+')'
-                while rows:=cursor.fetchmany(256):target.executemany(insert,rows)
+                while rows:=cursor.fetchmany(256):
+                    check_warmup_cancelled()
+                    target.executemany(insert,rows)
             for table in copied:
                 for row in schema_rows(source,'index'):
                     if row['tbl_name']!=table or not row['sql']:continue

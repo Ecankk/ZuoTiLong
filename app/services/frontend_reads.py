@@ -1,7 +1,9 @@
 """Saved resource projections for the routed UI; no learning writes or Agent calls."""
 from copy import deepcopy
 import json
-from threading import Lock
+from threading import Lock,Event,Thread,current_thread
+from concurrent.futures import CancelledError
+import logging
 
 from app.bank.access import public_bank, access
 from app.bank.paper_candidates import location
@@ -49,6 +51,31 @@ class FrontendReads:
         self._navigation_lock = Lock()
         self._navigation_key = None
         self._navigation_value = None
+        self._warmup_stop=Event()
+        self._warmup_thread=None
+
+    def start_warmup(self):
+        if self._warmup_thread is not None:return
+        self._warmup_stop.clear()
+        def warm():
+            from app.storage.knowledge_reads import WARMUP_CANCEL,check_warmup_cancelled
+            token=WARMUP_CANCEL.set(self._warmup_stop)
+            try:
+                check_warmup_cancelled();self._knowledge()
+                check_warmup_cancelled();self._navigation()
+            except CancelledError:pass
+            except Exception:logging.getLogger(__name__).exception('Navigation warmup failed; saved reads will retry on demand')
+            finally:WARMUP_CANCEL.reset(token)
+        self._warmup_thread=Thread(target=warm,name='mathlens-navigation-warmup',daemon=True)
+        self._warmup_thread.start()
+
+    def close(self):
+        self._warmup_stop.set()
+        worker=self._warmup_thread
+        if worker and worker is not current_thread():worker.join()
+        self._warmup_thread=None
+        self._navigation_key=self._navigation_value=None
+        self._knowledge_key=self._knowledge_value=None
 
     def _navigation(self):
         # Routed UI resources reuse validated projections while both databases
@@ -58,6 +85,8 @@ class FrontendReads:
             if self._navigation_value is None or key!=self._navigation_key:
                 bank=self._navigation_value['bank'] if self._navigation_key and key[1]==self._navigation_key[1] else None
                 value=self.rt.knowledge_links.resource_snapshot(bank)
+                from app.storage.knowledge_reads import check_warmup_cancelled
+                check_warmup_cancelled()
                 self._navigation_value=value
                 self._navigation_key=key if key==self.rt.workspace.revision() else None
             return self._navigation_value

@@ -14,7 +14,7 @@ from threading import RLock
 from app.bank import annotations
 from app.bank.access import aliases, access, preferences
 from app.knowledge import catalog, index
-from app.storage.knowledge_reads import navigation_snapshot
+from app.storage.knowledge_reads import navigation_snapshot,check_warmup_cancelled
 from app.storage.boundaries import library_root, material_path, schema_rows
 
 
@@ -63,6 +63,7 @@ class KnowledgeLinksService:
             if table not in present:continue
             digest.update(table.encode())
             for row in conn.execute('SELECT * FROM '+table+' ORDER BY rowid'):
+                check_warmup_cancelled()
                 for cell in row:
                     value=str(cell).encode();digest.update(str(len(value)).encode()+b':'+value)
         release=catalog.document(conn)
@@ -72,6 +73,7 @@ class KnowledgeLinksService:
         safe_base=(root/'bank-assets').resolve()
         seen_files=set()
         for row in conn.execute('SELECT question_path,answer_path,analysis_path FROM bank_resources ORDER BY bank_id'):
+            check_warmup_cancelled()
             for value in row:
                 if not value:continue
                 from app.storage.paths import resolve_file
@@ -103,6 +105,7 @@ class KnowledgeLinksService:
             identities = {r['bank_id']:dict(r) for r in conn.execute('SELECT * FROM bank_identity')}
             groups = {};items = []
             for row in conn.execute("SELECT id,source FROM bank_questions WHERE source!='本地示例题库' ORDER BY id"):
+                check_warmup_cancelled()
                 bid = row['id']
                 if bid not in groups:
                     group = sorted(read_view.aliases(bid))

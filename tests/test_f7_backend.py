@@ -61,3 +61,31 @@ class F7BackendTests(unittest.TestCase):
         self.assertEqual(personal['question_counts']['bank'],first['question_counts']['bank'])
         conn.execute("UPDATE bank_questions SET stem=stem||' changed'");conn.commit()
         self.assertEqual(rt.frontend.topic(topic)['question_counts']['bank'],0)
+
+    def test_startup_warmup_populates_existing_versioned_caches_once(self):
+        self.rt.frontend.start_warmup();worker=self.rt.frontend._warmup_thread
+        worker.join(timeout=5);self.assertFalse(worker.is_alive())
+        with patch('app.services.frontend_reads.index.snapshot',side_effect=AssertionError('cold knowledge')), \
+             patch.object(self.rt.knowledge_links,'resource_snapshot',side_effect=AssertionError('cold navigation')):
+            self.assertEqual(self.rt.frontend.topic('GS-04-001')['topic']['id'],'GS-04-001')
+            self.rt.frontend.start_warmup();self.assertIs(self.rt.frontend._warmup_thread,worker)
+
+    def test_runtime_close_cancels_background_navigation_before_closing_observers(self):
+        from threading import Event,Thread
+        from app.storage.knowledge_reads import WARMUP_CANCEL,check_warmup_cancelled
+        entered=Event();started=Event()
+        def slow_signature(conn):
+            entered.set()
+            signal=WARMUP_CANCEL.get()
+            self.assertIsNotNone(signal)
+            if not signal.wait(5):raise AssertionError('warmup was not cancelled')
+            check_warmup_cancelled()
+        def start():self.rt.start();started.set()
+        with patch.object(self.rt.knowledge_links,'_signature',side_effect=slow_signature):
+            launcher=Thread(target=start);launcher.start()
+            try:
+                self.assertTrue(started.wait(2),'startup blocked on navigation')
+                self.assertTrue(entered.wait(2));worker=self.rt.frontend._warmup_thread
+                self.rt.close();self.assertFalse(worker.is_alive())
+                self.assertEqual(self.rt.workspace._observers,[])
+            finally:self.rt.frontend._warmup_stop.set();launcher.join(timeout=5)

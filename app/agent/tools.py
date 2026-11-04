@@ -14,9 +14,13 @@ from app.learning.loop import apply_report, assess_attempt, revise_assessment, r
 from app.storage.boundaries import workspace_config, material_path, library_root, connect_workspace
 
 ACTIONS=('context','task_context','preflight','deliver_result','read_paper','catalog','read_bank','read_attempt','apply_report','assess','revise_assessment','replace_probe','review_cross','screen','read_skill')
-SKILLS=('paper-diagnosis','bank-search','probe-design','learning-update','knowledge-index','catalog-maintenance','question-topics')
-SCHEMA={'type':'object','properties':{'action':{'type':'string','enum':list(ACTIONS)},'payload':{'type':'object'}},'required':['action','payload'],'additionalProperties':False}
-DESCRIPTION='做题龙单任务工具。初始输入已有任务schema及材料时直接判断交付；确需补看才读取。preflight传{result:完整封装}只校验不保存，deliver_result传完整封装保存并结束。1.10选题仅可补读候选题干，不自行检索。其他任务按材料包read_skill/read_paper/read_attempt/read_bank/task_context补读。面向学生数学式必须用$...$或$$...$$包裹。隐藏材料仅内部阅读，不提前向学生复述。'
+from app.agent.methods import SKILLS,skill_name,body as skill_body
+SCHEMA={'type':'object','properties':{'action':{'type':'string','enum':list(ACTIONS)},'payload':{'type':'object'}},'required':['action','payload'],'additionalProperties':False,
+    'allOf':[{'if':{'properties':{'action':{'enum':['deliver_result','preflight']}}},
+              'then':{'properties':{'payload':{'type':'object','required':['result'],'properties':{'result':{'type':'object'}},'additionalProperties':False}}}},
+             {'if':{'properties':{'action':{'const':'read_skill'}}},
+              'then':{'properties':{'payload':{'type':'object','required':['name'],'properties':{'name':{'enum':list(SKILLS)+['mathlens-'+n for n in SKILLS]}},'additionalProperties':False}}}}]}
+DESCRIPTION='做题龙单任务工具。方法、材料和回执已在初始包提供；材料齐全时直接deliver_result，校验失败按错误修正后再交，不例行preflight或context。deliver_result与preflight均传payload={result:完整任务封装}，与apply_report/assess一致。preflight仅供必要时调试，不保存。read_skill补读参数为{name:合法技能名}，技能名见材料包role_method。1.10选题仅补读候选题干。面向学生数学式用$...$或$$...$$包裹，隐藏材料仅内部阅读。'
 
 
 def connection(data):
@@ -35,6 +39,9 @@ def image_content(path,data):
 
 def execute(root,data,action,payload,*,lease=None):
     if action not in ACTIONS or not isinstance(payload,dict):raise ValueError('学习操作不合法')
+    if action in ('deliver_result','preflight') and (set(payload)!={'result'} or not isinstance(payload['result'],dict)):
+        raise ValueError(action+'的payload必须为{result:完整任务封装}，封装包含schema_version、task_id、kind、paper_id、input_revision、author、result')
+    if action=='read_skill':skill_name(payload)
     images=[]
     with closing(connection(data)) as conn,conn:
         if lease:
@@ -49,7 +56,7 @@ def execute(root,data,action,payload,*,lease=None):
             task=check_lease(conn,lease,allow_completed=action in ('deliver_result','preflight') or action in ('apply_report','assess') and set(payload)=={'result'})
             task_inputs=json.loads(task['input_json'])
             if task['kind']=='prepare_practice' and task_inputs.get('contract_version')=='1.10':
-                if action not in ('context','preflight','deliver_result','apply_report','read_bank'):raise ValueError('选题只判断后端候选，不自行召回或读取候选外材料')
+                if action not in ('context','preflight','deliver_result','apply_report','read_bank','read_skill'):raise ValueError('选题只判断后端候选，不自行召回或读取候选外材料')
                 if action=='read_bank' and (payload.get('bank_id') not in task_inputs['selection']['candidates'] or payload.get('role','question')!='question' or set(payload)-{'bank_id','role'}):
                     raise ValueError('选题补看仅限本次候选ID的题干图')
             task_delivery=action in ('apply_report','assess') and set(payload)=={'result'}
@@ -81,7 +88,7 @@ def execute(root,data,action,payload,*,lease=None):
             result=preflight(conn,root,data,payload['result'],lease)
         elif action=='deliver_result' or task_delivery:
             from app.learning.tasks import deliver
-            result=deliver(conn,root,data,payload['result'] if task_delivery else payload,lease)
+            result=deliver(conn,root,data,payload['result'],lease)
         elif action=='task_context':
             if not task:raise ValueError('当前不是结构化学习任务')
             from app.learning.tasks import task_package
@@ -297,6 +304,8 @@ def execute(root,data,action,payload,*,lease=None):
                     record_read(conn,lease,'question_review',scope['request']['question_id'],'materials',digest(scope))
         elif action=='catalog':
             query=dict(payload)
+            if set(query)-{'topics','bank_id','offset','limit','math_types','years','exclude_years','topic_ids','stages','methods','include_history'}:
+                raise ValueError('catalog可用参数：题源导航topics/bank_id/years/exclude_years/offset/limit；原子召回topic_ids/stages/methods/include_history/offset/limit。查询规范定义请用task_context({knowledge_query:{query:"名称"}})，不支持catalog.query。')
             old_scope=query.pop('math_types',None)
             if 'topic_ids' in query:
                 if not set(query).issubset({'topic_ids','stages','methods','offset','limit','include_history'}):
@@ -328,9 +337,8 @@ def execute(root,data,action,payload,*,lease=None):
         elif action=='screen':
             path=data/'screen.json';result=json.loads(path.read_text(encoding='utf8')) if path.is_file() else {}
         elif action=='read_skill':
-            name=payload['name'].removeprefix('mathlens-')
-            if name not in SKILLS:raise ValueError('不存在该项目技能')
-            result={'instructions':(root/'.agents/skills'/('mathlens-'+name)/'SKILL.md').read_text(encoding='utf8')}
+            name=skill_name(payload)
+            result={'instructions':skill_body(root,name)}
             if task:
                 from app.learning.tasks import task_package
                 result['learning_task_contract']={'task_id':task['id'],'kind':task['kind'],

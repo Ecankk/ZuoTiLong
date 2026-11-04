@@ -1,6 +1,15 @@
 import { vi } from 'vitest'
-import type { BankCard, CatalogNode, TasksResponse, TopicResponse } from '../api/types'
+import type {
+  AgentModels,
+  BankCard,
+  CatalogNode,
+  Preferences,
+  PreferencesChange,
+  TasksResponse,
+  TopicResponse,
+} from '../api/types'
 import {
+  agentModels,
   paperList,
   papers,
   practiceDetails,
@@ -15,14 +24,29 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
 /** 按 docs/frontend-api.md 的路径模拟本地服务，供页面测试使用。 */
-export function mockServer(overrides: { tasks?: TasksResponse } = {}) {
+export function mockServer(
+  overrides: { tasks?: TasksResponse; agentModels?: AgentModels[]; preferences?: Preferences } = {},
+) {
+  let savedPreferences = overrides.preferences ?? preferences
+  const modelReads = [...(overrides.agentModels ?? [agentModels])]
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), 'http://localhost')
     const path = url.pathname
     const notFound = json({ error: 'not found' }, 404)
     if (path === '/api/tasks') return json(overrides.tasks ?? tasks)
-    if (path === '/api/preferences')
-      return json(init?.method === 'POST' ? JSON.parse(String(init.body)) : preferences)
+    if (path === '/api/agent/models')
+      return json(modelReads.length > 1 ? modelReads.shift() : modelReads[0])
+    if (path === '/api/preferences') {
+      if (init?.method === 'POST') {
+        const change = JSON.parse(String(init.body)) as PreferencesChange
+        const profiles =
+          change.execution_profiles === null
+            ? preferences.execution_profiles
+            : { ...savedPreferences.execution_profiles, ...change.execution_profiles }
+        savedPreferences = { ...savedPreferences, ...change, execution_profiles: profiles }
+      }
+      return json(savedPreferences)
+    }
     if (path === '/api/papers') return json(paperList)
     let match = path.match(/^\/api\/papers\/([^/]+)\/questions$/)
     if (match) {

@@ -116,3 +116,63 @@
   outline: none;
   box-shadow: var(--focus-ring);
 }
+
+.profile {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.profileHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  color: var(--text-strong);
+}
+
+.profileFields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.select {
+  min-width: 200px;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+}
+
+.select:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.select:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+.section .rowWarn,
+.section .rowNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.section .rowWarn {
+  color: var(--status-wrong);
+}
+
+.section .rowNote {
+  color: var(--status-partial);
+}

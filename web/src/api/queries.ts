@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endpoints, type BankFilter, type PaperScope, type PracticeGrouping } from './endpoints'
-import type { Preferences } from './types'
+import type { PreferencesChange } from './types'
 
 /**
  * query key 第一段对应 SSE resources.changed 的资源名（papers/questions/practices/preferences），
@@ -55,6 +55,24 @@ export const usePractice = (practiceId: string | undefined) =>
 export const usePreferences = () =>
   useQuery({ queryKey: queryKeys.preferences, queryFn: endpoints.preferences })
 
+export const CHECK_AGAIN_MS = 4000
+
+/** 本机可用模型；正在检查时稍后再读一次。 */
+export const useAgentModels = () => {
+  // Codex 状态变化（如刚登录）时换一个 key，重新读取模型列表
+  const { data: tasks } = useTasks()
+  return useQuery({
+    queryKey: ['agent-models', tasks?.availability.status],
+    queryFn: endpoints.agentModels,
+    enabled: tasks !== undefined,
+    staleTime: 0,
+    refetchInterval: (query) =>
+      query.state.data?.status === 'checking' && query.state.dataUpdateCount < 2
+        ? CHECK_AGAIN_MS
+        : false,
+  })
+}
+
 export const usePaperSummary = (paperId: string) =>
   useQuery({
     queryKey: ['papers', paperId, 'summary'],
@@ -82,7 +100,7 @@ export function useAction<TArgs, TResult>(
 
 export const useSavePreferences = () =>
   useAction(
-    (change: Partial<Preferences>) => endpoints.savePreferences(change),
+    (change: PreferencesChange) => endpoints.savePreferences(change),
     [queryKeys.preferences, ['practices']],
   )
 

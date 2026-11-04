@@ -5,6 +5,7 @@
  */
 import { ApiError, postJson, request } from './client'
 import type {
+  AgentModels,
   AttemptBody,
   BankCard,
   BankTopics,
@@ -21,6 +22,7 @@ import type {
   PracticeResponse,
   PracticesResponse,
   Preferences,
+  PreferencesChange,
   QuestionResponse,
   QuestionsResponse,
   TasksResponse,
@@ -65,6 +67,7 @@ export const endpoints = {
   practice: (practiceId: string) =>
     orNull(request<PracticeResponse>(`/api/practices/${enc(practiceId)}`)),
   preferences: () => request<Preferences>('/api/preferences'),
+  agentModels: () => request<AgentModels>('/api/agent/models'),
   dataStatus: () => request<DataStatus>('/api/data/status'),
   /** 题库浏览（view=library）；考点筛选包含子考点，由后端处理 */
   bank: (filter: BankFilter, offset: number, limit: number) => {
@@ -92,8 +95,7 @@ export const endpoints = {
 
   /* ---------- 设置 ---------- */
   /** 偏好接口只合并传入的字段 */
-  savePreferences: (change: Partial<Preferences>) =>
-    postJson<Preferences>('/api/preferences', change),
+  savePreferences: (change: PreferencesChange) => postJson<Preferences>('/api/preferences', change),
   backup: () => postJson<{ path: string; files: number }>('/api/maintenance/backup', {}),
 
   /* ---------- 试卷 ---------- */

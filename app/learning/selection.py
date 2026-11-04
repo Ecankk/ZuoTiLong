@@ -94,14 +94,17 @@ def summary(candidate):
     return {k:v for k,v in candidate.items() if k not in ('binding','reference_answer','reference_analysis')}
 
 def public(scope):
-    return dict(targets=scope['targets'],definitions=scope['definitions'],candidates=[summary(c) for c in scope['candidates'].values()])
+    return dict(targets=scope['targets'],definitions=scope['definitions'],candidates=[dict(summary(c),allowed_goal_ids=[t['goal']['id'] for t in scope['targets'] if c['bank_id'] in t['candidate_ids']]) for c in scope['candidates'].values()])
 
 def normalize(conn,data,task,result):
     from app.learning.tasks import require_read,digest
     from app.learning.practice_knowledge import require_binding
     inputs=task_inputs(conn,task);scope=inputs['selection'];targets={t['goal']['id']:t for t in scope['targets']}
-    if set(result['limitations'])!={*targets}:raise ValueError('每个候选目标须返回限制说明（无缺口可为空字符串）')
-    counts={gid:0 for gid in targets};atoms={};used=set();exercises=[]
+    errors=[]
+    missing=sorted(set(targets)-set(result['limitations']));extra=sorted(set(result['limitations'])-set(targets))
+    if missing:errors.append('limitations缺少目标ID：'+', '.join(missing))
+    if extra:errors.append('limitations含未知目标ID：'+', '.join(extra))
+    counts={gid:0 for gid in targets};atoms={};used=set();exercises=[];goal_banks={gid:[] for gid in targets}
     for old in scope['retained_exercises']:
         row=conn.execute('SELECT bank_id FROM diagnostic_probes WHERE id=?',(old['probe_id'],)).fetchone()
         if row:
@@ -109,24 +112,46 @@ def normalize(conn,data,task,result):
                 if goal['id'] in old['goal_ids']:
                     for tid in goal['topic_ids']:atoms.setdefault(tid,set()).add(row[0])
     for i,item in enumerate(result['selections']):
-        bid=item['bank_id']
-        if bid in used:raise ValueError('同题须合并为一个选择并关联多个目标')
+        bid=item['bank_id'];gids=item['goal_ids']
+        if bid in used:errors.append('bank_id='+bid+'：同题须合并为一个选择，goal_ids='+str(gids))
         used.add(bid)
-        if not item['goal_ids'] or len(set(item['goal_ids']))!=len(item['goal_ids']):raise ValueError('选择目标不能为空或重复')
-        if any(g not in targets or bid not in targets[g]['candidate_ids'] for g in item['goal_ids']):raise ValueError('只能从后端提供的对应目标候选选择')
-        candidate=scope['candidates'][bid]
-        require_read(conn,task,'candidate_summary',bid,'summary',digest(summary(candidate)))
-        require_binding(conn,data,task,bid,candidate['annotation_id'])
-        for gid in item['goal_ids']:
-            counts[gid]+=1
+        if not gids:errors.append('bank_id='+bid+'：goal_ids不能为空')
+        seen=set()
+        for gid in gids:
+            if gid in seen:errors.append('bank_id='+bid+' goal_id='+gid+'：目标重复')
+            seen.add(gid)
+            if gid not in targets:
+                errors.append('bank_id='+bid+' goal_id='+gid+'：目标不存在，该目标无候选；合法目标ID='+str(sorted(targets)))
+                continue
+            allowed=targets[gid]['candidate_ids']
+            if bid not in allowed:
+                errors.append('bank_id='+bid+' goal_id='+gid+'：只能从后端提供的对应目标候选选择；'+('合法candidate_ids='+str(allowed) if allowed else '该目标无候选'))
+                continue
+            if bid not in scope['candidates']:
+                errors.append('bank_id='+bid+' goal_id='+gid+'：候选材料不在本次材料包中；合法candidate_ids='+str(allowed))
+                continue
+            counts[gid]+=1;goal_banks[gid].append(bid)
             for tid in targets[gid]['goal']['topic_ids']:atoms.setdefault(tid,set()).add(bid)
+    for gid,count in counts.items():
+        if count>2:errors.append('goal_id='+gid+'：每目标至多2题，实际'+str(count)+'；bank_ids='+str(goal_banks[gid]))
+        if not count and gid not in missing and not result['limitations'][gid].strip():
+            errors.append('goal_id='+gid+'：未选题目标须写明无合适候选的限制')
+    for tid,bids in atoms.items():
+        if len(bids)>3:errors.append('topic_id='+tid+'：每原子合计至多3题（含保留练习），实际'+str(len(bids))+'；bank_ids='+str(sorted(bids))+'；goal_ids='+str([g for g,t in targets.items() if tid in t['goal']['topic_ids']]))
+    # Reject all invalid pairs together before reading any unallowed material.
+    if errors:raise ValueError('选题校验失败：\n'+'\n'.join(errors))
+    for i,item in enumerate(result['selections']):
+        bid=item['bank_id'];candidate=scope['candidates'][bid]
+        for check in (lambda:require_read(conn,task,'candidate_summary',bid,'summary',digest(summary(candidate))),
+                      lambda:require_binding(conn,data,task,bid,candidate['annotation_id'])):
+            try:check()
+            except ValueError as exc:errors.append('bank_id='+bid+' goal_ids='+str(item['goal_ids'])+'：'+str(exc))
         exercises.append(dict(item,id='selection-'+str(i+1),annotation_id=candidate['annotation_id'],
             expected=candidate['reference_answer'],solution_note=candidate['reference_analysis'],repeat_reason=None))
-    if any(c>2 for c in counts.values()) or any(len(v)>3 for v in atoms.values()):raise ValueError('每目标至多2题，每原子合计至多3题（含保留练习）')
+    if errors:raise ValueError('选题材料校验失败：\n'+'\n'.join(errors))
     goals=copy.deepcopy(scope['retained_goals'])
     for gid,t in targets.items():
         goal=copy.deepcopy(t['goal']);goal['decision']='practice' if counts[gid] else 'no_candidate'
-        if not counts[gid] and not result['limitations'][gid].strip():raise ValueError('未选题目标须写明无合适候选的限制')
         goal['reason']=result['limitations'][gid] or goal['reason'];goals.append(goal)
     from app.learning.practice_knowledge import require_current_definitions
     require_current_definitions(conn,inputs['practice_knowledge']['catalog_nodes'],{t for g in goals for t in g['topic_ids']})

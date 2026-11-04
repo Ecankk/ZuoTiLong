@@ -117,6 +117,7 @@ def initial_inputs(conn,root,data,task_id,lease):
         scope=inputs['selection']
         from app.learning.selection import public,summary
         header['selection']=public(scope)
+        header['requirements'].append('每个选择中的每个goal_id都必须出现在该候选的allowed_goal_ids中；全局candidates包含该题不代表可挂到任意目标。相近考点也不能跨目标借用候选。targets按目标列出的candidate_ids是唯一合法配对。')
         header['result_template']={**{k:header[k] for k in ('schema_version','task_id','kind','paper_id','input_revision')},
             'author':'learning-agent','result':{'selections':[],
                 'limitations':{t['goal']['id']:'' for t in scope['targets']}}}

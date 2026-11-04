@@ -48,6 +48,7 @@ class AppRuntime:
 
     def start(self) -> None:
         self.database.initialize()
+        self.knowledge_links.prepare_index()
         interrupt_old_progress(self.config.data)
         if self.bridge is None and self.agent_factory:
             self.bridge = self.agent_factory(self.config.root, self.config.data)
@@ -58,7 +59,6 @@ class AppRuntime:
                 self.bridge.auto_connect = True
                 self.bridge.workflow_wakeup.set()
         self.events.start()
-        self.frontend.start_warmup()
 
     def close(self) -> None:
         self.events.close()

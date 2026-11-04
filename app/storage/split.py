@@ -29,7 +29,7 @@ def copy_schema(source, target, names):
     for row in source.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY rowid"):
         if row['name'] in names:
             target.execute(scoped_schema(row['sql'].replace('CREATE TABLE ', 'CREATE TABLE IF NOT EXISTS ', 1), row['name']))
-    for row in source.execute("SELECT tbl_name,sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"):
+    for row in source.execute("SELECT tbl_name,sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL AND name!='idx_bank_collection'"):
         if row['tbl_name'] in names:
             target.execute(row['sql'].replace('CREATE UNIQUE INDEX ', 'CREATE UNIQUE INDEX IF NOT EXISTS ', 1)
                            .replace('CREATE INDEX ', 'CREATE INDEX IF NOT EXISTS ', 1))
@@ -60,6 +60,10 @@ def initialize_split(config):
                     raise ValueError('Mixed database requires migration: '+', '.join(sorted(unexpected)))
                 copy_schema(schema, conn, names)
                 if 'library_state' in names:
+                    from app.bank.collections import initialize as collections
+                    collections(conn)
+                    from app.storage.navigation_index import initialize as navigation
+                    navigation(conn)
                     from app.storage.library_identity import initialize
                     initialize(conn)
                 if 'papers' in names:
@@ -125,10 +129,15 @@ def _migrate_legacy_to(source_dir, config, final_config):
             names = {r[0] for r in snapshot.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             for path, selected in ((config.library_database,names & LIBRARY_TABLES), (config.database,names-LIBRARY_TABLES)):
                 with closing(sqlite3.connect(path)) as target, target:
-                    for name in selected:
+                    # Collection guards stay enabled during migration: install
+                    # the source's registry before copying its question rows.
+                    for name in sorted(selected,key=lambda n:(n!='bank_collections',n)):
                         target.execute('DELETE FROM "'+name+'"')
                         copy_rows(snapshot,target,name)
                     if path == config.library_database:
+                        if 'bank_collections' not in selected:
+                            from app.bank.collections import assign_legacy
+                            assign_legacy(target)
                         for annotation in snapshot.execute('SELECT * FROM question_annotations'):
                             try:proof = capture_provenance(snapshot, annotation)
                             except ValueError:proof = None

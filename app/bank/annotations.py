@@ -340,7 +340,7 @@ def prepared_summary(annotation):
     return {k: annotation['analysis'][k] for k in ('reference_reasoning','answer_check','bindings','methods','checkpoints','fingerprint')}
 
 
-def matching(conn, data, *, topic_ids, stages=None, methods=None):
+def matching(conn, data, *, topic_ids, stages=None, methods=None,collection=None):
     """Unpaged, ready matches for application-level history filtering."""
     if (not isinstance(topic_ids, list) or not 1 <= len(topic_ids) <= 40
             or any(not isinstance(t, str) or not t for t in topic_ids)):
@@ -378,6 +378,10 @@ def matching(conn, data, *, topic_ids, stages=None, methods=None):
                 JOIN imported_question_annotations a ON a.id=t.annotation_id WHERE t.topic_id IN ('''
                 + ','.join('?' for _ in chunk) + ')', chunk))
     matches = [];entities = set();emitted_aliases = set()
+    if collection is not None:
+        from app.bank.collections import require
+        require(conn,collection)
+        candidate_ids.intersection_update(r[0] for r in conn.execute('SELECT id FROM bank_questions WHERE collection_id=?',(collection,)))
     # A category prefix must not select the representative of an alias group.
     for bid in sorted(candidate_ids,key=lambda value:hashlib.sha256(value.encode()).digest()):
         item = current(conn, data, bid)

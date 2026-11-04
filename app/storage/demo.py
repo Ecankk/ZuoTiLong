@@ -40,3 +40,4 @@ def seed(conn: sqlite3.Connection) -> None:
            VALUES (?,?,?,?,?,?,?,?,?,?)""",
         [(a,b,c,d,e,f,json.dumps(g,ensure_ascii=False),json.dumps(h,ensure_ascii=False),i,created) for a,b,c,d,e,f,g,h,i in bank],
     )
+    conn.execute("UPDATE bank_questions SET collection_id='example' WHERE source='本地示例题库'")

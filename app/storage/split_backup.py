@@ -20,6 +20,7 @@ def backup(data, root):
         files={}
         for source in data.rglob('*'):
             if (not source.is_file() or source.is_symlink() or source.is_relative_to(folder)
+                    or source.name=='navigation-index.db'
                     or source.is_relative_to(config.library_dir) or source.is_relative_to(data/'trash')
                     or source.name.endswith(('-journal','-wal','-shm','.log'))):continue
             name=source.relative_to(data).as_posix()

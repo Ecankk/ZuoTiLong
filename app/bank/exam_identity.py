@@ -12,8 +12,10 @@ def metadata(conn, bank_id):
     if not kind and value.get('source_url') == 'https://github.com/lx-ruc/kaoyanshuxue' and type(value.get('type')) is int:
         kind = {1:'选择题', 2:'填空题', 3:'解答题'}.get(value['type'])
     score = value.get('max_score', value.get('score'))
-    return dict(question_type=kind if isinstance(kind, str) and kind.strip() else None,
+    result=dict(question_type=kind if isinstance(kind, str) and kind.strip() else None,
                 max_score=score if type(score) in (int, float) and math.isfinite(score) and score >= 0 else None)
+    if isinstance(value.get('book'),dict):result['book']=value['book']
+    return result
 
 
 def source_key(conn, bank_id):

@@ -1,22 +1,13 @@
 """Small consistent read models; release the learner DB before file validation.
 
-Copy exact rows/rowids needed by knowledge navigation, excluding large unrelated
-preparation-task inputs and tool history. This is an ephemeral query-only SQLite
+Copy only private rows/rowids needed by knowledge navigation; attach the
+shared library read-only rather than copying its question/material tables. This is an ephemeral query-only SQLite
 snapshot, never a restored learner database or a second execution identity.
 """
 from contextlib import contextmanager,closing
-from contextvars import ContextVar
-from concurrent.futures import CancelledError
 import sqlite3
 from app.knowledge.catalog import atomic
 from app.storage.boundaries import schema_rows
-
-# Set only in the startup warmer. Foreground navigation has no cancellation.
-WARMUP_CANCEL = ContextVar('navigation_warmup_cancel',default=None)
-
-def check_warmup_cancelled():
-    signal=WARMUP_CANCEL.get()
-    if signal is not None and signal.is_set():raise CancelledError()
 
 TABLES=('bank_questions','bank_resources','bank_identity','bank_links','bank_identity_reviews',
         'bank_views','bank_cross_reviews','preferences','question_annotations','question_annotation_links',
@@ -41,13 +32,20 @@ FILTERS={
 
 @contextmanager
 def navigation_snapshot(database):
-    with closing(sqlite3.connect(':memory:')) as target:
+    from app.storage.boundaries import LIBRARY_TABLES
+    with closing(sqlite3.connect(':memory:',uri=True)) as target:
         target.row_factory=sqlite3.Row
+        # Keep shared tables in their real read-only SQLite snapshot. Only the
+        # small personal projection is copied, so file validation never locks
+        # learner writes and a 6000-question library is never copied per read.
+        target.execute('ATTACH DATABASE ? AS library',(database.config.library_database.resolve().as_uri()+'?mode=ro',))
+        target.execute('BEGIN')
+        target.execute('SELECT count(*) FROM library.bank_questions').fetchone()
         with database.session() as source, atomic(source):
             schemas={r['name']:r['sql'] for r in schema_rows(source)}
             copied=[]
             for table in TABLES:
-                check_warmup_cancelled()
+                if table in LIBRARY_TABLES:continue
                 if table not in schemas:continue
                 target.execute(schemas[table]);copied.append(table)
                 query='SELECT rowid,* FROM '+table
@@ -57,13 +55,12 @@ def navigation_snapshot(database):
                 quoted=','.join('"'+c.replace('"','""')+'"' for c in columns)
                 insert='INSERT INTO '+table+'('+quoted+') VALUES('+','.join('?' for _ in columns)+')'
                 while rows:=cursor.fetchmany(256):
-                    check_warmup_cancelled()
                     target.executemany(insert,rows)
             for table in copied:
                 for row in schema_rows(source,'index'):
                     if row['tbl_name']!=table or not row['sql']:continue
                     target.execute(row['sql'])
-            target.commit()
-        # No original DB handle or shared lock survives this point.
+        # No personal DB handle/shared lock survives. The attached library
+        # remains one consistent read-only snapshot until this context closes.
         target.execute('PRAGMA query_only=ON')
-        with atomic(target):yield target
+        yield target

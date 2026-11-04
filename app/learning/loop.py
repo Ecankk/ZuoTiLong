@@ -134,6 +134,7 @@ def _import_group(conn,group,data_root,math_type,label):
                                  "rights": "外部个人资料导入；第三方题目与解析不随应用分发"}),
                       paths["question"], paths.get("analysis"), paths.get("answer")))
         register_identity(conn,bid,math_type,q['paper'],q['index'],material_path(data_root,paths['question']))
+        conn.execute("UPDATE bank_questions SET collection_id='zhenti' WHERE id=?",(bid,))
         imported += 1
     return {"imported": imported, "missing": missing, "preserved_navigation":preserved}
 

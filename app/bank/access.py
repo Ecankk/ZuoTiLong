@@ -163,9 +163,9 @@ def record_view(conn,bid,role):
 
 def public_bank(conn,bid,view='probe'):
     if view=='library':
-        row=conn.execute('SELECT b.*,i.math_type,i.year,i.number FROM bank_questions b JOIN bank_identity i ON i.bank_id=b.id WHERE b.id=?',(bid,)).fetchone()
+        row=conn.execute("SELECT b.*,coalesce(i.math_type,0) math_type,coalesce(i.year,'') year,coalesce(i.number,0) number FROM bank_questions b LEFT JOIN bank_identity i ON i.bank_id=b.id WHERE b.id=?",(bid,)).fetchone()
         if not row:raise ValueError('题库题目不存在')
-        result={'id':bid,'math_type':row['math_type'],'year':row['year'],'number':row['number'],
+        result={'id':bid,'collection_id':row['collection_id'],'math_type':row['math_type'],'year':row['year'],'number':row['number'],
                 'can_view':True,'reserved':{'math_type':row['math_type'],'year':row['year']} in preferences(conn)['reserved'],
                 'reason':'','analysis_allowed':True,'stem':row['stem'],'tags':json.loads(row['tags_json'] or '[]'),
                 'question_image':f'/api/bank/{bid}/question?view=library','analysis_image':f'/api/bank/{bid}/analysis?view=library'}
@@ -173,6 +173,8 @@ def public_bank(conn,bid,view='probe'):
         # separate, recorded action even for text-only sources.
         return text_resources(conn,bid,result)
     state=access(conn,bid)
+    from app.bank.collections import membership
+    state['collection_id']=membership(conn,bid)
     if not state['can_view']:return state
     row=conn.execute('SELECT * FROM bank_questions WHERE id=?',(bid,)).fetchone()
     result={**state,'stem':row['stem'],'tags':json.loads(row['tags_json'] or '[]'),

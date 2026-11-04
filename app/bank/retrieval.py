@@ -31,7 +31,7 @@ def _history(conn, related, plan_cache):
             'seen_solution':bool(exposed or 'analysis' in views),'active_pending':bool(active_pending),'exercises':probes}
 
 
-def recall(conn,data,*,topic_ids,stages=None,methods=None,offset=0,limit=30,include_history=False,internal=False,allowed_annotations=None):
+def recall(conn,data,*,topic_ids,stages=None,methods=None,offset=0,limit=30,include_history=False,internal=False,allowed_annotations=None,collection=None):
     if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:
         raise ValueError('原子题库查询分页不合法')
     if type(include_history) is not bool:raise ValueError('include_history须为布尔值')
@@ -39,20 +39,24 @@ def recall(conn,data,*,topic_ids,stages=None,methods=None,offset=0,limit=30,incl
     # Keep the release, dependency validity and history in one SQLite snapshot.
     # No mutation is performed; a caller's outer transaction remains intact.
     with catalog.atomic(conn):
-        return _recall(conn,data,topic_ids,stages,methods,offset,limit,include_history,internal,allowed_annotations)
+        return _recall(conn,data,topic_ids,stages,methods,offset,limit,include_history,internal,allowed_annotations,collection)
 
 
-def _recall(conn,data,topic_ids,stages,methods,offset,limit,include_history,internal,allowed_annotations):
-    revision,matches=annotations.matching(conn,data,topic_ids=topic_ids,stages=stages,methods=methods)
+def _recall(conn,data,topic_ids,stages,methods,offset,limit,include_history,internal,allowed_annotations,collection):
+    from app.bank.collections import require,membership
+    if collection is not None:require(conn,collection)
+    revision,matches=annotations.matching(conn,data,topic_ids=topic_ids,stages=stages,methods=methods,collection=collection)
     items=[];existing=[];omitted={'attempted_or_solution_seen':0,'pending_existing':0};plans={}
     for match in matches:
+        cid=membership(conn,match['bank_id'])
+        if collection is not None and cid!=collection:continue
         if allowed_annotations is not None and match['id'] not in allowed_annotations:
             omitted['not_in_task_snapshot']=omitted.get('not_in_task_snapshot',0)+1
             continue
         related=policy_group(conn,match['bank_id'])
         history=_history(conn,related,plans)
         state=access(conn,match['bank_id'])
-        metadata={'id':match['bank_id'],'entity_id':match['entity_id'],'math_type':state['math_type'],
+        metadata={'id':match['bank_id'],'collection_id':cid,'entity_id':match['entity_id'],'math_type':state['math_type'],
                   'year':state['year'],'number':state['number'],'student_access':state,
                   'annotation_id':match['id'],'content_revision':match['content_revision'],
                   'annotation_catalog_revision':match['catalog_revision'],'status':'ready'}

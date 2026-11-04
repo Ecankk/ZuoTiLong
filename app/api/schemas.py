@@ -92,9 +92,12 @@ class CatalogPackageImport(Confirmation):
 class CatalogPackageActivation(Confirmation):
     sha256:str=Field(pattern=r'^[0-9a-f]{64}$')
     expected_active_release_id:str
-class QuestionIndexPreview(RequestModel):package:dict[str,Any]
+class QuestionIndexPreview(RequestModel):
+    package:dict[str,Any]
+    collection:str|None=None
 class QuestionIndexImport(Confirmation):
     package:dict[str,Any]
+    collection:str|None=None
     trusted_sha256:str=Field(pattern=r'^[0-9a-f]{64}$')
     expected_preview_sha256:str=Field(pattern=r'^[0-9a-f]{64}$')
 class QuestionIndexState(Confirmation):

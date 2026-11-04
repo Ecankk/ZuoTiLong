@@ -110,11 +110,12 @@
   overflow: hidden;
 }
 
+/* 渐隐条固定在截断位置：内容不够高时它落在可见区域之外，短题干不会被盖住 */
 .clamped::after {
   content: '';
   position: absolute;
+  top: calc(220px - 48px);
   right: 0;
-  bottom: 0;
   left: 0;
   height: 48px;
   background: linear-gradient(transparent, var(--surface-card));
@@ -228,4 +229,23 @@
 .note {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+}
+
+.collections {
+  margin-bottom: var(--space-3);
+}
+
+.collectionName {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.group + .group {
+  margin-top: var(--space-5);
+}
+
+.section {
+  margin-bottom: var(--space-3);
+  color: var(--text-strong);
+  font-size: var(--font-size-ui);
 }

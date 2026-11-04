@@ -5,7 +5,7 @@ import type { AgentModels, ExecutionProfile, Preferences, ProfileTier } from '..
 import onboarding from '../../components/onboarding/Onboarding.module.css'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
-import { closestEffort, effortLabel } from '../../lib/models'
+import { closestEffort } from '../../lib/models'
 import styles from './SettingsPage.module.css'
 
 type Model = AgentModels['items'][number]
@@ -46,10 +46,7 @@ function ProfileRow({
     if (!next) return
     if (next.efforts.includes(value.effort)) return onChange({ model: id, effort: value.effort })
     const effort = closestEffort(value.effort, next.efforts)
-    onChange(
-      { model: id, effort },
-      `${next.name} 不支持“${effortLabel(value.effort)}”，已改为“${effortLabel(effort)}”。`,
-    )
+    onChange({ model: id, effort }, `${next.name} 不支持“${value.effort}”，已改为“${effort}”。`)
   }
 
   return (
@@ -75,17 +72,15 @@ function ProfileRow({
         </select>
         <select
           className={styles.select}
-          aria-label={`${name}的思考深度`}
+          aria-label={`${name}的推理强度`}
           disabled={!ready}
           value={value.effort}
           onChange={(event) => onChange({ model: value.model, effort: event.target.value })}
         >
-          {!efforts.includes(value.effort) && (
-            <option value={value.effort}>{effortLabel(value.effort)}</option>
-          )}
+          {!efforts.includes(value.effort) && <option value={value.effort}>{value.effort}</option>}
           {efforts.map((effort) => (
             <option key={effort} value={effort}>
-              {effortLabel(effort)}
+              {effort}
             </option>
           ))}
         </select>
@@ -211,7 +206,8 @@ export function ModelCard() {
       <h2>AI 模型</h2>
       <p>
         做题龙把工作分成两类：需要仔细判断的，和整理归纳的。可以分别选择 Codex
-        用的模型和思考深度；越深入越准确，也越慢。
+        用的模型和推理强度（reasoning effort，常见 low / medium / high /
+        xhigh），越高越仔细，也越慢。
       </p>
       <ModelStatus models={models} />
       {preferences && <ModelForm preferences={preferences} models={models} />}

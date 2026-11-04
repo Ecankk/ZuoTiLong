@@ -36,6 +36,55 @@ describe('bank page', () => {
     )
   })
 
+  it('defaults to past exams, hides empty collections and shows book questions by section', async () => {
+    const fetch = mockServer()
+    renderAt('/bank')
+    const tabs = await screen.findByRole('radiogroup', { name: '题集' })
+    expect(within(tabs).getByRole('radio', { name: '真题' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    expect(within(tabs).queryByRole('radio', { name: '其他' })).not.toBeInTheDocument()
+    expect(await screen.findByText('2026 数学一 · 第 7 题')).toBeInTheDocument()
+    expect(screen.getByLabelText('年份')).toBeInTheDocument()
+    const types = screen.getByRole('radiogroup', { name: '数学类别' })
+    expect(
+      within(types)
+        .getAllByRole('radio')
+        .map((r) => r.textContent),
+    ).toEqual(['全部', '数一'])
+
+    await userEvent.click(within(tabs).getByRole('radio', { name: '张宇1000题' }))
+    expect(
+      await screen.findByRole('heading', { name: '强化篇 · 第一章 函数极限 · 第 3 题' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: '强化篇 · 第一章 函数极限', level: 2 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('题号未知的教辅题')).toBeInTheDocument()
+    expect(screen.queryByLabelText('年份')).not.toBeInTheDocument()
+    const bookTypes = screen.getByRole('radiogroup', { name: '数学类别' })
+    expect(
+      within(bookTypes)
+        .getAllByRole('radio')
+        .map((r) => r.textContent),
+    ).toEqual(['全部', '数一'])
+    await userEvent.click(within(bookTypes).getByRole('radio', { name: '数一' }))
+    await vi.waitFor(() =>
+      expect(
+        fetch.mock.calls.some(
+          ([url]) => /collection=zhangyu-1000/.test(String(url)) && /math_type=1/.test(String(url)),
+        ),
+      ).toBe(true),
+    )
+    expect(screen.queryByText('2026 数学一 · 第 7 题')).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/null|undefined/)
+    const urls = fetch.mock.calls
+      .map(([url]) => String(url))
+      .filter((u) => u.startsWith('/api/bank?'))
+    expect(urls.every((u) => u.includes('collection='))).toBe(true)
+  })
+
   it('asks before showing the analysis and reveals it when not yet allowed', async () => {
     const fetch = mockServer()
     renderAt('/bank?open=src-2026-7')
@@ -56,10 +105,21 @@ describe('topics page', () => {
     renderAt('/topics/a1')
     expect(await screen.findByText('乘除因子中可用等价无穷小整体替换。')).toBeInTheDocument()
     expect(screen.getByText('需要关注')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '在题库中查看全部 12 题' })).toHaveAttribute(
-      'href',
-      '/bank?topic=a1',
+    // 按题集分开：顺序跟随题集列表（真题在前），题数来自各题集计数，不相加
+    const tabs = await screen.findByRole('group', { name: '题集' })
+    expect(within(tabs).getByRole('button', { name: '真题 9 题' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
     )
+    expect(screen.getByRole('link', { name: '在题库中查看真题的全部 9 题' })).toHaveAttribute(
+      'href',
+      '/bank?collection=zhenti&topic=a1',
+    )
+    await userEvent.click(within(tabs).getByRole('button', { name: '张宇1000题 5 题' }))
+    expect(
+      await screen.findByRole('link', { name: /^强化篇 · 第一章 函数极限 · 第 3 题/ }),
+    ).toHaveAttribute('href', '/bank?collection=zhangyu-1000&topic=a1&open=zy-q-3')
+    expect(document.body.textContent).not.toMatch(/12 题/)
     await userEvent.type(screen.getByPlaceholderText('搜索考点名称或别名'), '代换')
     expect(
       within(screen.getByLabelText('考点目录')).getByText('等价无穷小替换'),

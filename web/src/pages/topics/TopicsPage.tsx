@@ -1,7 +1,8 @@
 import { ChevronRight, Search } from 'lucide-react'
 import { Fragment, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
-import { useBank, useCatalog, useTopic } from '../../api/queries'
+import { useBank, useBankCollections, useCatalog, useTopic } from '../../api/queries'
+import type { TopicResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -42,25 +43,57 @@ function SearchResults({ index, query }: { index: CatalogIndex; query: string })
   )
 }
 
-function RelatedQuestions({ topicId, total }: { topicId: string; total: number }) {
-  const { data } = useBank({ mathType: '', year: '', topic: topicId }, 0, 6)
-  if (!total) return <p className={styles.muted}>题库里还没有关联到这个考点的题目。</p>
+/**
+ * 题库中的关联题：按题集分开看，题数来自 collection_counts（各题集分别计数，不相加）。
+ */
+function RelatedQuestions({
+  topicId,
+  counts,
+}: {
+  topicId: string
+  counts: TopicResponse['collection_counts']
+}) {
+  const { data: collections } = useBankCollections()
+  // 按题集的显示顺序排列，只列有关联题的题集
+  const groups = (collections ?? [])
+    .map((c) => ({ ...c, bank: counts.find((n) => n.collection_id === c.id)?.bank ?? 0 }))
+    .filter((c) => c.bank > 0)
+  const [picked, setPicked] = useState<string | null>(null)
+  const current = groups.find((c) => c.id === picked) ?? groups[0]
+  const { data } = useBank(
+    { collection: current?.id ?? '', mathType: '', year: '', topic: topicId },
+    0,
+    6,
+  )
+  if (!collections) return <p className={styles.muted}>正在读取…</p>
+  if (!current) return <p className={styles.muted}>题库里还没有关联到这个考点的题目。</p>
+  const bankLink = `/bank?collection=${encodeURIComponent(current.id)}&topic=${encodeURIComponent(topicId)}`
   return (
     <>
+      <div className={styles.collectionTabs} role="group" aria-label="题集">
+        {groups.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            aria-pressed={c.id === current.id}
+            onClick={() => setPicked(c.id)}
+          >
+            {c.name} <span>{c.bank} 题</span>
+          </button>
+        ))}
+      </div>
       <ul className={styles.related}>
         {data?.items.map((card) => (
           <li key={card.id}>
-            <Link
-              to={`/bank?math_type=${card.math_type}&year=${card.year}&open=${encodeURIComponent(card.id)}`}
-            >
-              {bankTitle(card)}
+            <Link to={`${bankLink}&open=${encodeURIComponent(card.id)}`}>
+              {bankTitle(card) || '题目（未标注题号）'}
               {card.question_type && <small>{card.question_type}</small>}
             </Link>
           </li>
         ))}
       </ul>
-      <ButtonLink size="sm" to={`/bank?topic=${encodeURIComponent(topicId)}`}>
-        在题库中查看全部 {total} 题
+      <ButtonLink size="sm" to={bankLink}>
+        在题库中查看{current.name}的全部 {current.bank} 题
       </ButtonLink>
     </>
   )
@@ -177,7 +210,11 @@ function TopicDetail({ index, topicId }: { index: CatalogIndex; topicId: string 
         </Card>
         <Card padded aria-label="题库中的相关题目">
           <h3>题库中的相关题目</h3>
-          <RelatedQuestions topicId={topic.id} total={counts.bank} />
+          <RelatedQuestions
+            key={topic.id}
+            topicId={topic.id}
+            counts={data.collection_counts ?? []}
+          />
         </Card>
       </div>
 

@@ -115,10 +115,22 @@ export const useImportPaper = () =>
 
 export const useBank = (filter: BankFilter, offset: number, limit: number) =>
   useQuery({
-    queryKey: ['bank', filter.mathType, filter.year, filter.topic, offset, limit],
+    queryKey: [
+      'bank',
+      filter.collection,
+      filter.mathType,
+      filter.year,
+      filter.topic,
+      offset,
+      limit,
+    ],
     queryFn: () => endpoints.bank(filter, offset, limit),
+    enabled: Boolean(filter.collection),
     placeholderData: keepPreviousData,
   })
+
+export const useBankCollections = () =>
+  useQuery({ queryKey: ['bank', 'collections'], queryFn: endpoints.bankCollections })
 
 export const useBankTopics = (ids: string[]) =>
   useQuery({

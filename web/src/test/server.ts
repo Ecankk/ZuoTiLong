@@ -2,6 +2,7 @@ import { vi } from 'vitest'
 import type {
   AgentModels,
   BankCard,
+  BankCollection,
   CatalogNode,
   Preferences,
   PreferencesChange,
@@ -63,9 +64,11 @@ export function mockServer(
       const found = questionDetails.find((q) => q.question.id === match![1])
       return found ? json(found) : notFound
     }
+    if (path === '/api/bank/collections') return json(bankCollections)
     if (path === '/api/bank') {
       const items = bankCards.filter(
         (card) =>
+          card.collection_id === url.searchParams.get('collection') &&
           (!url.searchParams.get('math_type') ||
             String(card.math_type) === url.searchParams.get('math_type')) &&
           (!url.searchParams.get('year') || card.year === url.searchParams.get('year')),
@@ -123,6 +126,7 @@ export const bankCards: BankCard[] = [
     analysis_text: r`$f'(x)=2x$，所以 $f'(1)=2$。`,
     question_type: '选择题',
     max_score: 5,
+    collection_id: 'zhenti',
   },
   {
     id: 'math1-2020-01',
@@ -135,7 +139,68 @@ export const bankCards: BankCard[] = [
     analysis_allowed: false,
     question_type: null,
     max_score: null,
+    collection_id: 'zhenti',
   },
+  {
+    id: 'zy-q-3',
+    math_type: 1,
+    year: '',
+    number: 0,
+    can_view: true,
+    reserved: false,
+    reason: '',
+    analysis_allowed: true,
+    question_text: r`求 $\lim_{x\to0}\frac{\sin x}{x}$。`,
+    question_type: '计算题',
+    max_score: null,
+    collection_id: 'zhangyu-1000',
+    book: {
+      title: '张宇1000题',
+      edition: null,
+      part: '强化篇',
+      chapter: '第一章 函数极限',
+      number: '3',
+      locator: null,
+    },
+  },
+  {
+    id: 'zy-q-x',
+    math_type: 1,
+    year: '',
+    number: 0,
+    can_view: true,
+    reserved: false,
+    reason: '',
+    analysis_allowed: true,
+    question_text: '题号未知的教辅题',
+    question_type: null,
+    max_score: null,
+    collection_id: 'zhangyu-1000',
+    book: { title: null, edition: null, part: null, chapter: null, number: null, locator: null },
+  },
+]
+
+export const bankCollections: BankCollection[] = [
+  {
+    id: 'zhenti',
+    name: '真题',
+    kind: 'exam',
+    total: 2,
+    ready: 2,
+    math_types: [
+      { math_type: 1, total: 2, ready: 2 },
+      { math_type: 2, total: 0, ready: 0 },
+    ],
+  },
+  {
+    id: 'zhangyu-1000',
+    name: '张宇1000题',
+    kind: 'book',
+    total: 2,
+    ready: 2,
+    math_types: [{ math_type: 1, total: 2, ready: 2 }],
+  },
+  { id: 'other', name: '其他', kind: 'other', total: 0, ready: 0 },
 ]
 
 const catalogTopic = { topic_id: 'a1', name: '等价无穷小替换', role: 'primary' }
@@ -174,6 +239,10 @@ const topicDetail = (node: CatalogNode): TopicResponse => ({
     attempt_count: 3,
   },
   question_counts: { completed: 3, bank: 12 },
+  collection_counts: [
+    { collection_id: 'zhangyu-1000', bank: 5, ready: 5, completed: 0 },
+    { collection_id: 'zhenti', bank: 9, ready: 9, completed: 3 },
+  ],
   practice_counts: {
     pending: 0,
     grading: 0,

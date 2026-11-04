@@ -340,7 +340,7 @@ export type DataStatus = {
 /** GET /api/bank?…&offset&limit 的一项（public_bank view=library + 题型/分值） */
 export type BankCard = {
   id: string
-  math_type: MathType
+  math_type: MathType | 0 // 0：没有真题身份（教辅题等）
   year: string
   number: number
   can_view: boolean
@@ -355,6 +355,30 @@ export type BankCard = {
   analysis_image?: string
   question_type: string | null
   max_score: number | null
+  /** 所属题集；教辅题另有书内定位（真题没有） */
+  collection_id: string
+  book?: BookLocator
+}
+
+/** 教辅题的书内定位，各字段都可能为空 */
+export type BookLocator = {
+  title: string | null
+  edition: string | null
+  part: string | null
+  chapter: string | null
+  number: string | null
+  locator: string | null
+}
+
+/** GET /api/bank/collections 的一项，已按显示顺序返回 */
+export type BankCollection = {
+  id: string
+  name: string
+  kind: 'exam' | 'book' | 'other' | 'example'
+  total: number
+  ready: number
+  /** 各数学类别的题数，稀疏（没有题的类别不出现）。B16 起提供 */
+  math_types?: { math_type: MathType; total: number; ready: number }[]
 }
 
 /** GET /api/bank/topics?bank_id=… */
@@ -401,5 +425,7 @@ export type TopicResponse = {
     attempt_count: number
   }
   question_counts: { completed: number; bank: number }
+  /** 各题集的关联题数；稀疏，不能相加当总数 */
+  collection_counts: { collection_id: string; bank: number; ready: number; completed: number }[]
   practice_counts: PracticeCounts
 }

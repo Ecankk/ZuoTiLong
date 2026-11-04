@@ -8,6 +8,7 @@ import type {
   AgentModels,
   AttemptBody,
   BankCard,
+  BankCollection,
   BankTopics,
   CatalogNode,
   CatalogPage,
@@ -31,7 +32,8 @@ import type {
 
 export type PracticeGrouping = 'topic' | 'paper'
 export type PaperScope = '0' | '1'
-export type BankFilter = { mathType: string; year: string; topic: string }
+/** collection 必填：不同题集不混在一起浏览 */
+export type BankFilter = { collection: string; mathType: string; year: string; topic: string }
 
 const enc = encodeURIComponent
 
@@ -75,8 +77,10 @@ export const endpoints = {
     if (filter.mathType) query.set('math_type', filter.mathType)
     if (filter.year) query.set('year', filter.year)
     if (filter.topic) query.set('topic_id', filter.topic)
+    query.set('collection', filter.collection)
     return request<Page<BankCard>>(`/api/bank?${query}`)
   },
+  bankCollections: () => request<BankCollection[]>('/api/bank/collections'),
   bankTopics: (ids: string[]) =>
     request<BankTopics>(`/api/bank/topics?${ids.map((id) => `bank_id=${enc(id)}`).join('&')}`),
   /** 完整考点目录：接口每页最多 100 项，分页取全后在前端建树 */

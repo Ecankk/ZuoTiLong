@@ -1,16 +1,6 @@
 /** 推理强度从浅到深的顺序，用来在换模型时找最接近的档位。 */
 const effortOrder = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 
-const labels: Record<string, string> = {
-  xhigh: '最深入（较慢）',
-  high: '深入',
-  medium: '标准',
-  low: '快速',
-}
-
-/** 中文名；不认识的档位原样显示。 */
-export const effortLabel = (effort: string) => labels[effort] ?? effort
-
 /**
  * 当前档位不在新模型支持的列表里时，选最接近的；距离相同取更深的一档。
  * 当前档位或候选都不在已知顺序里时，取第一个。

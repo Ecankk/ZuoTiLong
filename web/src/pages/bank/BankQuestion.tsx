@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { endpoints } from '../../api/endpoints'
 import { useAction } from '../../api/queries'
-import type { BankCard, BankTopics } from '../../api/types'
+import type { BankCard, BankTopics, BookLocator } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button } from '../../components/ui/Button'
 import { Chip } from '../../components/ui/Chip'
@@ -16,12 +16,25 @@ import styles from './BankPage.module.css'
 
 export type BankTopic = BankTopics['items'][number]['topics'][number]
 
-export const bankTitle = (card: BankCard) =>
-  `${card.year} ${mathTypeName(card.math_type)} · 第 ${card.number} 题`
+/** 教辅题的篇章，如“强化篇 · 第一章 函数极限”；不知道就是空字符串 */
+export const bookSection = (book: BookLocator | undefined) =>
+  [book?.part, book?.chapter].filter(Boolean).join(' · ')
 
-/** 纯文字题用 question_text；旧图片题的 stem 只是“年份 类别 第N题 · 考点”的说明，不当题干显示。 */
-const questionText = (card: BankCard) =>
-  card.question_text ?? (card.question_image ? null : card.stem)
+/**
+ * 题目标题：真题用“年份 类别 · 第N题”，教辅题用“篇章 · 原题号”。
+ * 缺少的部分不显示，全都不知道时返回空字符串。
+ */
+export function bankTitle(card: BankCard) {
+  if (card.book) {
+    const number = card.book.number?.trim()
+    const label = number ? (/^\d+$/.test(number) ? `第 ${number} 题` : number) : ''
+    return [bookSection(card.book), label].filter(Boolean).join(' · ')
+  }
+  if (!card.year || !card.math_type || !card.number) return ''
+  return `${card.year} ${mathTypeName(card.math_type)} · 第 ${card.number} 题`
+}
+
+/* 纯文字题用 question_text；旧图片题的 stem 只是“年份 类别 第N题 · 考点”的说明，有图时不当题干显示。 */
 
 function Meta({ card }: { card: BankCard }) {
   return (
@@ -62,16 +75,20 @@ function Hidden({ card }: { card: BankCard }) {
 }
 
 function QuestionBody({ card, full }: { card: BankCard; full: boolean }) {
+  // 有些题（如示例题）没有原题图片：图片读不到时改用文字说明
+  const [imageFailed, setImageFailed] = useState(false)
   if (!card.can_view) return <Hidden card={card} />
-  const text = questionText(card)
+  const showImage = Boolean(card.question_image) && !imageFailed
+  const text = card.question_text ?? (showImage ? null : card.stem)
   return (
     <div className={cx(styles.body, !full && styles.clamped)}>
-      {card.question_image && (
+      {showImage && (
         <img
           className={styles.questionImage}
           src={card.question_image}
-          alt={`${bankTitle(card)}原题`}
+          alt={`${bankTitle(card) || '题目'}原题`}
           loading="lazy"
+          onError={() => setImageFailed(true)}
         />
       )}
       {text && (
@@ -147,7 +164,7 @@ export function BankQuestionCard({
   return (
     <article className={styles.card}>
       <header className={styles.cardHead}>
-        <h3>{bankTitle(card)}</h3>
+        {bankTitle(card) && <h3>{bankTitle(card)}</h3>}
         <Meta card={card} />
       </header>
       <QuestionBody card={card} full={false} />
@@ -176,7 +193,7 @@ export function BankQuestionDialog({
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
           <header className={styles.dialogHead}>
-            <Dialog.Title>{bankTitle(card)}</Dialog.Title>
+            <Dialog.Title>{bankTitle(card) || '题目'}</Dialog.Title>
             <Dialog.Close asChild>
               <button type="button" className={styles.close} aria-label="关闭">
                 <X size={18} aria-hidden />

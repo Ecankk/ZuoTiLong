@@ -140,8 +140,13 @@ export const useBankTopics = (ids: string[]) =>
   })
 
 /** 目录很少变化，取一次后长期缓存 */
-export const useCatalog = () =>
-  useQuery({ queryKey: ['knowledge', 'catalog'], queryFn: endpoints.catalog, staleTime: Infinity })
+export const useCatalog = (enabled = true) =>
+  useQuery({
+    queryKey: ['knowledge', 'catalog'],
+    queryFn: endpoints.catalog,
+    staleTime: Infinity,
+    enabled,
+  })
 
 export const useTopic = (topicId: string | undefined) =>
   useQuery({

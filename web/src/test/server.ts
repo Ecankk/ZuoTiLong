@@ -82,7 +82,7 @@ export function mockServer(
           .getAll('bank_id')
           .map((bank_id) => ({ bank_id, status: 'ready', topics: [catalogTopic] })),
       })
-    if (path === '/api/knowledge/catalog')
+    if (path === '/api/knowledge/catalog/tree' || path === '/api/knowledge/catalog')
       return json({ release_id: 'r1', total: catalogNodes.length, items: catalogNodes })
     match = path.match(/^\/api\/knowledge\/topics\/([^/]+)$/)
     if (match) {

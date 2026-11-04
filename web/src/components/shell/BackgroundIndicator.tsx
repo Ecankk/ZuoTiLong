@@ -47,8 +47,8 @@ function Message({ text }: { text: string }) {
 
 const needsAttention = (task: Task) => task.status === 'failed' || task.status === 'blocked'
 
-/** 没完成的任务只给一个处理按钮：能重试就重试，排队中的可以取消。 */
-function TaskButton({ task }: { task: Task }) {
+/** 按后端给的 allowed_actions 显示处理按钮：重试，和次要的取消（排队中为“取消等待”）。 */
+function TaskButtons({ task }: { task: Task }) {
   const client = useQueryClient()
   const action = useMutation({
     mutationFn: (name: 'retry' | 'cancel') => endpoints.taskAction(task.id, name),
@@ -58,18 +58,26 @@ function TaskButton({ task }: { task: Task }) {
       void client.invalidateQueries({ queryKey: ['papers'] })
     },
   })
-  const name =
-    needsAttention(task) && task.allowed_actions.includes('retry')
-      ? 'retry'
-      : task.status === 'queued' && task.allowed_actions.includes('cancel')
-        ? 'cancel'
-        : null
-  if (!name) return null
+  const canRetry = needsAttention(task) && task.allowed_actions.includes('retry')
+  const canCancel = task.allowed_actions.includes('cancel')
+  if (!canRetry && !canCancel) return null
   return (
     <>
-      <Button size="sm" disabled={action.isPending} onClick={() => action.mutate(name)}>
-        {name === 'retry' ? '再试一次' : '取消等待'}
-      </Button>
+      {canRetry && (
+        <Button size="sm" disabled={action.isPending} onClick={() => action.mutate('retry')}>
+          再试一次
+        </Button>
+      )}
+      {canCancel && (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={action.isPending}
+          onClick={() => action.mutate('cancel')}
+        >
+          {task.status === 'queued' ? '取消等待' : '不再处理'}
+        </Button>
+      )}
       {action.error && <span className={styles.problemText}>{action.error.message}</span>}
     </>
   )
@@ -85,7 +93,7 @@ function TaskList({ title, items }: { title: string; items: Task[] }) {
           <li key={task.id}>
             {task.progress.message}
             {task.error && <span className={styles.problemText}>{task.error}</span>}
-            <TaskButton task={task} />
+            <TaskButtons task={task} />
           </li>
         ))}
       </ul>

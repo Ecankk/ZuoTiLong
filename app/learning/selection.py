@@ -65,15 +65,21 @@ def capture(conn,data,inputs):
                 if recalled['next_offset'] is None:break
                 offset=recalled['next_offset']
             chosen=[]
-            for *_,item in sorted(items,key=lambda v:v[:4])[:5]:
+            for *_,item in sorted(items,key=lambda v:v[:4]):
                 bid=item['id'];annotation=annotations.current(conn,data,bid)
-                materials=annotations.materials(conn,data,bid)
-                brief={'bank_id':bid,'annotation_id':item['annotation_id'],'question_text':materials['question']['text'],
+                try:materials=annotations.materials(conn,data,bid)
+                except ValueError as exc:
+                    if str(exc)=='题库缺少可阅读题干':continue
+                    raise
+                question=materials.get('question') or {}
+                if not question.get('text') and not question.get('path'):continue
+                brief={'bank_id':bid,'annotation_id':item['annotation_id'],'question_text':question.get('text',''),
                     'methods':item['methods'],'checkpoints':item['checkpoints'],'fingerprint':item['fingerprint']}
                 pool.setdefault(bid,dict(brief,binding=material_binding(conn,data,bid,annotation),
-                    reference_answer=materials['answer']['text'] or annotation['analysis'].get('reference_reasoning') or '按固定参考独立核验本次回答范围',
-                    reference_analysis=materials['analysis']['text'] or annotation['analysis'].get('reference_reasoning') or '对照固定材料核验'))
+                    reference_answer=(materials.get('answer') or {}).get('text') or annotation['analysis'].get('reference_reasoning') or '按固定参考独立核验本次回答范围',
+                    reference_analysis=(materials.get('analysis') or {}).get('text') or annotation['analysis'].get('reference_reasoning') or '对照固定材料核验'))
                 chosen.append(bid)
+                if len(chosen)==5:break
             if not chosen:goal['decision']='no_candidate'
             definitions[tid]=nodes[tid]
             goals.append({'goal':goal,'cause':{'first_error':question.get('first_error'),'cause_summary':question.get('cause_summary')},'candidate_ids':chosen})

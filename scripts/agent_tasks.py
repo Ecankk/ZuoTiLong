@@ -31,6 +31,7 @@ def main():
     p=sub.add_parser("import-bank");p.add_argument("directory",type=Path)
     p=sub.add_parser('import-source',help='校验并预演标准题源；仅 --confirm 摘要匹配后写通用库')
     p.add_argument('--source',required=True);p.add_argument('--input',type=Path,required=True)
+    p.add_argument('--collection',required=True,help='目标题集ID；已有题目不可改变归属')
     p.add_argument('--overrides',type=Path);p.add_argument('--asset-root',type=Path)
     choice=p.add_mutually_exclusive_group();choice.add_argument('--dry-run',action='store_true');choice.add_argument('--confirm')
     p.add_argument('--report',type=Path,help='另存不含正文的 JSON 报告')
@@ -64,7 +65,7 @@ def main():
             raise ValueError('旧CLI直接报告写入已停用；请由网页发起任务，再用deliver和context.learning_task.write_ticket交付。')
     if args.command=='import-source':
         from app.bank.source_import import import_source
-        result=import_source(config,args.source,args.input,asset_root=args.asset_root,
+        result=import_source(config,args.source,args.input,collection=args.collection,asset_root=args.asset_root,
                              overrides=args.overrides,confirm=args.confirm)
         output=json.dumps(result,ensure_ascii=False,indent=2)
         if args.report:args.report.write_text(output,encoding='utf8')

@@ -19,19 +19,19 @@ class QuestionIndexService:
         with self.database.session() as conn:
             return {'packages': annotation_cache.listing(conn)}
 
-    def export(self):
+    def export(self,collection=None):
         with self.snapshot() as conn:
-            return annotation_packages.export_package(conn, self.config.data)
+            return annotation_packages.export_package(conn, self.config.data,collection)
 
-    def preview(self, package):
+    def preview(self, package,collection=None):
         with self.snapshot() as conn:
-            return annotation_packages.preview(conn, self.config.data, package)
+            return annotation_packages.preview(conn, self.config.data, package,collection)
 
     def import_package(self, body):
         with self.database.session(write=True,library_write=True) as conn:
             return annotation_packages.import_package(conn, self.config.data, body['package'],
                 trusted_sha256=body['trusted_sha256'], expected_preview_sha256=body['expected_preview_sha256'],
-                confirmed=body['confirmed'])
+                confirmed=body['confirmed'],collection=body.get('collection'))
 
     def set_enabled(self, body):
         with self.database.session(write=True,library_write=True) as conn:

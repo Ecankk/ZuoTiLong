@@ -49,6 +49,12 @@ class FrontendReads:
         self._navigation_lock = Lock()
         self._navigation_key = None
         self._navigation_value = None
+        self._cards_lock=Lock()
+        self._cards_key=self._cards_value=None
+    def close(self):
+        self._navigation_key=self._navigation_value=None
+        self._knowledge_key=self._knowledge_value=None
+        self._cards_key=self._cards_value=None
 
     def _navigation(self):
         # Routed UI resources reuse validated projections while both databases
@@ -176,11 +182,22 @@ class FrontendReads:
             return dict(status='available' if row else 'missing', result_id=row['id'] if row else None,
                         created_at=row['created_at'] if row else None, summary=json.loads(row['payload_json'])['result'] if row else None)
 
-    def _cards(self, conn, paper_id=None):
+    def _cards(self, conn, paper_id=None,*,include_access=True):
+        with self._cards_lock:
+            key=self.rt.workspace.revision()
+            if self._cards_value is None or key!=self._cards_key:self._cards_value={}
+            if include_access not in self._cards_value:
+                value=self._build_cards(conn,include_access=include_access)
+                self._cards_value[include_access]=value
+                self._cards_key=key if key==self.rt.workspace.revision() else None
+            return deepcopy([c for c in self._cards_value[include_access] if paper_id is None or c['paper_id']==paper_id])
+
+    def _build_cards(self, conn, paper_id=None,*,include_access=True):
         values = rows(conn, '''SELECT d.*,p.title paper_title,p.archived_at FROM diagnostic_probes d
             JOIN papers p ON p.id=d.paper_id WHERE (? IS NULL OR d.paper_id=?) ORDER BY d.created_at,d.id''', (paper_id, paper_id))
         states = {}; result = []
         nodes = {n['id']: n for n in index.catalog(conn)}
+        redirects={r['old_id']:r['target_id'] for r in (catalog.document(conn) or {}).get('document',{}).get('redirects',[])}
         for item in values:
             if not self.rt.config.demo and item['paper_id'].startswith('paper-demo-'):
                 continue
@@ -198,11 +215,11 @@ class FrontendReads:
             status = 'inactive' if not current else 'pending' if not latest else 'grading' if not assessed else 'needs_supplement' if assessed.get('correct') is None else 'graded'
             goals = [g for g in plan_goals(conn, state) if conn.execute('SELECT 1 FROM probe_goals WHERE probe_id=? AND goal_id=?', (item['id'], g['id'])).fetchone()]
             topic_ids = {tid for g in goals for tid in json.loads(g['payload_json']).get('topic_ids', [])}
-            resolved = {catalog.resolve(conn, tid) or tid for tid in topic_ids}
+            resolved = {tid if tid in nodes else redirects.get(tid,tid) for tid in topic_ids}
             result.append(dict(id=item['id'], paper_id=pid, paper_title=item['paper_title'], question_id=item['question_id'], bank_id=item['bank_id'],
                                created_at=item['created_at'], status=status, goal_ids=[g['id'] for g in goals],
                                topics=[{'topic_id': tid, 'name': nodes[tid]['name']} for tid in sorted(resolved) if tid in nodes],
-                               access=access(conn, item['bank_id']), latest_attempt_id=latest['id'] if latest else None))
+                               access=access(conn, item['bank_id']) if include_access else None, latest_attempt_id=latest['id'] if latest else None))
         return result
 
     def practices(self, group_by='topic', status=None, paper_id=None, topic_id=None, include_inactive=False, offset=0, limit=20):
@@ -269,15 +286,23 @@ class FrontendReads:
             node = next((n for n in snapshot['nodes'] if n['skill_id'] == canonical), None)
             if node is None:raise ServiceError('考点不存在', 404)
             origin = node['origin']
-            cards = [c for c in self._cards(conn) if any(t['topic_id'] == canonical for t in c['topics'])]
+            cards = [c for c in self._cards(conn,include_access=False) if any(t['topic_id'] == canonical for t in c['topics'])]
         counts = self._navigation()['counts'][canonical]
         return dict(topic=dict(id=canonical, parent_id=node['parent_id'], name=node['label'], kind=origin.get('node_kind', node['scope_level']),
                                definition=origin.get('definition', ''), conditions=origin.get('conditions', []), boundaries=origin.get('boundaries', [])),
                     performance={k: node[k] for k in ('state', 'state_reason', 'successes', 'failures', 'pending', 'attempt_count')},
                     question_counts={v: counts[v] for v in ('completed', 'bank')},
-                    practice_counts=practice_counts(cards))
+                      practice_counts=practice_counts(cards),collection_counts=self._navigation()['collection_counts'][canonical])
 
-    def bank(self, math_type='', year='', topic_id=None, offset=0, limit=20):
+    def collections(self):
+        bank=self._navigation()['bank'];ready={i['bank_id'] for i in bank if i['status']=='ready'}
+        with self.rt.database.session() as conn:
+            return [dict(id=r['id'],name=r['name'],kind=r['kind'],total=r['total'],
+                ready=sum(1 for i in bank if i['collection_id']==r['id'] and i['bank_id'] in ready))
+                for r in conn.execute('''SELECT c.*,count(b.id) total FROM bank_collections c
+                    LEFT JOIN bank_questions b ON b.collection_id=c.id GROUP BY c.id ORDER BY c.sort_order,c.id''')]
+
+    def bank(self, math_type='', year='', topic_id=None, offset=0, limit=20,collection=None):
         if math_type not in ('', '1', '2', '3'):
             raise ValueError('数学类别不合法')
         allowed = None
@@ -289,9 +314,11 @@ class FrontendReads:
             selected=self.rt.knowledge_links._selected(navigation['nodes'],canonical,'subtree')
             allowed={item['bank_id'] for item in navigation['bank'] if any(t['topic_id'] in selected for t in item['topics'])}
         with self.rt.database.session() as conn:
-            ids = [r[0] for r in conn.execute("""SELECT b.id FROM bank_questions b JOIN bank_identity i ON i.bank_id=b.id
-                WHERE b.source!='本地示例题库' AND (?='' OR CAST(i.math_type AS TEXT)=?) AND (?='' OR i.year=?)
-                ORDER BY CAST(i.year AS INTEGER) DESC,i.math_type,i.number,b.id""", (math_type, math_type, year, year))
+            from app.bank.collections import require
+            if collection is not None:require(conn,collection)
+            ids = [r[0] for r in conn.execute("""SELECT b.id FROM bank_questions b LEFT JOIN bank_identity i ON i.bank_id=b.id
+                WHERE (? IS NOT NULL OR b.source!='本地示例题库') AND (?='' OR CAST(i.math_type AS TEXT)=?) AND (?='' OR i.year=?)
+                AND (? IS NULL OR b.collection_id=?) ORDER BY CAST(i.year AS INTEGER) DESC,i.math_type,i.number,b.id""", (collection,math_type, math_type, year, year,collection,collection))
                    if allowed is None or r[0] in allowed]
             result = page(ids, offset, limit)
             result['items'] = [{**public_bank(conn, bid, view='library'), **metadata(conn, bid)} for bid in result['items']]

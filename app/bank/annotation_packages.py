@@ -10,7 +10,8 @@ from app.knowledge import catalog
 from app.storage import annotation_cache as store
 from app.common import now_iso
 
-FORMAT = 'mathlens.question-index/v1'
+FORMAT = 'mathlens.question-index/v2'
+LEGACY_FORMAT = 'mathlens.question-index/v1'
 POLICY = 'explicitly_accepted_source_index_not_locally_regraded'
 SHA = re.compile(r'^[0-9a-f]{64}$')
 ENTRY_FIELDS = {'role_hashes', 'dependencies', 'bindings', 'method_hashes',
@@ -37,7 +38,7 @@ def dependencies_match(conn, entry, *, read_view=None):
 
 def validate_package(package):
     if (not isinstance(package, dict) or set(package) != {'schema_version', 'provenance', 'dependency_fields', 'entries', 'sha256'}
-            or package['schema_version'] != FORMAT or package['provenance'] != POLICY
+            or package['schema_version'] not in (FORMAT,LEGACY_FORMAT) or package['provenance'] != POLICY
             or package['dependency_fields'] != list(annotations.DEPENDENCY_FIELDS)):
         raise ValueError('共享题目标注索引字段或版本不合法')
     if len(catalog.encode(package).encode()) > 16 * 1024 * 1024:
@@ -49,8 +50,11 @@ def validate_package(package):
         raise ValueError('共享标注索引条目数量不合法')
     seen = set()
     for entry in entries:
-        if not isinstance(entry, dict) or set(entry) != ENTRY_FIELDS:
+        fields=ENTRY_FIELDS|{'collection_id'} if package['schema_version']==FORMAT else ENTRY_FIELDS
+        if not isinstance(entry, dict) or set(entry) != fields:
             raise ValueError('共享索引不能夹带题干、推导、个人信息或未知字段')
+        if 'collection_id' in entry and (not isinstance(entry['collection_id'],str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}',entry['collection_id'])):
+            raise ValueError('共享索引题集ID不合法')
         if (not isinstance(entry['sha256'], str) or not SHA.fullmatch(entry['sha256'])
                 or _sha(entry) != entry['sha256'] or entry['sha256'] in seen):
             raise ValueError('共享索引条目散列不匹配或重复')
@@ -102,9 +106,11 @@ def _local_proof(conn, annotation, actual):
     return evidence_digest(proof)
 
 
-def export_package(conn, data):
+def export_package(conn, data,collection=None):
+    from app.bank.collections import require
+    if collection is not None:require(conn,collection)
     entries = {}
-    for row in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id"):
+    for row in conn.execute("SELECT id,collection_id FROM bank_questions WHERE source!='本地示例题库' AND (? IS NULL OR collection_id=?) ORDER BY id",(collection,collection)):
         try:
             value = annotations.current(conn, data, row[0])
             if not value or value['analysis']['status'] != 'ready':
@@ -112,6 +118,7 @@ def export_package(conn, data):
             if value.get('cache_provenance'):
                 item = store.entry(conn, store.record(conn, value['id']))
                 if item:
+                    item=dict(item,collection_id=row['collection_id']);item['sha256']=_sha(item)
                     entries[item['sha256']] = item
                 continue
             actual = annotations.materials(conn, data, row[0])
@@ -128,7 +135,7 @@ def export_package(conn, data):
             stages = set(b['stages']) | (set(previous['stages']) if previous else set())
             canonical[tid] = {'topic_id': tid, 'role': role, 'stages': [s for s in annotations.STAGES if s in stages]}
         bindings = list(canonical.values())
-        entry = {'role_hashes': role_hashes(actual),
+        entry = {'collection_id':row['collection_id'],'role_hashes': role_hashes(actual),
                  'dependencies': annotations.concept_dependencies(conn, [b['topic_id'] for b in bindings]),
                  'bindings': sorted(bindings, key=lambda b: b['topic_id']),
                  'method_hashes': sorted({catalog.digest(m) for m in value['analysis']['methods']}),
@@ -146,7 +153,9 @@ def export_package(conn, data):
     return package
 
 
-def preview(conn, data, package):
+def preview(conn, data, package,collection=None):
+    from app.bank.collections import require
+    if collection is not None:require(conn,collection)
     description = validate_package(package)
     release = catalog.document(conn)
     if not release:
@@ -160,16 +169,17 @@ def preview(conn, data, package):
                        or nodes[catalog.resolve(conn, b['topic_id'])]['kind'] != 'atom' for b in entry['bindings'])):
             issues['knowledge_mismatch'] += 1
             continue
-        lookup.setdefault(catalog.digest(entry['role_hashes']), []).append(entry)
+        if collection is None or entry.get('collection_id',collection)==collection:
+            lookup.setdefault(catalog.digest(entry['role_hashes']), []).append(entry)
     matches = []
-    for row in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id"):
+    for row in conn.execute("SELECT id,collection_id FROM bank_questions WHERE source!='本地示例题库' AND (? IS NULL OR collection_id=?) ORDER BY id",(collection,collection)):
         bid = row[0]
         try:
             actual = annotations.materials(conn, data, bid)
         except ValueError:
             issues['local_material_unreadable'] += 1
             continue
-        candidates = lookup.get(catalog.digest(role_hashes(actual)), [])
+        candidates = [e for e in lookup.get(catalog.digest(role_hashes(actual)), []) if e.get('collection_id',row['collection_id'])==row['collection_id']]
         if not candidates:
             continue
         # Two differing index judgments about the exact same materials require
@@ -187,16 +197,16 @@ def preview(conn, data, package):
         matches.append({'bank_id': bid, 'entry_sha256': entry['sha256'],
                         'content_revision': actual['question']['sha256'], 'material_revision': catalog.digest(actual)})
     token = catalog.digest({'package_sha256': package['sha256'], 'catalog_revision': release['id'], 'matches': matches,
-                            'issues': dict(issues)})
+                            'issues': dict(issues),'collection_id':collection})
     return {**description, 'catalog_revision': release['id'], 'matched_local_records': len(matches),
-            'matches': matches, 'omitted': dict(issues), 'preview_sha256': token}
+            'matches': matches, 'omitted': dict(issues), 'preview_sha256': token,'collection_id':collection}
 
 
-def import_package(conn, data, package, *, trusted_sha256, expected_preview_sha256, confirmed):
+def import_package(conn, data, package, *, trusted_sha256, expected_preview_sha256, confirmed,collection=None):
     if confirmed is not True or trusted_sha256 != package.get('sha256'):
         raise ValueError('请明确接受共享标注来源及可信散列；不会冒充本机重新核验')
     with catalog.atomic(conn):
-        prepared = preview(conn, data, package)
+        prepared = preview(conn, data, package,collection)
         old = conn.execute('SELECT 1 FROM annotation_cache_imports WHERE package_sha256=? AND preview_sha256=?',
                            (package['sha256'], expected_preview_sha256)).fetchone()
         if old and not prepared['matches']:

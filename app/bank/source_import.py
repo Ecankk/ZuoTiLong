@@ -39,7 +39,9 @@ def _state(conn):
             for name in ('bank_questions', 'bank_resources', 'bank_identity', 'bank_source_records') if name in tables}
 
 
-def preview(conn, batch, corrections, applied, excluded):
+def preview(conn, batch, corrections, applied, excluded, collection):
+    from app.bank.collections import require
+    require(conn,collection)
     state = _state(conn)
     current = {r['bank_id']: r for r in state.get('bank_source_records', [])}
     questions = {r['id']: r for r in state.get('bank_questions', [])}
@@ -47,7 +49,7 @@ def preview(conn, batch, corrections, applied, excluded):
     excluded_ids = {r['source_uid'] for r in excluded}
     report = dict(source_id=batch[0]['source_id'], revision=batch[0]['revision'], added=[], updated=[], unchanged=[],
                   missing_fields=[], identity_conflicts=[], duplicate_candidates=[], excluded=excluded,
-                  overrides_applied=applied, needs_annotation=[])
+                  overrides_applied=applied, needs_annotation=[],collection_id=collection,collection_conflicts=[])
     content_groups = {}
     for row in current.values():
         old = json.loads(row['record_json'])
@@ -59,6 +61,12 @@ def preview(conn, batch, corrections, applied, excluded):
             continue
         bid = records.bank_id(record)
         old = current.get(bid)
+        if bid in questions:
+            stored=questions[bid].get('collection_id')
+            if stored is None:
+                from app.bank.collections import initial
+                stored=initial(questions[bid],json.loads(old['record_json']) if old else None)
+            if stored!=collection:report['collection_conflicts'].append(dict(bank_id=bid,existing=stored,requested=collection))
         if bid in questions and not old:
             raise ValueError('Bank ID collision with an unmanaged record: ' + bid)
         changes = [v for v in applied if v['source_uid'] == record['source_uid']]
@@ -146,6 +154,10 @@ def _apply(conn, config, batch, report, asset_root):
         copy_schema(schema, conn, LIBRARY_TABLES)
     from app.storage.library_identity import initialize
     initialize(conn)
+    from app.bank.collections import initialize as collections
+    collections(conn)
+    from app.storage.navigation_index import initialize as navigation
+    navigation(conn)
     excluded = {r['source_uid'] for r in report['excluded']}
     for record in batch:
         bid = records.bank_id(record)
@@ -154,6 +166,7 @@ def _apply(conn, config, batch, report, asset_root):
         manifest = _copy_assets(record, asset_root, config.library_dir)
         metadata = {k: record[k] for k in ('schema', 'source_id', 'revision', 'source_uid', *records.METADATA)}
         metadata.update(locator=record['locator'], original_source=record['original']['source_text'], resources=manifest)
+        if 'book' in record:metadata['book']=record['book']
         changes = [v for v in report['overrides_applied'] if v['source_uid'] == record['source_uid']]
         sha = records.digest([record, changes])
         conn.execute('''INSERT INTO bank_questions(id,source,source_ref,stem,answer,explanation,tags_json,created_at)
@@ -161,6 +174,7 @@ def _apply(conn, config, batch, report, asset_root):
             stem=excluded.stem,answer=excluded.answer,explanation=excluded.explanation,tags_json=excluded.tags_json''',
             (bid, record['source_id'], record['source_uid'], manifest['question']['text'], manifest['answer']['text'],
              manifest['analysis']['text'], records.canonical(record['tags']), now_iso()))
+        conn.execute('UPDATE bank_questions SET collection_id=? WHERE id=?',(report['collection_id'],bid))
         paths = [manifest[r].get('display_image', manifest[r]['images'][0])['path'] if manifest[r]['images'] else ''
                  for r in ('question', 'analysis', 'answer')]
         conn.execute('''INSERT INTO bank_resources VALUES(?,?,?,?,?) ON CONFLICT(bank_id) DO UPDATE SET
@@ -179,20 +193,21 @@ def _apply(conn, config, batch, report, asset_root):
                      (bid, sha, records.canonical(record), records.canonical(changes), now_iso()))
 
 
-def import_source(config, source_id, input_path, *, asset_root=None, overrides=None, confirm=None):
+def import_source(config, source_id, input_path, *, collection, asset_root=None, overrides=None, confirm=None):
     asset_root = Path(asset_root or Path(input_path).parent)
     batch, corrections, applied, excluded = records.load(input_path, source_id, asset_root, overrides)
     with library(config) as conn:
         conn.execute('BEGIN')
-        report = preview(conn, batch, corrections, applied, excluded)
+        report = preview(conn, batch, corrections, applied, excluded,collection)
     if confirm is None:
         return dict(report, applied=False)
     if confirm != report['plan_sha256']:
         raise ValueError('Preview changed; rerun --dry-run and confirm the new plan_sha256')
+    if report['collection_conflicts']:raise ValueError('Collection conflict: existing questions cannot change collection')
     with library(config, write=True) as conn:
         conn.execute('BEGIN IMMEDIATE')
         try:
-            locked = preview(conn, batch, corrections, applied, excluded)
+            locked = preview(conn, batch, corrections, applied, excluded,collection)
             if locked['plan_sha256'] != confirm:
                 raise ValueError('Library changed after preview; rerun --dry-run')
             _apply(conn, config, batch, report, asset_root)

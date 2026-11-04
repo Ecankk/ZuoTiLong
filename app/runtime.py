@@ -48,6 +48,7 @@ class AppRuntime:
 
     def start(self) -> None:
         self.database.initialize()
+        self.knowledge_links.prepare_index()
         interrupt_old_progress(self.config.data)
         if self.bridge is None and self.agent_factory:
             self.bridge = self.agent_factory(self.config.root, self.config.data)
@@ -61,6 +62,7 @@ class AppRuntime:
 
     def close(self) -> None:
         self.events.close()
+        self.frontend.close()
         self.workspace.close()
         if self.mobile:
             self.mobile.stop()

@@ -13,14 +13,14 @@ def listing(rt=Depends(runtime)):
 
 
 @router.get('/export')
-def export(rt=Depends(runtime)):
-    package = rt.question_index.export()
+def export(collection:str|None=None,rt=Depends(runtime)):
+    package = rt.question_index.export(collection)
     return JSONResponse(package, headers={'Content-Disposition': 'attachment; filename="question-index-' + package['sha256'][:12] + '.json"'})
 
 
 @router.post('/preview')
 def preview(body: QuestionIndexPreview, rt=Depends(runtime)):
-    return rt.question_index.preview(body.package)
+    return rt.question_index.preview(body.package,body.collection)
 
 
 @router.post('/import')

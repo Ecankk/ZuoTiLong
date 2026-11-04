@@ -86,8 +86,8 @@ class FrontendResourceTests(unittest.TestCase):
         value=question(); bid=bank_id(value)
         path=self.f.root/'standard.jsonl';path.write_text(canonical(value),encoding='utf8')
         config=self.app.state.runtime.config
-        plan=import_source(config,'S02',path)
-        import_source(config,'S02',path,confirm=plan['plan_sha256'])
+        plan=import_source(config,'S02',path,collection='zhenti')
+        import_source(config,'S02',path,collection='zhenti',confirm=plan['plan_sha256'])
         self.conn.execute("UPDATE papers SET title='2026 数学一',source_name='2026 数学一.pdf' WHERE id='paper-test'")
         self.conn.execute("UPDATE diagnostic_probes SET bank_id=?",(bid,));self.conn.commit()
         card=self.http.get('/api/papers/paper-test/questions').json()['items'][0]

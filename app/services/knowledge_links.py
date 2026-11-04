@@ -5,17 +5,13 @@ cached by database content and material stat versions, not by an expiry timer.
 No reasoning, answers, paths, or personal ability judgments leave this service.
 """
 from copy import deepcopy
-import hashlib
 import json
-import os
-from pathlib import Path
 from threading import RLock
 
 from app.bank import annotations
 from app.bank.access import aliases, access, preferences
 from app.knowledge import catalog, index
 from app.storage.knowledge_reads import navigation_snapshot
-from app.storage.boundaries import library_root, material_path, schema_rows
 
 
 def _json(text, default=None):
@@ -44,89 +40,43 @@ class KnowledgeLinksService:
         self._bank_key = None
         self._bank = None
 
-    def _signature(self, conn):
-        """Include actual mutable content and every referenced image digest.
+    def _build_bank_item(self,conn,row,nodes,view):
+        names={n['id']:n['name'] for n in nodes}
+        group=sorted(view.aliases(row['id']));bid=row['id']
+        try:annotation=annotations.current(conn,self.config.data,bid,read_view=view)
+        except (ValueError,OSError):annotation=None
+        state='unannotated'
+        if annotation:state=annotation['analysis']['status']
+        elif conn.execute('SELECT 1 FROM question_annotation_links WHERE bank_id=?',(bid,)).fetchone():state='outdated'
+        elif conn.execute('SELECT 1 FROM imported_question_annotations WHERE bank_id=?',(bid,)).fetchone():state='outdated'
+        meta=conn.execute('SELECT * FROM bank_identity WHERE bank_id=?',(bid,)).fetchone()
+        meta=dict(meta) if meta else {}
+        deps={}
+        if annotation:
+            for table in ('question_annotations','imported_question_annotations'):
+                record=conn.execute('SELECT dependencies_json FROM '+table+' WHERE id=?',(annotation['id'],)).fetchone()
+                if record:deps=json.loads(record[0]);break
+        return ({'bank_id':bid,'collection_id':row['collection_id'],'entity_id':min(group),'source':row['source'],
+            'math_type':meta.get('math_type',0),'year':meta.get('year',''),'number':meta.get('number',0),'status':state,
+            'topics':public_topics(annotation['analysis']['bindings'] if annotation else [],names,view.resolve),
+            'annotation_id':annotation['id'] if annotation else None,
+            'annotation_origin':'shared' if annotation and annotation.get('cache_provenance') else 'local' if annotation else None,
+            'content_revision':annotation['content_revision'] if annotation else None,
+            'material_revision':annotation['material_revision'] if annotation else None},deps)
 
-        Exposure/draft writes do not invalidate mathematical navigation. A file
-        replacement, missing file, identity withdrawal, cache switch, definition
-        edit or new annotation does. File bytes are verified by current() when
-        building. Hash bytes here too: Windows ctime is creation time and cannot
-        detect equal-size edits with a restored mtime.
-        """
-        tables = ('bank_questions','bank_resources','bank_identity','bank_links','bank_identity_reviews',
-                  'question_annotations','question_annotation_links','prepared_annotation_ids',
-                  'imported_question_annotations','annotation_cache_state','annotation_cache_packages',
-                  'knowledge_catalog_state')
-        present = {r['name'] for r in schema_rows(conn)}
-        digest = hashlib.sha256()
-        for table in tables:
-            if table not in present:continue
-            digest.update(table.encode())
-            for row in conn.execute('SELECT * FROM '+table+' ORDER BY rowid'):
-                for cell in row:
-                    value=str(cell).encode();digest.update(str(len(value)).encode()+b':'+value)
-        release=catalog.document(conn)
-        digest.update(catalog.encode(release).encode())
-        root=library_root(self.config.data)
-        base=os.path.abspath(root/'bank-assets')
-        safe_base=(root/'bank-assets').resolve()
-        seen_files=set()
-        for row in conn.execute('SELECT question_path,answer_path,analysis_path FROM bank_resources ORDER BY bank_id'):
-            for value in row:
-                if not value:continue
-                from app.storage.paths import resolve_file
-                owner=root if Path(value).parts[0] in ('bank-assets','knowledge-sources') else self.config.data
-                path = os.path.abspath(resolve_file(owner,value))
-                if path in seen_files:continue
-                seen_files.add(path)
-                if os.path.commonpath((base,path))!=base:
-                    digest.update(b'outside');continue
-                try:
-                    resolved=Path(path).resolve()
-                    if not resolved.is_relative_to(safe_base):
-                        digest.update(b'outside');continue
-                    with open(resolved,'rb') as material:
-                        token=(path,hashlib.file_digest(material,'sha256').hexdigest())
-                except OSError:token = (str(path),'missing')
-                digest.update(repr(token).encode())
-        return digest.hexdigest()
-
-    def _bank_index(self, conn, nodes):
-        key = self._signature(conn)
+    def _bank_index(self,conn,nodes):
+        from app.storage.navigation_index import NavigationIndex
         with self._lock:
-            if key == self._bank_key:return self._bank
-            from app.bank.annotation_view import AnnotationReadView
-            read_view=AnnotationReadView(conn,self.config.data)
-            names = {n['id']:n['name'] for n in nodes}
-            redirect = {r['old_id']:r['target_id'] for r in (catalog.document(conn) or {}).get('document',{}).get('redirects',[])}
-            canonical = lambda tid: tid if tid in names else redirect.get(tid)
-            identities = {r['bank_id']:dict(r) for r in conn.execute('SELECT * FROM bank_identity')}
-            groups = {};items = []
-            for row in conn.execute("SELECT id,source FROM bank_questions WHERE source!='本地示例题库' ORDER BY id"):
-                bid = row['id']
-                if bid not in groups:
-                    group = sorted(read_view.aliases(bid))
-                    for member in group:groups[member] = group
-                group = groups[bid]
-                try:annotation = annotations.current(conn,self.config.data,bid,read_view=read_view)
-                except (ValueError, OSError):annotation = None
-                state = 'unannotated'
-                if annotation:state = annotation['analysis']['status']
-                elif conn.execute('SELECT 1 FROM question_annotation_links WHERE bank_id=?',(bid,)).fetchone():state = 'outdated'
-                elif conn.execute("SELECT 1 FROM imported_question_annotations WHERE bank_id=?",(bid,)).fetchone():state = 'outdated'
-                bindings=public_topics(annotation['analysis']['bindings'] if annotation else [],names,canonical)
-                meta = identities.get(bid,{})
-                items.append({'bank_id':bid,'entity_id':min(group),'source':row['source'],
-                              'math_type':meta.get('math_type',0),'year':meta.get('year',''),
-                              'number':meta.get('number',0),'status':state,'topics':bindings,
-                              'annotation_id':annotation['id'] if annotation else None,
-                              'annotation_origin':'shared' if annotation and annotation.get('cache_provenance') else 'local' if annotation else None,
-                              'content_revision':annotation['content_revision'] if annotation else None,
-                              'material_revision':annotation['material_revision'] if annotation else None})
-            # If files changed while validation ran, this read is not published.
-            if key != self._signature(conn):raise ValueError('题库材料正在变化，请稍后重新读取关联')
-            self._bank_key, self._bank = key, items
-            return items
+            return NavigationIndex(self.config).bank(conn,nodes,self._build_bank_item)
+
+    def prepare_index(self):
+        """Complete the one-time/incremental index upgrade before serving UI.
+
+        Restarted services reuse persisted validation, never start a competing
+        background whole-library warmup. No learner/source rows are written.
+        """
+        with navigation_snapshot(self.database) as conn:
+            return len(self._bank_index(conn,index.catalog(conn)))
 
     def _completed(self, conn, nodes, bank, paper_id):
         snapshot = index.snapshot(conn)
@@ -154,7 +104,7 @@ class KnowledgeLinksService:
             bid = binding[0] if binding else None
             source = bank_by_id.get(bid)
             rows.append({'id':row['id'],'entity_id':source['entity_id'] if source else 'original:'+row['id'],
-                         'bank_id':bid,'source_kind':'paper','paper_id':row['paper_id'],'paper_title':row['title'],
+                         'bank_id':bid,'collection_id':source['collection_id'] if source else None,'source_kind':'paper','paper_id':row['paper_id'],'paper_title':row['title'],
                          'question_id':row['id'],'number':row['number'],'date':row['exam_date'] or row['created_at'],
                          'state':q['correctness'],'report_id':row['report_id'],
                          'topic_ids':sorted(by_source.get(row['id'],set())),'protected':False})
@@ -172,7 +122,7 @@ class KnowledgeLinksService:
                 if sid.startswith(prefix):tids.update(related)
             source = bank_by_id.get(row['bank_id'])
             rows.append({'id':row['id'],'entity_id':source['entity_id'] if source else 'bank:'+row['bank_id'],
-                         'bank_id':row['bank_id'],'source_kind':'probe','paper_id':row['paper_id'],
+                         'bank_id':row['bank_id'],'collection_id':source['collection_id'] if source else None,'source_kind':'probe','paper_id':row['paper_id'],
                          'paper_title':row['title'],'question_id':row['question_id'],'probe_id':row['probe_id'],
                          'attempt_id':row['id'],'number':source['number'] if source else None,
                          'date':row['created_at'],'state':'correct' if assessment['correct'] else 'wrong',
@@ -233,13 +183,15 @@ class KnowledgeLinksService:
                     'source_records':len(bank),'default_view':'completed' if completed else 'bank'}
 
     def links(self,*,view='bank',topic_id=None,scope='subtree',role=None,status=None,math_type=None,year=None,
-              offset=0,limit=15,paper_id=None,expected_revision=None):
+              offset=0,limit=15,paper_id=None,expected_revision=None,collection=None):
         if view not in ('completed','bank') or scope not in ('self','subtree'):raise ValueError('题目视图或范围无效')
         if role and role not in annotations.ROLES:raise ValueError('原子关联角色无效')
         if status and status not in ('ready','needs_review','needs_catalog','outdated','unannotated'):raise ValueError('标注状态无效')
         if math_type is not None and (type(math_type) is not int or math_type not in (1,2,3)):raise ValueError('数学类别无效')
         if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=50:raise ValueError('关联查询分页无效')
         with navigation_snapshot(self.database) as conn:
+            from app.bank.collections import require
+            if collection is not None:require(conn,collection)
             nodes,bank,completed = self._read(conn,paper_id)
             revision = catalog.active_id(conn)
             if expected_revision and expected_revision!=revision:raise ValueError('目录版本已更新，请刷新考点树')
@@ -251,6 +203,7 @@ class KnowledgeLinksService:
             reserved_entities={i['entity_id'] for i in bank if {'math_type':i['math_type'],'year':i['year']} in reserved}
             groups = {}
             for item in bank if view=='bank' else completed:
+                if collection is not None and item.get('collection_id')!=collection:continue
                 if view=='bank' and ((math_type and item['math_type']!=math_type) or (year and year not in item['year']) or (status and item['status']!=status)):continue
                 matches = [t for t in item['topics'] if (selected is None or t['topic_id'] in selected) and (not role or t['role']==role)]
                 if selected is not None and not matches or role and not matches:continue
@@ -291,6 +244,7 @@ class KnowledgeLinksService:
             if bank is None:bank=self._bank_index(conn,nodes)
             completed=self._completed(conn,nodes,bank,None)
             counts={n['id']:{'bank':set(),'completed':set()} for n in nodes}
+            collection_counts={n['id']:{} for n in nodes}
             parents={n['id']:n['parent_id'] for n in nodes}
             for kind,items in (('bank',bank),('completed',completed)):
                 for item in items:
@@ -298,6 +252,13 @@ class KnowledgeLinksService:
                         tid=binding['topic_id'];seen=set()
                         while tid in counts and tid not in seen:
                             seen.add(tid);counts[tid][kind].add(item['entity_id']);tid=parents[tid]
+                        for target in seen:
+                            cid=item.get('collection_id')
+                            if cid:
+                                grouped=collection_counts[target].setdefault(cid,{'bank':set(),'ready':set(),'completed':set()})
+                                grouped[kind].add(item['entity_id'])
+                                if kind=='bank' and item['status']=='ready':grouped['ready'].add(item['entity_id'])
             return dict(nodes=nodes,bank=bank,
                         redirects=(catalog.document(conn) or {}).get('document',{}).get('redirects',[]),
-                        counts={tid:{k:len(v) for k,v in c.items()} for tid,c in counts.items()})
+                        counts={tid:{k:len(v) for k,v in c.items()} for tid,c in counts.items()},
+                        collection_counts={tid:[dict(collection_id=cid,**{k:len(v) for k,v in c.items()}) for cid,c in sorted(groups.items())] for tid,groups in collection_counts.items()})

@@ -30,6 +30,8 @@ RECORD_SCHEMA = obj({'schema': {'const': SCHEMA}, 'source_id': {'type': 'string'
     'options': {'type': 'array', 'items': obj({'label': TEXT, 'content': RESOURCE})},
     'original': obj({'source_text': {'type': 'string'}, 'record': {'type': 'object'}, 'sha256': SHA}),
     'tags': {'type': 'array', 'items': TEXT, 'uniqueItems': True}})
+# Optional additive provenance for books; absent is equivalent to unknown.
+RECORD_SCHEMA['properties']['book']=obj({k:{'type':['string','null']} for k in ('title','edition','part','chapter','number','locator')})
 OVERRIDE_FIELDS = {**METADATA, 'exclude': {'type': 'boolean'}}
 OVERRIDE_SCHEMA = obj({'schema': {'const': OVERRIDES_SCHEMA}, 'source_id': RECORD_SCHEMA['properties']['source_id'],
     'revision': TEXT, 'entries': {'type': 'array', 'items': obj({

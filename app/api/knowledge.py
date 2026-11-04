@@ -12,10 +12,10 @@ def link_summary(paper_id:str|None=None,rt=Depends(runtime)):
 
 
 @router.get('/links')
-def question_links(view:str='bank',topic_id:str|None=None,scope:str='subtree',role:str|None=None,
+def question_links(view:str='bank',topic_id:str|None=None,scope:str='subtree',role:str|None=None,collection:str|None=None,
                    status:str|None=None,math_type:int|None=None,year:str|None=None,
                    offset:int=0,limit:int=15,paper_id:str|None=None,catalog_revision:str|None=None,rt=Depends(runtime)):
-    return rt.knowledge_links.links(view=view,topic_id=topic_id,scope=scope,role=role,status=status,
+    return rt.knowledge_links.links(view=view,topic_id=topic_id,scope=scope,role=role,status=status,collection=collection,
                                     math_type=math_type,year=year,offset=offset,limit=limit,paper_id=paper_id,
                                     expected_revision=catalog_revision)
 

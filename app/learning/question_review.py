@@ -99,7 +99,7 @@ def merge_review(inputs, result, author):
     if status != 'verified' and completion == 'complete':
         raise ValueError('其他题或整卷仍需核对，不能标整卷完整通过')
     report.update(author=author, method=base['method'] + '；原题局部复核',
-                  summary=result['summary'], priorities=copy.deepcopy(result['priorities']),
+                  summary=base['summary'], priorities=copy.deepcopy(result['priorities']),
                   review={'status': status, 'issues': issues})
     report['limitations'] = [s for i, s in enumerate(scope['limitations'])
                              if i not in result['resolved_limitation_indexes']]

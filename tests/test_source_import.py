@@ -39,7 +39,7 @@ class SourceImportTests(unittest.TestCase):
         self.path.write_text('\n'.join(records.canonical(r) for r in self.batch), encoding='utf8')
 
     def run_import(self, **kwargs):
-        return import_source(self.config, 'S02', self.path, **kwargs)
+        return import_source(self.config, 'S02', self.path, collection='zhenti', **kwargs)
 
     def apply(self, **kwargs):
         return self.run_import(confirm=self.run_import(**kwargs)['plan_sha256'], **kwargs)
@@ -167,8 +167,8 @@ class SourceImportTests(unittest.TestCase):
             self.assertFalse(access(conn, first)['can_view'])
             reveal(conn, first, 'question', True); reveal(conn, first, 'analysis', True)
         self.batch = [question('other-source', source='S03')]; self.save()
-        plan = import_source(self.config, 'S03', self.path)
-        import_source(self.config, 'S03', self.path, confirm=plan['plan_sha256'])
+        plan = import_source(self.config, 'S03', self.path, collection='other')
+        import_source(self.config, 'S03', self.path, collection='other', confirm=plan['plan_sha256'])
         second = records.bank_id(self.batch[0])
         with Database(self.config).session(write=True) as conn:
             self.assertEqual(aliases(conn, first), {first})
@@ -184,8 +184,8 @@ class SourceImportTests(unittest.TestCase):
         first = records.bank_id(self.batch[0])
         self.batch = [question('other-source', source='S03')]
         self.batch[0].update(question_type='fill', max_score=12); self.save()
-        plan = import_source(self.config, 'S03', self.path)
-        import_source(self.config, 'S03', self.path, confirm=plan['plan_sha256'])
+        plan = import_source(self.config, 'S03', self.path, collection='other')
+        import_source(self.config, 'S03', self.path, collection='other', confirm=plan['plan_sha256'])
         with Database(self.config).session() as conn:
             self.assertEqual(select(conn, '2026', 1, 1), dict(matched_bank_id=first, question_type=None, max_score=None))
             self.assertEqual(select(conn, '2027', 1, 1), dict(matched_bank_id=None, question_type=None, max_score=None))
@@ -268,8 +268,8 @@ class SourceAnnotationImportTests(unittest.TestCase):
         path=f.data/'source-fixture.jsonl'
         def save():path.write_text(records.canonical(record),encoding='utf8')
         def apply():
-            plan=import_source(f.f.config,'S02',path)
-            return import_source(f.f.config,'S02',path,confirm=plan['plan_sha256'])
+            plan=import_source(f.f.config,'S02',path,collection='zhenti')
+            return import_source(f.f.config,'S02',path,collection='zhenti',confirm=plan['plan_sha256'])
         save();apply();bid=records.bank_id(record)
         f.start('annotate_questions',{'bank_ids':[bid]});f.read_annotation_material()
         f.tool('apply_report',{'result':f.envelope(f.annotation_result())})

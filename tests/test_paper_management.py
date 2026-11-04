@@ -96,7 +96,7 @@ class PaperManagementTests(unittest.TestCase):
             self.assertEqual(response.status_code,201,response.text)
             self.assertTrue(response.json()['agent_submitted'])
             analyze.assert_not_called()
-        self.assertEqual(bridge.submit_task.call_args.args[:2],('summarize_paper','paper-test'))
+        self.assertEqual(bridge.queue_task.call_args.args[:2],('summarize_paper','paper-test'))
 
 
     def test_http_archived_lists_and_restore_are_explicit(self):

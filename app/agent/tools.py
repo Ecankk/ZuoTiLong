@@ -13,10 +13,10 @@ from app.bank.access import require_access, review_cross, preferences
 from app.learning.loop import apply_report, assess_attempt, revise_assessment, replace_probe, stamp
 from app.storage.boundaries import workspace_config, material_path, library_root, connect_workspace
 
-ACTIONS=('context','task_context','deliver_result','read_paper','catalog','read_bank','read_attempt','apply_report','assess','revise_assessment','replace_probe','review_cross','screen','read_skill','memory_read','memory_write')
+ACTIONS=('context','task_context','preflight','deliver_result','read_paper','catalog','read_bank','read_attempt','apply_report','assess','revise_assessment','replace_probe','review_cross','screen','read_skill')
 SKILLS=('paper-diagnosis','bank-search','probe-design','learning-update','knowledge-index','catalog-maintenance','question-topics')
 SCHEMA={'type':'object','properties':{'action':{'type':'string','enum':list(ACTIONS)},'payload':{'type':'object'}},'required':['action','payload'],'additionalProperties':False}
-DESCRIPTION='MathLens 固定任务接口。先context读取learning_task及result_schema，再read_skill。read_paper读取原页/区域；catalog按topic_ids、stages、methods和历史/预留规则召回ready题，数学一二三统一检索；read_bank用bank_id和role=question/analysis/answer；通用题目准备或1.9练习还可用all，已有练习可传probe_id读取固定材料；read_attempt读真实作答。task_context读取任务捕获的来源/知识定义。所有学习任务的apply_report或assess仅接受payload={result:完整任务封装}，批改用assess，其余用apply_report；封装及字段严格按当前result_schema，取得保存回执后结束。screen同步页面，memory_read/write维护有来源索引。隐藏候选仅内部读取，学生在网页确认后查看；未就绪不退粗标签，预留排除选题。'
+DESCRIPTION='做题龙单任务工具。初始输入已有任务schema及材料时直接判断交付；确需补看才读取。preflight传{result:完整封装}只校验不保存，deliver_result传完整封装保存并结束。1.10选题仅可补读候选题干，不自行检索。其他任务按材料包read_skill/read_paper/read_attempt/read_bank/task_context补读。面向学生数学式必须用$...$或$$...$$包裹。隐藏材料仅内部阅读，不提前向学生复述。'
 
 
 def connection(data):
@@ -46,14 +46,19 @@ def execute(root,data,action,payload,*,lease=None):
         task_delivery=False
         if lease:
             from app.learning.tasks import check_lease
-            task=check_lease(conn,lease)
+            task=check_lease(conn,lease,allow_completed=action in ('deliver_result','preflight') or action in ('apply_report','assess') and set(payload)=={'result'})
+            task_inputs=json.loads(task['input_json'])
+            if task['kind']=='prepare_practice' and task_inputs.get('contract_version')=='1.10':
+                if action not in ('context','preflight','deliver_result','apply_report','read_bank'):raise ValueError('选题只判断后端候选，不自行召回或读取候选外材料')
+                if action=='read_bank' and (payload.get('bank_id') not in task_inputs['selection']['candidates'] or payload.get('role','question')!='question' or set(payload)-{'bank_id','role'}):
+                    raise ValueError('选题补看仅限本次候选ID的题干图')
             task_delivery=action in ('apply_report','assess') and set(payload)=={'result'}
             if action in ('apply_report','assess','revise_assessment','replace_probe') and not task_delivery:
                 raise ValueError('本任务须用apply_report/assess的payload.result提交完整任务契约，不能绕过保存回执')
-            if task['kind']=='review_practice' and action not in ('context','task_context','read_skill','read_bank','apply_report','deliver_result'):
+            if task['kind']=='review_practice' and action not in ('context','task_context','read_skill','read_bank','apply_report','deliver_result','preflight'):
                 raise ValueError('练习解答复核只读取固定题目与定义，不操作学生作答或重新选题')
             if task['kind'] in ('maintain_catalog','annotate_questions'):
-                allowed={'context','task_context','read_skill','apply_report','deliver_result'}
+                allowed={'context','task_context','read_skill','apply_report','deliver_result','preflight'}
                 if task['kind']=='annotate_questions':allowed.add('read_bank')
                 if action not in allowed:raise ValueError('通用资料任务只读取本批来源/题目/目录并交付，不操作个人学习记录')
         if action in ('apply_report','assess','revise_assessment','replace_probe','review_cross','memory_write') and not task_delivery:
@@ -71,7 +76,10 @@ def execute(root,data,action,payload,*,lease=None):
             if payload.get('probe_id'):
                 r=conn.execute('SELECT paper_id FROM diagnostic_probes WHERE id=?',(payload['probe_id'],)).fetchone();target=r[0] if r else None
             if expected and target and target!=expected:raise ValueError('写入目标不是当前讨论试卷')
-        if action=='deliver_result' or task_delivery:
+        if action=='preflight':
+            from app.learning.tasks import preflight
+            result=preflight(conn,root,data,payload['result'],lease)
+        elif action=='deliver_result' or task_delivery:
             from app.learning.tasks import deliver
             result=deliver(conn,root,data,payload['result'] if task_delivery else payload,lease)
         elif action=='task_context':
@@ -202,7 +210,7 @@ def execute(root,data,action,payload,*,lease=None):
                     hints=for_sources(conn,inputs,result['sources'])
                     if hints:result['source_topic_hints']=hints
         elif action=='context':
-            if task and task['kind'] in ('organize_knowledge','grade_attempt','review_practice','maintain_catalog','annotate_questions'):
+            if task and task['kind'] in ('organize_knowledge','grade_attempt','review_practice','maintain_catalog','annotate_questions','prepare_practice'):
                 from app.learning.tasks import task_package
                 result={'purpose':'本轮只执行当前阶段；原材料按需读取。','preferences':preferences(conn),'learning_task':task_package(conn,task['id'])}
             else:result=workspace_context(conn,data,payload.get('paper_id'))
@@ -329,6 +337,8 @@ def execute(root,data,action,payload,*,lease=None):
                   'input_revision':task['input_revision'],'result_schema':task_package(conn,task['id'])['result_schema'],
                   'write_action':'assess' if task['kind']=='grade_attempt' else 'apply_report',
                   'payload':'{result: 完整任务结果JSON}；本任务契约优先于旧报告/probes说明'}
+                from app.agent.bridge import FORMULAS
+                result['learning_task_contract']['student_math_format']=FORMULAS
             if name in ('paper-diagnosis','knowledge-index','bank-search','probe-design','learning-update'):
                 from app.knowledge.index import compact_catalog, reference_policy
                 result['knowledge_catalog']=compact_catalog(conn)
@@ -457,15 +467,7 @@ def execute(root,data,action,payload,*,lease=None):
         elif action=='revise_assessment':result=revise_assessment(conn,payload['attempt_id'],payload['assessment'],payload['reason'])
         elif action=='replace_probe':result=replace_probe(conn,payload['probe_id'],payload)
         elif action=='review_cross':result=review_cross(conn,**payload)
-        else:
-            path=resolve_file(data/'memory',payload['path'])
-            if not path.is_relative_to((data/'memory').resolve()) or path.suffix not in ('.md','.json'):raise ValueError('记忆路径不合法')
-            if action=='memory_write':
-                text=payload.get('text','')
-                if not isinstance(text,str) or len(text)>100000:raise ValueError('记忆过长')
-                path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text,encoding='utf8')
-                result={'saved':str(path.relative_to(data))}
-            else:result={'text':path.read_text(encoding='utf8') if path.is_file() else ''}
+        else:raise ValueError('学习操作尚未实现')
         conn.execute('CREATE TABLE IF NOT EXISTS tool_audit(id INTEGER PRIMARY KEY,action TEXT,record_id TEXT,created_at TEXT)')
         conn.execute('INSERT INTO tool_audit(action,record_id,created_at) VALUES(?,?,?)',(action,payload.get('attempt_id') or payload.get('bank_id') or payload.get('paper_id'),stamp()))
     return [{'type':'text','text':json.dumps(result,ensure_ascii=False)},*images]

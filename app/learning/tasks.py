@@ -142,7 +142,7 @@ def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract
                'total_score', 'score_confirmed_at', 'math_type')}, 'source_sha256': source_sha,
               'preferences': preferences(conn),
               'questions': rows(conn, 'SELECT * FROM questions WHERE paper_id=? ORDER BY id', (paper_id,)),
-              'reports': rows(conn, 'SELECT * FROM agent_reports WHERE paper_id=? ORDER BY created_at,id', (paper_id,))}
+              'reports': rows(conn, 'SELECT * FROM agent_reports WHERE paper_id=? ORDER BY created_at,rowid', (paper_id,))}
     if kind not in ('analyze_paper', 'review_question'):
         result['probes'] = rows(conn, 'SELECT * FROM diagnostic_probes WHERE paper_id=? ORDER BY id', (paper_id,))
         result['attempts'] = rows(conn, '''SELECT a.* FROM probe_attempts a JOIN diagnostic_probes p ON p.id=a.probe_id
@@ -150,7 +150,7 @@ def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract
         result['prior_results'] = rows(conn, '''SELECT id,kind,payload_sha256 FROM learning_results
                                               WHERE paper_id=? ORDER BY created_at,id''', (paper_id,))
     if kind == 'prepare_practice':
-        if contract_version in ('1.3','1.4','1.5','1.6','1.9'):
+        if contract_version in ('1.3','1.4','1.5','1.6','1.9','1.10'):
             state = practice_state(conn, paper_id)
             result['practice_plan'] = {'state': state, 'goals': plan_goals(conn, state),
                 'retired_probe_ids': [r[0] for r in conn.execute('SELECT probe_id FROM retired_probes')]}
@@ -162,14 +162,17 @@ def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract
         result['bank'] = rows(conn, '''SELECT b.id,b.fingerprint_json,r.metadata_json,r.question_path,
                                       r.analysis_path,r.answer_path FROM bank_questions b
                                       JOIN bank_resources r ON r.bank_id=b.id ORDER BY b.id''')
-        if contract_version=='1.9':
+        if contract_version in ('1.9','1.10'):
             from app.learning.practice_knowledge import capture
             result['practice_knowledge']=capture(conn,paper_id,data)
-        if contract_version in ('1.5','1.6','1.9'):
+        if contract_version in ('1.5','1.6','1.9','1.10'):
             result['other_exercises']=rows(conn,'''SELECT d.*,p.archived_at FROM diagnostic_probes d
                 JOIN papers p ON p.id=d.paper_id WHERE d.paper_id!=? ORDER BY d.id''',(paper_id,))
             result['other_plans']=[practice_state(conn,p[0]) for p in conn.execute(
                 'SELECT id FROM papers WHERE id!=? ORDER BY id',(paper_id,))]
+        if contract_version=='1.10':
+            from app.learning.selection import capture
+            result['selection']=capture(conn,data,result)
     if kind == 'review_question':
         from app.learning.question_review import capture_review
         result['question_review'] = capture_review(conn, root, data, paper_id, review_request)
@@ -291,13 +294,13 @@ def bind_turn(conn, task_id, session_id, run_token, turn_id):
                  (turn_id, stamp(), task_id))
 
 
-def check_lease(conn, lease):
+def check_lease(conn, lease, *, allow_completed=False):
     if not isinstance(lease, dict) or not all(lease.get(k) for k in ('task_id', 'session_id', 'run_token', 'turn_id')):
         raise ValueError('缺少当前任务的可信执行身份')
     task = task_record(conn, lease['task_id'])
     if any(task[k] != lease[k] for k in ('session_id', 'run_token', 'turn_id')):
         raise ValueError('旧连接、旧轮次或其他会话不能写入当前任务')
-    if task['status'] not in ('running', 'repairing', 'result_saved'):
+    if task['status'] not in ('running', 'repairing', 'result_saved') and not (allow_completed and task['status']=='completed' and task['result_id']):
         raise ValueError('该任务已停止或尚未开始')
     return task
 
@@ -324,7 +327,7 @@ def receipt(conn, task_id):
 
 def deliver(conn, root, data, payload, lease):
     with atomic(conn):
-        task = check_lease(conn, lease)
+        task = check_lease(conn, lease,allow_completed=True)
         inputs=json.loads(task['input_json'])
         validate_result(payload, task['kind'],inputs.get('contract_version','1.0'))
         if payload['task_id'] != task['id'] or any(payload[k] != task[k] for k in ('kind', 'paper_id', 'input_revision')):
@@ -355,7 +358,7 @@ def deliver(conn, root, data, payload, lease):
             from app.learning.practice_review import validate_input
             validate_input(conn,inputs,current)
             current=inputs
-        elif inputs.get('contract_version')=='1.9' and task['kind'] in ('prepare_practice','grade_attempt'):
+        elif inputs.get('contract_version') in ('1.9','1.10') and task['kind'] in ('prepare_practice','grade_attempt'):
             from app.learning.practice_knowledge import validate_input
             validate_input(conn,task,inputs,current,payload['result'])
             current=inputs
@@ -388,8 +391,12 @@ def deliver(conn, root, data, payload, lease):
                 raise ValueError('请先读取原卷相关页后再核对本题')
             for page in pages:
                 require_read(conn, task, 'paper', task['paper_id'], str(page), current['source_sha256'])
+            from app.knowledge.index import sources
+            old_sources=sources(conn,task['paper_id'])
             result_projection = apply_report(conn, task['paper_id'], report, root,
                                               question_numbers={result['question']['number']})
+            from app.learning.semantic_dependencies import after_review
+            after_review(conn,task,current,result,result_projection,old_sources)
         elif task['kind'] == 'analyze_paper':
             report = copy.deepcopy(result['report'])
             if report['source_sha256'] != current['source_sha256']:
@@ -408,10 +415,18 @@ def deliver(conn, root, data, payload, lease):
                 conn.execute("UPDATE papers SET import_status='partial_analysis' WHERE id=?", (task['paper_id'],))
             result_projection = applied
         elif task['kind'] == 'prepare_practice':
+            if inputs.get('contract_version')=='1.10':
+                from app.learning.selection import normalize
+                result=normalize(conn,data,task,result)
             result_projection = _save_plan(conn, data, task, rid, result)
-            if inputs.get('contract_version')=='1.9':
+            if inputs.get('contract_version') in ('1.9','1.10'):
                 from app.learning.practice_knowledge import save_new_bindings
                 save_new_bindings(conn,data,task,rid,result)
+            from app.learning.semantic_dependencies import record,signature
+            base=json.loads(inputs['reports'][-1]['report_json'])
+            record(conn,'practice_semantic_dependencies',rid,{'schema':'mathlens.practice-dependencies/v1',
+                'report_id':inputs['reports'][-1]['id'],'questions':{str(q['number']):signature(q) for q in base['questions']},
+                'goals':{g['id']:g['question_numbers'] for g in result['goals']}})
         elif task['kind'] == 'grade_attempt':
             if result['attempt_id'] != task['attempt_id']:
                 raise ValueError('批改结果引用了其他作答')
@@ -444,7 +459,23 @@ def deliver(conn, root, data, payload, lease):
             save_paper_references(conn,data,task,rid,result_projection,inputs,result)
         conn.execute("UPDATE learning_tasks SET status='result_saved',result_id=?,error=NULL,updated_at=? WHERE id=?",
                      (rid, stamp(), task['id']))
+        finish_task(conn,task['id'])
         return {**receipt(conn, task['id']), 'projection': result_projection, 'reused': False}
+
+
+def preflight(conn,root,data,payload,lease):
+    """Run exactly the delivery transaction, then roll back every projection."""
+    name='preflight_'+uuid.uuid4().hex
+    conn.execute('SAVEPOINT '+name)
+    from app.storage.practice_materials import PREVIEW
+    token=PREVIEW.set(True)
+    try:
+        deliver(conn,root,data,payload,lease)
+        return {'valid':True,'sha256':digest(payload)}
+    finally:
+        PREVIEW.reset(token)
+        conn.execute('ROLLBACK TO '+name)
+        conn.execute('RELEASE '+name)
 
 
 def _validate_reference(conn, paper_id, ref):
@@ -460,10 +491,10 @@ def _validate_reference(conn, paper_id, ref):
 def _save_plan(conn, data, task, result_id, result):
     paper_id = task['paper_id']
     inputs = json.loads(task['input_json'])
-    explicit = inputs.get('contract_version') in ('1.3','1.4','1.5','1.6','1.9')
+    explicit = inputs.get('contract_version') in ('1.3','1.4','1.5','1.6','1.9','1.10')
     previous = inputs.get('practice_plan', {}).get('state', {})
     retained = result.get('retained_exercises', [])
-    linked = inputs.get('contract_version') in ('1.5','1.6','1.9')
+    linked = inputs.get('contract_version') in ('1.5','1.6','1.9','1.10')
     assigned=set()
     def unique_question(bank_id, *, retaining=False):
         if not linked:return
@@ -559,7 +590,7 @@ def _save_plan(conn, data, task, result_id, result):
                 raise ValueError('安排练习的目标须关联实际新增/保留练习或可继续的历史练习')
             if goal['decision']=='no_candidate' and attached:
                 raise ValueError('已有可用练习的目标应标practice或monitor，不能同时声称无候选')
-    if inputs.get('contract_version')=='1.9':
+    if inputs.get('contract_version') in ('1.9','1.10'):
         review=inputs['practice_knowledge']['legacy_review']
         kept={item['probe_id'] for item in retained}
         deferred={item['probe_id']:item['reason'] for item in previous.get('deferred_probes',[])}
@@ -576,6 +607,13 @@ def _save_plan(conn, data, task, result_id, result):
 
 def require_bank_read(conn,data,task,bank_id,*,probe_id=None):
     inputs=json.loads(task['input_json'])
+    if task['kind']=='prepare_practice' and inputs.get('contract_version')=='1.10':
+        if probe_id:return
+        from app.learning.practice_knowledge import require_binding
+        candidate=inputs['selection']['candidates'].get(bank_id)
+        if not candidate:raise ValueError('题目不属于本次候选范围')
+        require_binding(conn,data,task,bank_id,candidate['annotation_id'])
+        return
     if task['kind']=='prepare_practice' and inputs.get('contract_version')=='1.9':
         if probe_id:
             from app.learning.practice_knowledge import require_existing_read
@@ -616,6 +654,11 @@ def finish_task(conn, task_id):
 def task_package(conn, task_id):
     task = task_record(conn, task_id)
     inputs=json.loads(task['input_json'])
+    if task['kind']=='prepare_practice' and inputs.get('contract_version')=='1.10':
+        from app.learning.selection import public
+        return {**{k:task[k] for k in ('id','kind','paper_id','input_revision','status')},
+                'result_schema':result_schema(task['kind'],'1.10'),'selection':public(inputs['selection']),
+                'receipt':receipt(conn,task_id),'reading':'只从初始材料包的对应候选选择；补看仅限候选题干图。'}
     if task['kind']=='review_practice':
         scope=inputs['practice_review']
         return {**{k:task[k] for k in ('id','kind','paper_id','attempt_id','input_revision','status')},

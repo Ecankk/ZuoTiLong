@@ -27,7 +27,7 @@ class AgentController:
         if action=='task':
             extra={'task_scope':body['task_scope']} if body.get('task_scope') is not None else {}
             if body.get('kind')=='review_practice':extra['contract_version']='2.1'
-            if body.get('kind') in ('analyze_paper','review_question','prepare_practice'):extra['practice_contract_version']='1.9'
+            if body.get('kind') in ('analyze_paper','review_question','prepare_practice'):extra['practice_contract_version']='1.10'
             if body.get('kind') in ('analyze_paper','review_question'):
                 with self.runtime.database.session() as conn:
                     previous=conn.execute('SELECT contract_version FROM workflow_jobs WHERE request_id=?',(body.get('request_id'),)).fetchone()
@@ -48,8 +48,5 @@ class AgentController:
         if not bridge:raise ValueError('学习助手尚未初始化')
         with self.runtime.database.session() as conn:
             if not conn.execute('SELECT id FROM agent_reports WHERE paper_id=?',(paper_id,)).fetchone():raise ValueError('请先完成逐题分析，再聚合总结本卷')
-        if bridge.connected and not bridge.auto_connect:
-            bridge.submit_task('summarize_paper',paper_id,str(uuid.uuid4()))
-        else:
-            bridge.queue_task('summarize_paper',paper_id,str(uuid.uuid4()))
+        bridge.queue_task('summarize_paper',paper_id,str(uuid.uuid4()))
         return {'paper_id':paper_id,'agent_submitted':True}

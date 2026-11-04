@@ -118,6 +118,14 @@ def default_version(kind):
 def result_schema(kind, version=None):
     import copy
     version=version or default_version(kind)
+    if kind=='prepare_practice' and version=='1.10':
+        shape=obj({'selections':array(obj({'bank_id':ID,'goal_ids':array(ID,minimum=1,maximum=30,unique=True),
+            'selection_reason':string(nonempty=True),'prompt':string(nonempty=True)}),maximum=100),
+            'limitations':{'type':'object','additionalProperties':string()}})
+        return {'$schema':'https://json-schema.org/draft/2020-12/schema',
+            'description':'面向学生的数学式使用$...$或$$...$$；只从对应候选选择，不自行搜索或生成题目。',
+            **obj({'schema_version':{'const':version},'task_id':ID,'kind':{'const':kind},'paper_id':ID,
+                   'input_revision':SHA,'author':string(nonempty=True,limit=100),'result':shape})}
     if kind not in KINDS:
         raise ValueError('未知学习任务类别')
     if kind in PREPARATION_KINDS:
@@ -172,6 +180,7 @@ def result_schema(kind, version=None):
         shape['required'].append('references')
     return {'$schema': 'https://json-schema.org/draft/2020-12/schema',
             '$id': 'urn:mathlens:learning-result:' + version + ':' + kind,
+            'description':'面向学生的数学式必须使用$...$行内或$$...$$独立公式分隔符。',
             **obj({'schema_version': {'const': version}, 'task_id': ID, 'kind': {'const': kind},
                    'paper_id': ID, 'input_revision': SHA, 'author': string(nonempty=True, limit=100),
                    'result': shape})}
@@ -244,7 +253,7 @@ def validate_result(payload, kind, version=None):
             raise ValueError('核对未完成须说明具体问题，核对通过不能保留未解决的冲突')
         if payload['schema_version'] in ('1.4','1.5','1.6','2.0') and review['status']=='verified' and result['completion']!='complete':
             raise ValueError('completion表示分析覆盖与核对是否完成，不表示学生是否全部答对或做完。核对通过时应为complete；已确认空白、错因未知或总分未核定不能使分析partial。若确有题意/判定/关键解法缺口，请保留needs_review并指出具体缺口。')
-    elif kind == 'prepare_practice':
+    elif kind == 'prepare_practice' and payload['schema_version']!='1.10':
         goals = {g['id']: g for g in result['goals']}
         if len(goals) != len(result['goals']):
             raise ValueError('补强目标标识重复')

@@ -220,7 +220,7 @@ class PaperService:
                     raise ValueError('重新分析将生成当前版本，需要二次确认；旧报告及真实作答保留')
                 raise ValueError('请核对切题结果并确认开始分析')
             result=self.analyze(conn,paper_id)
-            job=enqueue(conn,self.config.root,self.config.data,'analyze_paper',paper_id,str(uuid.uuid4()),auto_prepare=True,index_after=True,practice_contract_version='1.9',contract_version='2.0')
+            job=enqueue(conn,self.config.root,self.config.data,'analyze_paper',paper_id,str(uuid.uuid4()),auto_prepare=True,index_after=True,practice_contract_version='1.10',contract_version='2.0')
             return {**result,'agent_queued':True,'job_id':job['id']}
 
     def archive(self,paper_id,archived,confirmed):

@@ -105,6 +105,7 @@ class Draft(RequestModel):
     value:Any=None
 class Prompt(RequestModel):prompt:str=Field(max_length=1000)
 class Preferences(RequestModel):
+    execution_profiles:dict[str,dict[str,str]]|None=None
     study_type:StrictInt|None=Field(default=None,ge=1,le=3)
     mask_same_type:StrictBool=True
     reserved:list[dict[str,Any]]=Field(default_factory=list)

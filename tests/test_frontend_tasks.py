@@ -90,6 +90,9 @@ class FrontendTasksTests(unittest.TestCase):
 
     def test_not_logged_in_is_separate_from_other_failure_and_can_recheck(self):
         class NotLogged(FakeCodex):
+            def request(self,method,params):
+                if method=='account/read':return {'account':None}
+                return super().request(method,params)
             instances = []
             def __init__(self, *args):
                 super().__init__(*args); self.instances.append(self)
@@ -113,7 +116,7 @@ class FrontendTasksTests(unittest.TestCase):
         wait_for(lambda: not bridge.connecting and bridge.unavailable_reason == 'other')
         self.assertEqual(app.state.runtime.tasks.read()['availability']['reason'], 'other')
 
-    def test_runtime_automatically_connects_only_for_pending_work_and_resumes_same_turn(self):
+    def test_runtime_automatically_connects_only_for_pending_work_and_retry_is_fresh(self):
         made = []
         def factory(root, data):
             bridge = CodexBridge(root, data, LoggedCodex); made.append(bridge); return bridge
@@ -128,69 +131,49 @@ class FrontendTasksTests(unittest.TestCase):
             summary = http.get('/api/tasks').json()
             self.assertIn('正在分析《test》', summary['active']['progress']['message'])
             self.assertEqual(summary['active']['allowed_actions'], [])
-        class Resume(LoggedCodex):
-            def __init__(self, *args):
-                super().__init__(*args)
-                self.history = [{'id': original['codex_turn_id'], 'status': 'inProgress'}]
-        second = create_app(self.config, agent_factory=lambda r,d: CodexBridge(r,d,Resume))
-        with TestClient(second, base_url='http://127.0.0.1'):
-            resumed = second.state.runtime.bridge
-            wait_for(lambda: resumed.connected)
-            self.assertEqual(resumed._active()['task_id'], original['task_id'])
-            self.assertEqual(resumed._active()['codex_turn_id'], original['codex_turn_id'])
-            self.assertEqual(self.f.conn.execute('SELECT count(*) FROM learning_tasks').fetchone()[0], 1)
-            self.assertFalse(any(m in ('thread/start', 'turn/start') for m,p in resumed.transport.calls))
+        second=create_app(self.config,agent_factory=lambda r,d:CodexBridge(r,d,LoggedCodex))
+        with TestClient(second,base_url='http://127.0.0.1') as http:
+            resumed=second.state.runtime.bridge
+            self.assertIsNone(resumed._active());self.assertFalse(resumed.connected)
+            items=http.get('/api/tasks').json()['items']
+            failed=next(i for i in items if i['status']=='failed')
+            self.assertIn('retry',failed['allowed_actions'])
+            response=http.post('/api/tasks/'+failed['id']+'/action',json={'action':'retry'})
+            self.assertEqual(response.status_code,200,response.text)
+            wait_for(lambda:resumed._active() and resumed._active().get('codex_turn_id') and not resumed._active()['codex_turn_id'].startswith('pending-'))
+            self.assertNotEqual(resumed._active()['task_id'],original['task_id'])
+            self.assertNotEqual(resumed._active()['session_id'],original['session_id'])
+            self.assertFalse(any(m=='thread/resume' for m,p in resumed.transport.calls))
 
     def test_restored_and_released_work_is_not_automatically_replayed(self):
         bridge = self.bridge(); self.queue(bridge)
         self.f.conn.execute('UPDATE workflow_jobs SET recovery_required=1'); self.f.conn.commit()
         bridge.auto_connect = True; bridge.ensure_connection()
         self.assertIsNone(bridge.transport)
-        self.f.conn.execute('UPDATE workflow_jobs SET recovery_required=0'); self.f.conn.commit()
-        bridge.state['external_control'] = True
-        bridge.ensure_connection(); self.assertIsNone(bridge.transport)
 
-    def test_failed_task_action_reconciles_and_retries_the_same_task(self):
+    def test_failed_task_action_retries_in_a_new_task_and_session(self):
         bridge=self.bridge();app=self.app(bridge=bridge,manage_agent=False)
-        bridge.connect();wait_for(lambda:bridge.connected)
-        self.queue(bridge)
-        wait_for(lambda:bridge._active() and bridge._active().get('codex_turn_id'))
-        original=bridge._active().copy()
-        bridge.event({'method':'turn/completed','params':{'threadId':bridge.state['session_id'],
-            'turnId':original['codex_turn_id'],'turn':{'id':original['codex_turn_id'],'status':'failed'}}})
-        bridge.transport.history=[{'id':original['codex_turn_id'],'status':'failed'}]
-        calls=len(bridge.transport.calls)
-        from app.agent.errors import BridgeConflict
-        with self.assertRaises(BridgeConflict):bridge.retry(expected_task_id='another-task')
-        self.assertEqual(len(bridge.transport.calls),calls)
+        bridge.auto_connect=True;self.queue(bridge)
+        wait_for(lambda:bridge._active() and bridge._active().get('codex_turn_id') and not bridge._active()['codex_turn_id'].startswith('pending-'))
+        original=bridge._active().copy();bridge.interrupt();wait_for(lambda:not bridge.finishing)
         with TestClient(app,base_url='http://127.0.0.1') as http:
-            item=http.get('/api/tasks').json()['active']
+            item=next(i for i in http.get('/api/tasks').json()['items'] if i['status']=='failed')
             self.assertEqual(item['allowed_actions'],['retry'])
             result=http.post('/api/tasks/'+item['id']+'/action',json={'action':'retry'})
             self.assertEqual(result.status_code,200,result.text)
-            wait_for(lambda:bridge._active().get('codex_turn_id') not in (None,original['codex_turn_id']))
-            self.assertEqual(bridge._active()['task_id'],original['task_id'])
-            self.assertEqual(self.f.conn.execute('SELECT count(*) FROM learning_tasks').fetchone()[0],1)
+            wait_for(lambda:bridge._active() and bridge._active()['task_id']!=original['task_id'])
+            self.assertNotEqual(bridge._active()['session_id'],original['session_id'])
 
-    def test_auto_resume_checks_saved_receipt_before_starting_child(self):
-        from test_study_workflows import WorkflowTests
-        case=WorkflowTests();case.setUp();self.addCleanup(case.tearDown)
-        case.queue_analysis();case.save_analysis()
-        original=case.bridge._active().copy();case.bridge.close()
-        class SavedRemote(LoggedCodex):
-            def __init__(self,*args):
-                super().__init__(*args)
-                self.history=[{'id':original['codex_turn_id'],'status':'completed'}]
-        config=AppConfig(server.ROOT,server.DATA,server.DIST,server.DB_PATH)
-        app=create_app(config,agent_factory=lambda r,d:CodexBridge(r,d,SavedRemote))
-        with TestClient(app,base_url='http://127.0.0.1'):
-            case.bridge=app.state.runtime.bridge
-            wait_for(lambda:case.bridge._active() and case.bridge._active().get('task_kind')=='prepare_practice')
-            self.assertEqual(case.fixture.conn.execute('SELECT count(*) FROM agent_reports').fetchone()[0],1)
-            self.assertEqual(case.fixture.conn.execute("SELECT count(*) FROM learning_tasks WHERE kind='analyze_paper'").fetchone()[0],1)
-            self.assertFalse(any(m=='thread/start' for m,p in case.bridge.transport.calls))
-            task=case.fixture.conn.execute('SELECT status FROM learning_tasks WHERE id=?',(original['task_id'],)).fetchone()
-            self.assertEqual(task[0],'completed')
+    def test_restart_with_saved_receipt_does_not_start_another_execution(self):
+        from test_execution_v2 import ExecutionTests
+        case=ExecutionTests();case.setUp();self.addCleanup(case.doCleanups)
+        saved=case.save_selection();config=AppConfig(server.ROOT,server.DATA,server.DIST,server.DB_PATH)
+        app=create_app(config,agent_factory=lambda r,d:CodexBridge(r,d,LoggedCodex))
+        with TestClient(app,base_url='http://127.0.0.1') as http:
+            bridge=app.state.runtime.bridge
+            self.assertIsNone(bridge._active());self.assertIsNone(bridge.transport)
+            task=case.conn.execute('SELECT status,result_id FROM learning_tasks WHERE id=?',(case.task['id'],)).fetchone()
+            self.assertEqual(tuple(task),('completed',saved['result_id']))
 
     def test_sse_snapshot_reconnect_and_coalesced_resource_and_preparation_changes(self):
         app = self.app(); rt = app.state.runtime

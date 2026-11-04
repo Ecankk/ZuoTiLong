@@ -40,3 +40,24 @@ class F7BackendTests(unittest.TestCase):
         self.assertEqual(value['total'],len(value['items']))
         node=next(n for n in value['items'] if n['id']=='GS-04-001')
         self.assertNotIn('definition',node);self.assertIn('aliases',node);self.assertEqual(node['child_count'],0)
+
+    def test_topic_warm_read_and_personal_library_invalidation(self):
+        from test_prepared_practice import PreparedPracticeTests
+        import database_fixture
+        fixture=PreparedPracticeTests();fixture.setUp();self.addCleanup(fixture.tearDown)
+        fixture.m.save();fixture.conn.commit()
+        rt=AppRuntime(database_fixture.config(),agent_factory=None);self.addCleanup(rt.close)
+        conn=fixture.conn
+        topic='GS-04-001'
+        first=rt.frontend.topic(topic)
+        self.assertGreater(first['performance']['failures'],0)
+        self.assertGreater(first['question_counts']['bank'],0)
+        with patch('app.services.frontend_reads.index.snapshot',side_effect=AssertionError('knowledge recomputed')), \
+             patch.object(rt.knowledge_links,'resource_snapshot',side_effect=AssertionError('navigation recomputed')):
+            self.assertEqual(rt.frontend.topic(topic),first)
+        conn.execute('DELETE FROM learning_events');conn.commit()
+        personal=rt.frontend.topic(topic)
+        self.assertEqual(personal['performance']['failures'],0)
+        self.assertEqual(personal['question_counts']['bank'],first['question_counts']['bank'])
+        conn.execute("UPDATE bank_questions SET stem=stem||' changed'");conn.commit()
+        self.assertEqual(rt.frontend.topic(topic)['question_counts']['bank'],0)

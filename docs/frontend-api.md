@@ -88,9 +88,11 @@ Task = {
 分页只影响 items，active/counts 始终是全队列摘要，不受 status 筛选影响。排队/运行优先，其次需处理项，最后历史；同级创建时间倒序并以 ID 排序。status 参数枚举不合法返回 400。
 kind 沿用 workflow kind。进度只到试卷（如“正在分析《2023 数学一》”），不猜题号/模型完成比例；不输出会话 ID、聊天、工具日志、输入或执行令牌。error 是已保存业务错误；安装登录问题在 availability 中表达。
 
-POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。复用原 workflow_action/原任务回执和重试，不另建身份绕过未知远端执行。运行中的轮次、连接核对或外部占用期间不提供任务动作；已失败且仍绑定原轮次时可提供 retry，先核对原远端状态再决定是否重试。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。历史直接任务无 workflow 记录时仅在仍绑定原活动轮次的失败状态下允许重试。
+POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。运行中的任务不提供动作。failed 任务在无其他执行时可 retry：保留旧执行记录，新建请求、任务和会话重新执行；已有保存回执的任务不会重跑。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。
 
-默认应用后台在有排队/未确认原任务时自动连接；空工作区不创建远端学习会话。先检查命令和账户，再恢复原会话并核对原 turn，之后才派发；不因连接失败换会话或重复保存。首次有工作时立即检查，失败后约30秒重新检查，无需用户点击连接。空闲、尚未检查登录时 availability 为 checking；不启动空会话探测登录。未安装/未登录不消费排队任务，保存数据始终可读。显式释放/外部占用不自动抢回。
+每个任务新开一次 Codex 会话，结束即关闭；应用重启或断线时，已保存回执的任务直接完成，无回执的任务标为 failed（error 为“执行已中断；重试将在新会话重新执行”）。后台在有排队任务时自动检查命令和账户，首次有工作时立即检查，失败后约30秒重新检查，无需用户点击连接。未检查时 availability 为 checking；未安装/未登录不消费排队任务，保存数据始终可读。所选模型/强度不可用时任务在执行前标为 failed，error 给出可读提示。
+
+GET `/api/agent/models`：只读，不创建任务或会话。200 `{status:'available'|'checking'|'unavailable',reason:null|'not_installed'|'not_logged_in'|'other'|'disabled',message:string,items:[{id:string,name:string,efforts:string[]}]}`。items 来自本机 app-server 的 model/list，不是静态枚举；disabled 表示后端未启用 Agent；checking 可稍后重读。
 
 ## SSE
 
@@ -120,7 +122,9 @@ GET `/api/data/status`：只读，不启动任务，不自动迁移。响应 `{d
 
 立即备份复用 POST `/api/maintenance/backup`，响应 `{path:string,files:integer}`；列表 GET `/api/maintenance/backups` 返回 `{backups:[{name,bytes}]}`，无需新增写接口。POST `/api/maintenance/restore` `{name,library_dir?,confirm_older_library?:boolean}` 返回中含 `library_status:'same'|'newer'|'older'` 与 `library_notice`；当前题库比备份旧时默认返回 library_older，需布尔 confirm_older_library=true 才恢复；异库 library_mismatch、缺库 library_missing。
 
-POST `/api/preferences` 仅合并实际传入字段，省略 reserved、mask_same_type、paper_marking_convention、study_type 均保留旧值；显式非法值返回400。
+POST `/api/preferences` 仅合并实际传入字段，省略 reserved、mask_same_type、paper_marking_convention、study_type、execution_profiles 均保留旧值；显式非法值返回400。
+
+Preferences 含 `execution_profiles:{judgment:{model:string,effort:string},organization:{model:string,effort:string}}`，默认 judgment=gpt-6-luna/xhigh、organization=gpt-6-luna/high。judgment 用于 analyze_paper、review_question、grade_attempt、review_practice、maintain_catalog、annotate_questions；organization 用于 prepare_practice、organize_knowledge、summarize_paper。POST 可只传一档（按档合并，不重置另一档），每档须同时含 model 与 effort；`execution_profiles:null` 恢复默认。保存不启动任务，下一个任务起生效。
 
 文件路径升级为显式 CLI：`python scripts/migrate_file_paths.py --dry-run --report <私有报告路径>`，核对 changes/unresolved/historical_references 后用 `--confirm <plan_sha256>`。确认前自动执行现有完整备份；找不到或散列不匹配的引用不猜配、不删除。只对 workspace.json.library 这一个根目录位置配置开例外：同盘存相对工作区的位置（标准布局为 ../../library），跨盘允许绝对路径，迁移预演不会把已正确配置的跨盘绝对路径反复列为待迁移。预演 changes.relative 在该配置项跨盘时可为绝对目标；业务文件引用仍只允许所属根目录内的相对路径，拒绝绝对和越界路径。受散列保护的不可变历史证据单独报告，不能直接改写后继续宣称旧回执有效。
 
@@ -130,7 +134,7 @@ POST `/api/preferences` 仅合并实际传入字段，省略 reserved、mask_sam
 
 | 方法/路径 | body | 成功响应 | 额外失败边界 |
 |---|---|---|---|
-| POST /api/preferences | 部分 `{study_type?,mask_same_type?,reserved?,paper_marking_convention?}`，类型同GET | 200 Preferences，未传字段保留 | 400 非法类别/预留范围/开关 |
+| POST /api/preferences | 部分 `{study_type?,mask_same_type?,reserved?,paper_marking_convention?,execution_profiles?}`，类型同GET | 200 Preferences，未传字段保留 | 400 非法类别/预留范围/开关 |
 | POST /api/maintenance/backup | `{}` | 200 `{path:string,files:integer}` | 409 当前写入受占用 |
 | POST /api/papers/import | multipart `file:PDF,title?:string,exam_date?:string`，上限80MB | 201 `{paper,sha256,created_questions?,warnings?,agent_queued:false,analysis_warning?}`，只保存PDF并本地切题，不排AI任务；重复PDF为200 `{paper,sha256,reused:true}` | 400 非可读PDF/超限；文件已保存但后续准备失败时保留paper并给analysis_warning |
 | POST /api/papers/{id}/analyze | `{confirmed:true}` | 201 `{paper,questions,engine,message,warnings,created_questions,agent_task,agent_queued:true,job_id}`；唯一的开始分析入口，首次也须确认 | 400 未确认、归档/原卷不可读 |

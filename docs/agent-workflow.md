@@ -6,23 +6,25 @@
 
 ## 执行入口与会话
 
-读取context.learning_task，再调用对应read_skill。任务提供的schema、捕获输入和写入身份优先于旧会话记忆或静态文档，不能自行补字段、改范围或升级在途契约。
+后端维护全部状态（画像、证据、练习、曝光、候选、阶段调度与校验），Agent只对本任务材料做判断并交付。任务提供的schema、捕获输入和写入身份优先于静态文档，不能自行补字段、改范围或升级在途契约。
 
-应用通过本机codex app-server和现有登录连接一个专用学习session，不需要AI URL。首次默认gpt-6-luna / xhigh，随后保留会话设置。专用会话不派生子Agent，不因刷新、切卷、切模型或连接失败另建会话，CLI/Desktop不能与网页并行控制。
+应用通过本机codex app-server和现有登录执行任务，不需要AI URL。每个学习/资料任务新建一个Codex会话，交付或失败后结束；不复用、不压缩、不恢复旧会话，会话ID只作执行记录。模型与推理强度按档位取自设置（见[配置教程](setup.md)）：判断档为analyze_paper、review_question、grade_attempt、review_practice、maintain_catalog、annotate_questions；整理档为prepare_practice、organize_knowledge、summarize_paper。所选模型或强度本机不可用时任务在执行前失败并提示，不换模型。当前一次只执行一个任务。
 
-改模型沿已验证的路径：网页空闲释放 → 项目终端codex resume对应session → /model → /quit → 网页重连。Desktop接管尚待专项，不能因列表可见就同时操作。需要用户处理的授权由用户完成。
+初始输入即材料包：任务头（id、kind、input_revision、result_schema、要求）及该任务所需材料，包内材料由后端生成对应阅读回执。选题1.10给目标、原卷错因摘要、候选摘要和规范定义；批改给作答文字与带角色的图片、回答范围、固定参考文字/图片及相关定义；整理给已保存证据与定义；其他任务按需用read_skill和读取工具。Agent不维护记忆、不串阶段、不派生Agent、不使用Shell。
 
-每轮只执行当前任务。保存回执和远端成功结束齐全才算完成，后续阶段由应用队列派发；不恢复旧pending_chain或自行串阶段。网页显示进度、结果和必要授权，不展示内部思考、调试或JSON。
+本地交付事务通过全部校验并写入保存回执即为完成（标注同时发布出处），不等远端结束；后续阶段由应用队列派发。面向学生的数学式必须用`$...$`或`$$...$$`包裹。网页显示进度、结果和必要授权，不展示内部思考、调试或JSON。
 
 ## 阶段与契约
 
 常规阶段为：分析/单题复核 → 必要的知识整理 → 选题 → 知识整理；明确提交作答后为批改 → 知识整理。已有有效映射可复用。直接筛选/追加也由应用补必要前置，失败保留已有结果。
 
+单题复核按结构比较该题的正误、完整首错和考点集合：三项不变则沿用映射与练习，不排整理和选题；有变化只把该题映射置为待整理，并只为受影响目标补选，其他目标及冻结绑定保留。原报告与历史散列不改写，依赖说明记在record_versions。整卷重新分析仍按整体失效处理。
+
 | kind | 当前契约 | 本轮交付 |
 | --- | --- | --- |
 | analyze_paper | 2.0 | 完整题号与原图依据、逐题分析及review；核对为同题的通用参考记录在顶层references，无匹配可为空 |
 | review_question | 2.0 | 指定题的复核；程序合并父报告，不重写其他题 |
-| prepare_practice | 1.9 | goals、exercises、retained_exercises和限制；规范原子、材料及标注版本、回答范围、保留/跨卷引用 |
+| prepare_practice | 1.10 | selections（bank_id、goal_ids、selection_reason、prompt）和每个目标的limitations；目标、标注、固定参考与保留练习由后端填写 |
 | grade_attempt | 新绑定作答1.9 | 本次步骤、首错或未知、解法、可能原因、考点与必要补拍；使用所选固定材料 |
 | organize_knowledge | 1.8 | mappings、summary、limitations；兼容字段new_nodes必须为空 |
 | summarize_paper | 1.6 | 保存证据的归纳；引用来自allowed_source_refs，改善须有前后依据 |
@@ -48,13 +50,16 @@
 | action | 用途 |
 | --- | --- |
 | context | 获取当前任务、schema、范围、输入版本、写入身份及历史入口 |
+| preflight | payload={result:完整任务封装}；执行与保存相同的校验后回滚，不写数据或发布文件，成功返回{valid,sha256} |
+| deliver_result | 提交完整任务封装并取得保存回执 |
 | read_skill | 按任务读取paper-diagnosis、bank-search/probe-design、learning-update、knowledge-index；资料准备用catalog-maintenance/question-topics |
 | read_paper | 读原页及作答；每次1～4页。regions使用原PDF点坐标，每次1～4区，用于放大核对 |
 | catalog | 按原子/子树召回或浏览题源导航，详见[题源接口](bank-source-interface.md)；候选不算已读 |
 | read_bank | 实际读题干/参考。通用准备和新绑定练习可用role=all；指定probe_id时沿固定材料，不用最新库图替换 |
 | read_attempt | 读取已保存作答、照片顺序及角色，不能猜未提交草稿 |
 | task_context | 用knowledge_query定位目录，用topic_ids实际读捕获定义；source_ids读知识证据/目录来源，bank_ids读准备上下文，probe_ids读解答复核基线，均按任务作用域使用 |
-| memory_read/write | 保存有证据指针和资源版本的短索引，不把旧笔记当当前已读材料 |
+
+选题1.10只允许context、preflight、deliver_result/apply_report和对本次候选ID的read_bank题干（role=question）补看，禁止catalog及候选外读取。
 
 原卷出处候选须实际核对条件、目标、选项与图；出处元数据不是同题证明。已有知识线索也不替代读取定义或核对本次训练范围。
 
@@ -70,9 +75,9 @@
 
     {result: 完整任务封装}
 
-校验错误交当前任务有限修正，不直接写SQLite、使用旧写入口或新建会话绕过。重复交付沿原回执，旧身份/变化输入不能覆盖新结果；不以最终聊天回复解锁下一步。
+校验错误由当前会话按错误修正后再交付，后端不自动开修复轮次；不直接写SQLite、使用旧写入口绕过。重复交付沿原回执，旧身份/变化输入不能覆盖新结果；不以最终聊天回复解锁下一步。
 
-选题须实际读原卷映射、候选材料和规范定义，引用本任务中的annotation_id/topic_ids。新增题放exercises，同卷旧题用retained_exercises，跨卷沿historical_exercises中的可用原probe引用；不复制作答。图片暂存不算提交，看解析后的完成与独立完成分开。
+选题1.10：后端只对非correct题的已映射原子召回候选——当前ready且材料/目录依赖有效的标注题，排除本卷原题、做过/已曝光/已有练习、预留卷及同题共享保护的题；按主关联、同题型、年份新、bank_id排序，每目标至多5题。Agent每目标选0～2题、每原子含保留练习合计不超过3题，一题可关联多个目标、不重复选；未选的目标须在limitations写明原因。召回回执、实际发送的候选摘要回执和定义回执分别保存，不伪造图片阅读。旧契约练习保持可读。图片暂存不算提交，看解析后的完成与独立完成分开。
 
 ## 资料准备与维护
 
@@ -99,4 +104,4 @@ review_practice通过review_request固定1～8个probe_id、payload_revision及a
 
     .\.venv\Scripts\python.exe -X utf8 scripts/agent_tasks.py deliver result.json --ticket ticket.json
 
-断线或重启由应用核对原会话/远端turn和回执，不能因静默或外部占用自行重建任务。备份恢复的旧执行身份须按现有恢复流程处理，不复制旧票据继续写。目录、材料、原作答与派生结果的存储关系见[后端结构](backend-architecture.md)。
+断线或重启时：已有保存回执的任务直接完成并按幂等规则续接；没有回执的任务标为失败并撤销旧写票据，用户重试会新建请求、任务和会话。备份恢复的recovery_required队列仍须用户显式操作，不自动重放，不复制旧票据继续写。目录、材料、原作答与派生结果的存储关系见[后端结构](backend-architecture.md)。

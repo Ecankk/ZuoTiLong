@@ -12,7 +12,7 @@
 | HTTP后端 | FastAPI、Pydantic请求校验、Uvicorn服务进程；AppConfig显式路径配置，AppRuntime持有服务，通过FastAPI依赖注入供路由调用 |
 | 业务/存储 | Python领域模块、SQLite直接SQL、本地文件；没有ORM、Redis或独立消息队列服务 |
 | PDF/OCR | PyMuPDF提取/裁切，RapidOCR/ONNX辅助扫描件定位，Pillow处理照片；数学理解交学习Agent |
-| Agent | 本机Codex登录账户、codex app-server、stdio JSON-RPC、一个持久学习session；模型推理由Codex调用所选模型完成 |
+| Agent | 本机Codex登录账户、codex app-server、stdio JSON-RPC、每任务一个新会话；模型推理由Codex调用设置中所选模型完成 |
 | 验证 | Python unittest隔离测试、Node内置测试；旧真实模型实验脚本已归档，按改动选择检查 |
 
 ```text
@@ -52,10 +52,10 @@ flowchart LR
 Agent参与过程：
 
 1. 用户上传/点击分析、选题或提交作答，后端先保存材料或作答，再排入持久阶段任务。上传照片本身不批改。
-2. 桥接在用户连接后启动本机`codex app-server --listen stdio://`，首次建立、随后复用同一session；登录和模型调用由Codex负责，不要求网页填写模型API URL。
-3. 每轮捕获明确的试卷/作答范围、材料版本、schema和写入身份。Agent读取对应Skill，通过动态mathlens工具读原图、参考、定义及真实作答；程序按规范原子等条件召回题目，Agent判断数学适配和少量练习的价值。
-4. Agent按固定JSON契约交付。后端校验身份、材料/引用及结构，在同一事务内保存结果、业务投影和回执。模型聊天文字不自动成为报告，Agent不直接修改用户数据库。
-5. 保存回执与远端本轮成功结束均确认后，应用派发下一阶段。网页展示已保存的逐题分析/练习/反馈及必要进度，不展示内部思考或要求用户维护JSON。
+2. 调度器为每个任务启动本机`codex app-server --listen stdio://`并新建一个会话（thread/start），按任务档位设置模型与推理强度（app/agent/models.py），交付或失败后关闭本次执行；bridge只持有当前一次执行，会话ID只作记录。登录和模型调用由Codex负责，不要求网页填写模型API URL。
+3. 任务创建时捕获明确的试卷/作答范围、材料版本、schema和写入身份。app/agent/material_package.py把任务头与所需材料组装为初始输入，并为实际提供的材料生成阅读回执；选题候选由app/learning/selection.py按规范原子召回、排除和排序，Agent只判断适配并选择。需补看时通过动态mathlens工具读取。
+4. Agent按固定JSON契约交付，可先preflight（与保存同一套校验后回滚）。后端校验身份、材料/引用及结构，在同一事务内保存结果、业务投影和回执；标注任务同时发布出处。模型聊天文字不自动成为报告，Agent不直接修改用户数据库。
+5. 保存回执写入即任务完成，应用派发下一阶段；重启或断线时有回执直接完成，无回执失败、重试新建会话。单题复核的逐题语义依赖（正误、首错、考点）由app/learning/semantic_dependencies.py比较并写入record_versions，不改写历史输入和散列。网页展示已保存的逐题分析/练习/反馈及必要进度，不展示内部思考或要求用户维护JSON。
 
 学习session由应用独占使用；Desktop/CLI接管需先释放，不能两个客户端同时控制。CLI/MCP入口及具体阶段、工具参数见[Agent协议](agent-workflow.md)。
 
@@ -68,7 +68,7 @@ Agent参与过程：
 | app/api/ | HTTP输入、响应与请求边界；router.py登记业务路由，errors.py处理错误，frontend.py提供前端静态资源 |
 | app/services/ | 试卷、作答、题库和知识的应用用例 |
 | app/learning/ | 任务契约、捕获输入、交付/回执、学习记录和阶段队列 |
-| app/agent/ | 固定会话、模型进程通信、工具读取和任务派发 |
+| app/agent/ | 单任务执行、模型档位与列表、初始材料包、模型进程通信、工具读取 |
 | app/knowledge/ | 统一目录、发布/重定向、资料准备、证据映射与画像 |
 | app/bank/ | 题目材料、身份、标注、访问/曝光与程序召回 |
 | app/documents/ | PDF/OCR、切题与识别进度 |
@@ -111,7 +111,7 @@ ZuoTiLong/
 
 目录描述数学知识，通用标注描述题目；个人记录描述本次作答、安排与长期表现。个人错因、练习回答范围、总结、知识证据映射、曝光、预留、备考类别和自定义笔迹约定均留在工作区。普通学习不把个人分析提升为通用标注，也不把用户卷面裁切写入公共题图。
 
-个人记录以稳定ID、版本和固定材料引用通用资料；跨文件关系由服务校验，各文件保留域内外键。作答与批改排队仍在个人库同一事务中保存。维护交付通过附加数据库事务保存两侧结果；标注取得远端完成后发布可复用核验出处。通用库不携带学习任务或会话；annotation_provenance按出处格式v2自包含保存题目材料/身份、输入摘要、实际材料与定义读取（含当时公开定义快照）及结果散列，导出、核验和修订基线只读通用库，不再回查原维护工作区；v2之前的历史标注用`scripts/backfill_annotation_provenance.py --library <库> --workspace <旧维护工作区>`先`--dry-run`再`--confirm <plan_sha256>`补齐（确认前自动做题库备份）。维护执行票据、工具日志和原任务输入保留在原工作区，仅作历史追溯。
+个人记录以稳定ID、版本和固定材料引用通用资料；跨文件关系由服务校验，各文件保留域内外键。作答与批改排队仍在个人库同一事务中保存。维护交付通过附加数据库事务保存两侧结果；标注在本地交付事务成功时原子发布可复用核验出处。通用库不携带学习任务或会话；annotation_provenance按出处格式v2自包含保存题目材料/身份、输入摘要、实际材料与定义读取（含当时公开定义快照）及结果散列，导出、核验和修订基线只读通用库，不再回查原维护工作区；v2之前的历史标注用`scripts/backfill_annotation_provenance.py --library <库> --workspace <旧维护工作区>`先`--dry-run`再`--confirm <plan_sha256>`补齐（确认前自动做题库备份）。维护执行票据、工具日志和原任务输入保留在原工作区，仅作历史追溯。
 
 首次默认启动会将旧项目.mathlens混合库复制迁移，分域创建新文件，成功后启用新目录；原目录保留供回切。迁移不重新解题、标注或制造学习事件。自定义工作区不自动导入旧个人记录。个人备份（设置页“立即备份”，保留3份）只含工作区，另记通用库的稳定library_id与单调revision（library_state表，各业务表写入由触发器递增）；恢复时同库且当前不旧于备份直接允许，当前更旧需显式确认，异库或缺库拒绝。通用库备份由`scripts/backup_library.py`单独执行，存ZuoTiLongData\backups，保留5份。个人备份含个人内容，不能作为发行包。
 
@@ -119,7 +119,7 @@ ZuoTiLong/
 
 ## 任务与材料
 
-任务创建时捕获范围、材料和契约版本；保存校验与结果/投影/回执在同一事务内完成。明确提交作答与排入批改也在同一事务。远端结束与本地保存分别核对，不能用聊天结束替代回执。
+任务创建时捕获范围、材料和契约版本；保存校验与结果/投影/回执在同一事务内完成。明确提交作答与排入批改也在同一事务。本地保存回执即完成依据，不能用聊天结束替代回执。
 
 原卷参考由paper_question_bindings关联；练习由practice_question_bindings和practice_attempt_materials关联固定材料。app/storage/practice_materials.py保存材料，app/agent/practice_materials.py按当前任务读取。题库更新不替换已布置题，已有真实作答和在途任务按原身份/版本处理。
 

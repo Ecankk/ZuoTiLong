@@ -117,6 +117,9 @@ def initial_inputs(conn,root,data,task_id,lease):
         scope=inputs['selection']
         from app.learning.selection import public,summary
         header['selection']=public(scope)
+        header['result_template']={**{k:header[k] for k in ('schema_version','task_id','kind','paper_id','input_revision')},
+            'author':'learning-agent','result':{'selections':[],
+                'limitations':{t['goal']['id']:'' for t in scope['targets']}}}
         header['requirements']+=['每目标选1–2题，每原子含已保留练习总计不超过3题。只从目标candidate_ids选择，题目可关联多个目标。',
             '只判断教学适配并写选择理由、回答范围；无合适题留空并在limitations[目标ID]说明。无缺口写空字符串。禁止catalog；确需看图时仅可read_bank读取候选题干。后端负责保留其他练习。']
         for bid,c in scope['candidates'].items():

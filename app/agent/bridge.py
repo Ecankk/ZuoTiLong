@@ -19,7 +19,7 @@ class CodexBridge:
         self.lock=threading.RLock();self.operations=threading.RLock()
         self.transport_factory=transport_factory;self.transport=None
         self.connected=False;self.connecting=False;self.closing=False;self.auto_connect=False
-        self.finishing=False;self.generation=0;self.unavailable_reason=None;self.next_connect_check=0
+        self.preparing=False;self.finishing=False;self.generation=0;self.unavailable_reason=None;self.next_connect_check=0
         self.connect_thread=None;self.dispatch_thread=None;self.finishing_thread=None;self.model_catalog=[];self.prompts={}
         from app.storage.boundaries import workspace_config
         self.learning_db=workspace_config(self.data,self.root).database
@@ -82,7 +82,7 @@ class CodexBridge:
         with self.lock:
             value=copy.deepcopy(self.state)
             value.update(connected=self.connected,workflows=self._workflow_listing(),can_submit=False,
-                         input_locked=bool(self.state['active_request'] or self.connecting or self.finishing))
+                         input_locked=bool(self.state['active_request'] or self.connecting or self.finishing or self.preparing))
             value['turns']=value['turns'][-30:]
             for t in value['turns']:
                 for key in ('inputs','run_token','dispatch_nonce'):t.pop(key,None)
@@ -90,7 +90,7 @@ class CodexBridge:
             return value
 
     def assert_user_write_allowed(self):
-        if self.state['active_request'] or self.connecting or self.finishing:raise BridgeConflict('请等待当前任务交付或停止后重试')
+        if self.state['active_request'] or self.connecting or self.finishing or self.preparing:raise BridgeConflict('请等待当前任务交付或停止后重试')
 
     def connect(self):
         with self.lock:
@@ -172,9 +172,14 @@ class CodexBridge:
             self.workflow_wakeup.set();return self.snapshot()
 
     def _drain_workflows(self):
+        # Serialize scheduler invocations, never HTTP reads/actions. They use
+        # the short bridge state lock rather than this execution mutex.
+        with self.operations:return self._drain_once()
+
+    def _drain_once(self):
         from app.learning.workflows import reconcile,next_job,guard,mark
         with self.lock:
-            if self.closing or not self.connected or self.finishing or self.state['active_request']:return
+            if self.closing or not self.connected or self.finishing or self.preparing or self.state['active_request']:return
             with closing(self._learning_connection()) as conn,conn:
                 reconcile(conn,self.root,self.data);row=next_job(conn)
                 if not row:return
@@ -184,11 +189,10 @@ class CodexBridge:
                     if guard(conn,self.root,self.data,job['kind'],job['paper_id'],job['attempt_id'],**extra)!=json.loads(job['guard_json']):raise ValueError('任务材料已变化，请重试此阶段')
                     mark(conn,job['id'],'dispatching')
                 except ValueError as exc:mark(conn,job['id'],'blocked',exc);return
-            try:
-                self.submit_task(job['kind'],job['paper_id'],job['request_id'],job['attempt_id'],workflow_id=job['workflow_id'],contract_version=job['contract_version'],**extra)
-            except Exception as exc:
-                with closing(self._learning_connection()) as conn,conn:mark(conn,job['id'],'failed',exc)
-
+        try:
+            self.submit_task(job['kind'],job['paper_id'],job['request_id'],job['attempt_id'],workflow_id=job['workflow_id'],contract_version=job['contract_version'],**extra)
+        except Exception as exc:
+            with closing(self._learning_connection()) as conn,conn:mark(conn,job['id'],'failed',exc)
     def submit_task(self,kind,paper_id,request_id,attempt_id=None,**kwargs):
         from app.learning.tasks import create_task
         from app.agent.material_package import initial_inputs
@@ -203,9 +207,14 @@ class CodexBridge:
                 from app.bank.access import preferences
                 setting=selected(kind,preferences(conn),self.model_catalog)
             sid='pending-session-'+uuid.uuid4().hex
-            with closing(self._learning_connection()) as conn,conn:
-                task=create_task(conn,self.root,self.data,kind,paper_id,sid,request_id,attempt_id=attempt_id,**kwargs)
-                conn.execute("UPDATE workflow_jobs SET task_id=?,status='running' WHERE request_id=?",(task['id'],request_id))
+            self.preparing=True
+            self.lock.release()
+            try:
+                with closing(self._learning_connection()) as conn,conn:
+                    task=create_task(conn,self.root,self.data,kind,paper_id,sid,request_id,attempt_id=attempt_id,**kwargs)
+                    conn.execute("UPDATE workflow_jobs SET task_id=?,status='running' WHERE request_id=?",(task['id'],request_id))
+            finally:
+                self.lock.acquire();self.preparing=False
             turn=dict(request_id=request_id,task_id=task['id'],task_kind=kind,run_token=task['run_token'],session_id=sid,codex_turn_id=None,
                       status='running',context={'paper_id':paper_id} if paper_id is not None else {},attempt_id=attempt_id,messages=[],model_settings=setting,created_at=stamp())
             self.state['turns'].append(turn);self.state.update(session_id=sid,active_request=request_id,status='running',model_settings=setting)
@@ -282,13 +291,18 @@ class CodexBridge:
             if tid and tid!=turn['codex_turn_id']:return
             method=message.get('method')
             if method=='item/tool/call' and 'id' in message:
+                transport=self.transport
                 try:
                     if params.get('tool')!='mathlens':raise ValueError('只允许mathlens学习工具')
                     from app.agent.tools import execute
                     args=params.get('arguments',{});args=json.loads(args) if isinstance(args,str) else args
-                    content=execute(self.root,self.data,args['action'],args.get('payload',{}),lease=self._task_lease(turn))
+                    lease=self._task_lease(turn)
+                    self.lock.release()
+                    try:content=execute(self.root,self.data,args['action'],args.get('payload',{}),lease=lease)
+                    finally:self.lock.acquire()
                     result={'success':True,'contentItems':[{'type':'inputText','text':v['text']} if v['type']=='text' else {'type':'inputImage','imageUrl':f"data:{v['mimeType']};base64,{v['data']}"} for v in content]}
                 except Exception as exc:result={'success':False,'contentItems':[{'type':'inputText','text':str(exc)}]}
+                if self._active() is not turn or self.transport is not transport:return
                 self.transport.send({'id':message['id'],'result':result})
                 from app.learning.tasks import receipt
                 with closing(self._learning_connection()) as conn:saved=receipt(conn,turn['task_id'])

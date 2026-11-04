@@ -5,6 +5,13 @@ import json
 
 
 def practice_state(conn, paper_id):
+    from app.bank.capture_view import active
+    view=active(conn)
+    if view is None:return _practice_state(conn,paper_id)
+    if paper_id not in view.plan_cache:view.plan_cache[paper_id]=_practice_state(conn,paper_id)
+    return view.plan_cache[paper_id]
+
+def _practice_state(conn,paper_id):
     report = conn.execute('SELECT id,report_json FROM agent_reports WHERE paper_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1',
                           (paper_id,)).fetchone()
     plan = conn.execute('''SELECT r.id,r.payload_json,t.input_json FROM learning_results r

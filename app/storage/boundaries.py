@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+import os
+from functools import lru_cache
 from app.config import resolve_library_dir,library_location
 
 LIBRARY_TABLES = frozenset('''
@@ -67,9 +69,15 @@ def workspace_config(data, root=None):
                      library=resolve_library_dir(data,data/'library'))
 
 
+@lru_cache(maxsize=32)
+def _library_root(data,stamp,selected,override):
+    marker=Path(data)/'workspace.json'
+    return resolve_library_dir(data,json.loads(marker.read_text(encoding='utf8'))['library'] if stamp is not None else data)
+
 def library_root(data):
-    marker = Path(data) / 'workspace.json'
-    return resolve_library_dir(data,json.loads(marker.read_text(encoding='utf8'))['library'] if marker.exists() else data)
+    from app.storage.navigation_index import file_stamp
+    data=os.path.abspath(data);stamp=file_stamp(Path(data)/'workspace.json')
+    return _library_root(data,tuple(stamp) if stamp is not None else None,os.environ.get('MATHLENS_DATA_DIR'),os.environ.get('MATHLENS_LIBRARY_DIR'))
 
 
 def material_path(data, relative):

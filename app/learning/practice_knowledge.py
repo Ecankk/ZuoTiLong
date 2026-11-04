@@ -4,6 +4,7 @@ Programmatic recall establishes provenance; the Agent still judges mathematical
 fit. A source alias shares question knowledge, not an unverified material hash.
 """
 import json
+from app.learning.tasks import task_inputs
 from app.bank import annotations
 from app.knowledge import catalog,index,mapping_versions
 from app.storage import annotation_cache as annotation_origins
@@ -82,7 +83,7 @@ def material_binding(conn,data,bank_id,annotation):
 
 def recalled(conn,data,task,lease,bank_id,annotation_id):
     """Called by the prepared-atom tool, never by coarse source navigation."""
-    inputs=json.loads(task['input_json']);scope=inputs['practice_knowledge']
+    inputs=task_inputs(conn,task);scope=inputs['practice_knowledge']
     annotation=annotations.current(conn,data,bank_id)
     if not annotation or annotation['analysis']['status']!='ready' or annotation['id']!=annotation_id:
         raise ValueError('召回题目标注不是当前就绪版本')
@@ -96,7 +97,7 @@ def recalled(conn,data,task,lease,bank_id,annotation_id):
 
 
 def require_binding(conn,data,task,bank_id,annotation_id):
-    inputs=json.loads(task['input_json']);scope=inputs['practice_knowledge']
+    inputs=task_inputs(conn,task);scope=inputs['practice_knowledge']
     annotation=annotations.current(conn,data,bank_id)
     if not annotation or annotation['analysis']['status']!='ready' or annotation['id']!=annotation_id:
         raise ValueError('新补强题须使用当前有效ready标注，不能回退粗标签或未标注题')
@@ -231,7 +232,7 @@ def existing_binding(conn,data,inputs,probe_id):
 
 
 def require_existing_read(conn,data,task,probe_id):
-    inputs=json.loads(task['input_json'])
+    inputs=task_inputs(conn,task)
     binding,manifest=existing_binding(conn,data,inputs,probe_id)
     from app.learning.tasks import require_read
     for role,item in manifest['resources'].items():
@@ -261,7 +262,7 @@ def validate_input(conn,task,inputs,current,result):
 
 
 def save_new_bindings(conn,data,task,result_id,result):
-    inputs=json.loads(task['input_json']);require_topics(conn,task,inputs,result)
+    inputs=task_inputs(conn,task);require_topics(conn,task,inputs,result)
     for exercise in result['exercises']:
         binding=require_binding(conn,data,task,exercise['bank_id'],exercise['annotation_id'])
         from app.storage.practice_materials import freeze

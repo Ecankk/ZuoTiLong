@@ -51,12 +51,13 @@ class KnowledgeLinksService:
         elif conn.execute('SELECT 1 FROM imported_question_annotations WHERE bank_id=?',(bid,)).fetchone():state='outdated'
         meta=conn.execute('SELECT * FROM bank_identity WHERE bank_id=?',(bid,)).fetchone()
         meta=dict(meta) if meta else {}
+        from app.bank.applicability import math_types
         deps={}
         if annotation:
             for table in ('question_annotations','imported_question_annotations'):
                 record=conn.execute('SELECT dependencies_json FROM '+table+' WHERE id=?',(annotation['id'],)).fetchone()
                 if record:deps=json.loads(record[0]);break
-        return ({'bank_id':bid,'collection_id':row['collection_id'],'entity_id':min(group),'source':row['source'],
+        return ({'_annotation':annotation,'bank_id':bid,'math_types':math_types(row['math_types_json'],meta.get('math_type')),'collection_id':row['collection_id'],'entity_id':min(group),'source':row['source'],
             'math_type':meta.get('math_type',0),'year':meta.get('year',''),'number':meta.get('number',0),'status':state,
             'topics':public_topics(annotation['analysis']['bindings'] if annotation else [],names,view.resolve),
             'annotation_id':annotation['id'] if annotation else None,
@@ -204,7 +205,7 @@ class KnowledgeLinksService:
             groups = {}
             for item in bank if view=='bank' else completed:
                 if collection is not None and item.get('collection_id')!=collection:continue
-                if view=='bank' and ((math_type and item['math_type']!=math_type) or (year and year not in item['year']) or (status and item['status']!=status)):continue
+                if view=='bank' and ((math_type and math_type not in item['math_types']) or (year and year not in item['year']) or (status and item['status']!=status)):continue
                 matches = [t for t in item['topics'] if (selected is None or t['topic_id'] in selected) and (not role or t['role']==role)]
                 if selected is not None and not matches or role and not matches:continue
                 public = deepcopy(item)
@@ -222,11 +223,19 @@ class KnowledgeLinksService:
 
     def topics(self,bank_ids):
         if not 1<=len(bank_ids)<=50 or len(set(bank_ids))!=len(bank_ids):raise ValueError('每次读取1–50道不同题目的原子标签')
-        with navigation_snapshot(self.database) as conn:
-            nodes = index.catalog(conn)
-            items = {i['bank_id']:i for i in self._bank_index(conn,nodes)}
-            if any(bid not in items for bid in bank_ids):raise ValueError('题库题目不存在')
-            return {'catalog_revision':catalog.active_id(conn),'items':[deepcopy(items[bid]) for bid in bank_ids]}
+        from contextlib import closing
+        import sqlite3
+        with closing(sqlite3.connect(self.config.library_database.resolve().as_uri()+'?mode=ro',uri=True)) as conn:
+            conn.row_factory=sqlite3.Row
+            with catalog.atomic(conn):return self._topics(conn,bank_ids)
+
+    def _topics(self,conn,bank_ids):
+        nodes = index.catalog(conn)
+        from app.storage.navigation_index import NavigationIndex
+        with self._lock:
+            items = {i['bank_id']:i for i in NavigationIndex(self.config).bank(conn,nodes,self._build_bank_item,bank_ids)}
+        if any(bid not in items for bid in bank_ids):raise ValueError('题库题目不存在')
+        return {'catalog_revision':catalog.active_id(conn),'items':[deepcopy(items[bid]) for bid in bank_ids]}
 
     def bank_ids_for_topic(self,topic_id):
         """One validated bank pass for the paged library, without learner history."""

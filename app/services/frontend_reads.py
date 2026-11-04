@@ -296,11 +296,17 @@ class FrontendReads:
 
     def collections(self):
         bank=self._navigation()['bank'];ready={i['bank_id'] for i in bank if i['status']=='ready'}
+        from app.bank.applicability import math_types
         with self.rt.database.session() as conn:
-            return [dict(id=r['id'],name=r['name'],kind=r['kind'],total=r['total'],
-                ready=sum(1 for i in bank if i['collection_id']==r['id'] and i['bank_id'] in ready))
-                for r in conn.execute('''SELECT c.*,count(b.id) total FROM bank_collections c
-                    LEFT JOIN bank_questions b ON b.collection_id=c.id GROUP BY c.id ORDER BY c.sort_order,c.id''')]
+            groups=[]
+            for row in conn.execute('SELECT * FROM bank_collections ORDER BY sort_order,id'):
+                questions=list(conn.execute("SELECT b.id,b.math_types_json,i.math_type FROM bank_questions b LEFT JOIN bank_identity i ON i.bank_id=b.id WHERE collection_id=?",(row['id'],)))
+                counts={}
+                for q in questions:
+                    for typ in math_types(q['math_types_json'],q['math_type']):
+                        entry=counts.setdefault(typ,dict(math_type=typ,total=0,ready=0));entry['total']+=1;entry['ready']+=int(q['id'] in ready)
+                groups.append(dict(id=row['id'],name=row['name'],kind=row['kind'],total=len(questions),ready=sum(q['id'] in ready for q in questions),math_types=[counts[k] for k in sorted(counts)]))
+            return groups
 
     def bank(self, math_type='', year='', topic_id=None, offset=0, limit=20,collection=None):
         if math_type not in ('', '1', '2', '3'):
@@ -317,9 +323,13 @@ class FrontendReads:
             from app.bank.collections import require
             if collection is not None:require(conn,collection)
             ids = [r[0] for r in conn.execute("""SELECT b.id FROM bank_questions b LEFT JOIN bank_identity i ON i.bank_id=b.id
-                WHERE (? IS NOT NULL OR b.source!='本地示例题库') AND (?='' OR CAST(i.math_type AS TEXT)=?) AND (?='' OR i.year=?)
-                AND (? IS NULL OR b.collection_id=?) ORDER BY CAST(i.year AS INTEGER) DESC,i.math_type,i.number,b.id""", (collection,math_type, math_type, year, year,collection,collection))
+                WHERE (? IS NOT NULL OR b.source!='本地示例题库') AND (?='' OR EXISTS(SELECT 1 FROM json_each(b.math_types_json) WHERE CAST(value AS TEXT)=?) OR (b.math_types_json='[]' AND CAST(i.math_type AS TEXT)=?)) AND (?='' OR i.year=?)
+                AND (? IS NULL OR b.collection_id=?) ORDER BY CAST(i.year AS INTEGER) DESC,i.math_type,i.number,b.id""", (collection,math_type, math_type,math_type, year, year,collection,collection))
                    if allowed is None or r[0] in allowed]
+            if collection and conn.execute('SELECT kind FROM bank_collections WHERE id=?',(collection,)).fetchone()[0]=='book':
+                from app.bank.applicability import book_key
+                books={r[0]:json.loads(r[1] or '{}') for r in conn.execute("SELECT bank_id,json_extract(metadata_json,'$.book') FROM bank_resources")}
+                ids.sort(key=lambda bid:book_key(books.get(bid,{}),bid))
             result = page(ids, offset, limit)
             result['items'] = [{**public_bank(conn, bid, view='library'), **metadata(conn, bid)} for bid in result['items']]
             from app.bank.access import text_resources

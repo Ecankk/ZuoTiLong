@@ -21,7 +21,7 @@ class TaskSummary:
             state = getattr(bridge, 'state', {})
             active = next((t for t in state.get('turns', []) if t['request_id'] == state.get('active_request')), {})
             small = {k: state.get(k) for k in ('status', 'active_request', 'external_control')}
-            small.update(connected=getattr(bridge, 'connected', False), connecting=getattr(bridge, 'connecting', False))
+            small.update(connected=getattr(bridge, 'connected', False), connecting=getattr(bridge, 'connecting', False),preparing=getattr(bridge,'preparing',False))
             active = {k: active.get(k) for k in ('task_id', 'status')}
             availability = bridge.availability() if hasattr(bridge, 'availability') else dict(status='checking', reason=None, message='正在准备学习服务')
         return small, active, availability
@@ -42,7 +42,7 @@ class TaskSummary:
     def read(self, status=None, offset=0, limit=20):
         if status is not None and status not in TASK_STATUSES:raise ValueError('任务状态不合法')
         state, active_turn, availability = self._state()
-        locked = bool(state.get('active_request') or state.get('connecting') or state.get('external_control'))
+        locked = bool(state.get('active_request') or state.get('connecting') or state.get('external_control') or state.get('preparing'))
         items = []; active_id = None
         for job in self._records():
             raw = job['status']
@@ -57,7 +57,7 @@ class TaskSummary:
             if not locked and self.rt.bridge is not None and not job.get('direct'):
                 if job['recovery_required'] or value in ('blocked', 'failed'):
                     actions.append('retry')
-                if not job['task_id'] and raw in ('queued', 'blocked'):actions.append('cancel')
+                if not job['task_id'] and raw in ('queued', 'blocked','failed'):actions.append('cancel')
             elif owned and state.get('connected') and state.get('status') in ('failed', 'interrupted') and not state.get('external_control'):
                 actions.append('retry')
             label = LABELS.get(job['kind'], '处理学习任务')

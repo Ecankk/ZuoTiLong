@@ -84,7 +84,7 @@ def file_stamp(path,root=None):
     except OSError as exc:return ['unreadable',exc.errno,getattr(exc,'winerror',None)]
 
 class NavigationIndex:
-    FORMAT=1
+    FORMAT=3
     def __init__(self,config):self.config=config;self.path=config.data/'navigation-index.db'
 
     def open(self):
@@ -94,15 +94,20 @@ class NavigationIndex:
         conn.execute('CREATE TABLE IF NOT EXISTS items(bank_id TEXT PRIMARY KEY,payload TEXT NOT NULL,materials TEXT NOT NULL,dependencies TEXT NOT NULL)')
         return conn
 
-    def bank(self,conn,nodes,build):
+    def bank(self,conn,nodes,build,bank_ids=None):
         from app.bank.annotation_view import AnnotationReadView
         from app.bank import annotations
         from app.knowledge import catalog
         library=conn.execute('SELECT library_id FROM library_state WHERE singleton=1').fetchone()
         changes={r[0]:r[1] for r in conn.execute('SELECT key,version FROM navigation_changes')}
         identity=[library[0],str(self.config.library_dir.resolve()),self.config.library_database.stat().st_ino,self.FORMAT]
-        rows={r['id']:dict(r) for r in conn.execute('''SELECT b.id,b.source,b.collection_id,
-            r.question_path,r.analysis_path,r.answer_path FROM bank_questions b LEFT JOIN bank_resources r ON r.bank_id=b.id''')}
+        selected=None
+        if bank_ids is not None:
+            groups=AnnotationReadView(conn,self.config.data)
+            selected=set().union(*(groups.aliases(bid) for bid in bank_ids))
+        where=' WHERE b.id IN ('+','.join('?' for _ in selected)+')' if selected else ''
+        rows={r['id']:dict(r) for r in conn.execute('''SELECT b.id,b.source,b.collection_id,b.math_types_json,
+            r.question_path,r.analysis_path,r.answer_path FROM bank_questions b LEFT JOIN bank_resources r ON r.bank_id=b.id'''+where,tuple(selected or ()))}
         roots={'library':self.config.library_dir.resolve(),'data':self.config.data.resolve()}
         def material_path(value):
             relative=Path(value)
@@ -113,7 +118,8 @@ class NavigationIndex:
             saved=cache.execute('SELECT payload FROM state WHERE id=1').fetchone()
             state=json.loads(saved[0]) if saved else {}
             if state.get('identity')!=identity:cache.execute('DELETE FROM items')
-            old={r['bank_id']:dict(r) for r in cache.execute('SELECT * FROM items')} if state.get('identity')==identity else {}
+            query='SELECT * FROM items'+(' WHERE bank_id IN ('+','.join('?' for _ in selected)+')' if selected else '')
+            old={r['bank_id']:dict(r) for r in cache.execute(query,tuple(selected or ()))} if state.get('identity')==identity else {}
             previous=state.get('changes',{}) if old else {}
             dirty={bid for bid in rows if bid not in old or changes.get(bid)!=previous.get(bid)}
             dirty.update(set(old)-rows.keys())
@@ -162,13 +168,16 @@ class NavigationIndex:
                     item=json.loads(old[bid]['payload'])
                     from app.services.knowledge_links import public_topics
                     item['topics']=public_topics(item['topics'],names,view.resolve)
-                if row['source']!='本地示例题库':items.append(item)
+                if row['source']!='本地示例题库':items.append({k:v for k,v in item.items() if k!='_annotation'})
             for bid in set(old)-rows.keys():cache.execute('DELETE FROM items WHERE bank_id=?',(bid,))
             files=dict(stamps)
             for path,bids in watched.items():
                 if not bids.intersection(dirty):continue
                 absolute,owner=material_path(path);files[path]=file_stamp(absolute,owner)
                 if files[path]!=stamps[path]:raise ValueError('题库材料正在变化，请稍后重新读取关联')
+            if selected is not None:
+                changes={**state.get('changes',{}),**{k:v for k,v in changes.items() if k in selected}}
+                files={**state.get('files',{}),**files}
             value=catalog.encode(dict(identity=identity,changes=changes,files=files))
             if not saved or saved[0]!=value:cache.execute('INSERT OR REPLACE INTO state VALUES(1,?)',(value,))
             return sorted(items,key=lambda i:i['bank_id'])

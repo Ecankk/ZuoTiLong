@@ -78,6 +78,9 @@ def active_id(conn):
 
 
 def document(conn, release_id=None):
+    from app.bank.capture_view import active
+    view=active(conn)
+    if view is not None and (release_id is None or view.release and release_id==view.release['id']):return view.release
     release_id = release_id or active_id(conn)
     if not release_id:
         return None

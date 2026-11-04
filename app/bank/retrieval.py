@@ -8,6 +8,13 @@ from app.knowledge import catalog
 
 
 def _history(conn, related, plan_cache):
+    from app.bank.capture_view import active
+    view=active(conn);key=tuple(sorted(related))
+    if view is None:return _read_history(conn,related,plan_cache)
+    if key not in view.history_cache:view.history_cache[key]=_read_history(conn,related,plan_cache)
+    return view.history_cache[key]
+
+def _read_history(conn,related,plan_cache):
     probes=[];attempts=0;active_pending=False
     for bid in sorted(related):
         for row in conn.execute('''SELECT p.*,pp.archived_at FROM diagnostic_probes p
@@ -56,7 +63,9 @@ def _recall(conn,data,topic_ids,stages,methods,offset,limit,include_history,inte
         related=policy_group(conn,match['bank_id'])
         history=_history(conn,related,plans)
         state=access(conn,match['bank_id'])
-        metadata={'id':match['bank_id'],'collection_id':cid,'entity_id':match['entity_id'],'math_type':state['math_type'],
+        from app.bank.applicability import math_types
+        applicable=math_types(conn.execute('SELECT math_types_json FROM bank_questions WHERE id=?',(match['bank_id'],)).fetchone()[0],state['math_type'])
+        metadata={'id':match['bank_id'],'math_types':applicable,'collection_id':cid,'entity_id':match['entity_id'],'math_type':state['math_type'],
                   'year':state['year'],'number':state['number'],'student_access':state,
                   'annotation_id':match['id'],'content_revision':match['content_revision'],
                   'annotation_catalog_revision':match['catalog_revision'],'status':'ready'}

@@ -254,6 +254,7 @@ class ExecutionTests(unittest.TestCase):
     def test_unavailable_model_fails_job_without_fallback(self):
         save_preferences(self.conn,{'execution_profiles':{'organization':{'model':'missing-model','effort':'high'}}});self.conn.commit()
         b=self.bridge();b.queue_task('summarize_paper','paper-test',str(uuid.uuid4()));b._drain_workflows()
+        self.wait(lambda:b._workflow_listing()[0]['status']=='failed')
         job=b._workflow_listing()[0];self.assertEqual(job['status'],'failed');self.assertIn('missing-model',job['error'])
         self.assertFalse(any(m=='thread/start' for m,_ in b.transport.calls))
     def test_restart_without_receipt_fails_and_retry_creates_new_execution(self):

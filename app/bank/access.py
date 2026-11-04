@@ -83,6 +83,9 @@ def register_identity(conn, bid, math_type, year, number, path):
 
 
 def _related(conn,bid,exam=False):
+    from app.bank.capture_view import active
+    view=active(conn)
+    if view is not None:return view.policy_groups.get(bid,{bid}) if exam else view.aliases(bid)
     group={bid}
     changed=True
     identities=list(conn.execute('SELECT * FROM bank_identity'))
@@ -115,10 +118,17 @@ def policy_group(conn,bid):
 
 
 def access(conn,bid):
+    from app.bank.capture_view import active
+    view=active(conn)
+    if view is None:return _access(conn,bid)
+    if bid not in view.access_cache:view.access_cache[bid]=_access(conn,bid)
+    return view.access_cache[bid]
+
+def _access(conn,bid):
     row=conn.execute('SELECT * FROM bank_identity WHERE bank_id=?',(bid,)).fetchone()
     if not row:raise ValueError('题库题目不存在')
     meta=dict(row);policy=preferences(conn);group=policy_group(conn,bid)
-    related=[dict(r) for r in conn.execute('SELECT * FROM bank_identity') if r['bank_id'] in group]
+    related=[dict(r) for r in conn.execute('SELECT * FROM bank_identity WHERE bank_id IN ('+','.join('?' for _ in group)+')',tuple(group))]
     reserved=any({'math_type':r['math_type'],'year':r['year']} in policy['reserved'] for r in related)
     views=[dict(r) for r in conn.execute('SELECT * FROM bank_views') if r['bank_id'] in group]
     confirmed=any(v['role']=='question' for v in views)
@@ -171,6 +181,8 @@ def public_bank(conn,bid,view='probe'):
                 'question_image':f'/api/bank/{bid}/question?view=library','analysis_image':f'/api/bank/{bid}/analysis?view=library'}
         # Lists never inline reference solutions; reading a reference is a
         # separate, recorded action even for text-only sources.
+        from app.bank.applicability import math_types
+        result['math_types']=math_types(row['math_types_json'],row['math_type'])
         return text_resources(conn,bid,result)
     state=access(conn,bid)
     from app.bank.collections import membership
@@ -186,6 +198,12 @@ def public_bank(conn,bid,view='probe'):
 def text_resources(conn,bid,result,*,reference=False):
     """Add readable text for real text-only bank resources; preserve legacy URLs."""
     resource=conn.execute('SELECT * FROM bank_resources WHERE bank_id=?',(bid,)).fetchone()
+    if not resource:
+        result.pop('question_image',None);result.pop('analysis_image',None)
+        row=conn.execute('SELECT stem,explanation,answer FROM bank_questions WHERE id=?',(bid,)).fetchone()
+        if row:
+            result['question_text']=row['stem']
+            if reference:result['analysis_text']=row['explanation'] or row['answer'] or ''
     if resource:
         question=conn.execute('SELECT stem,explanation,answer FROM bank_questions WHERE id=?',(bid,)).fetchone()
         standard=json.loads(resource['metadata_json']).get('schema')=='mathlens.bank-record/v1'

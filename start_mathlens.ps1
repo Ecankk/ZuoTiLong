@@ -1,4 +1,4 @@
-param([switch]$NoBrowser, [ValidateRange(1,65535)][int]$Port = 4173)
+param([switch]$NoBrowser, [switch]$Restart, [ValidateRange(1,65535)][int]$Port = 4173)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
@@ -40,6 +40,14 @@ function Read-Address {
     } catch {}
     return $null
 }
+# Merges usually keep VERSION; restart when served code is newer than the running process.
+function Test-CodeNewer([int]$ServerPid) {
+    try { $started = (Get-Process -Id $ServerPid -ErrorAction Stop).StartTime.ToUniversalTime() } catch { return $false }
+    $files = @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'app') -Recurse -File -Filter '*.py' -ErrorAction SilentlyContinue)
+    $files += @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'dist') -Recurse -File -ErrorAction SilentlyContinue)
+    $newest = $files | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    return ($newest -and $newest.LastWriteTimeUtc -gt $started)
+}
 function Is-OwnHealth($Value) { return ($Value -and $Value.ok -and $Value.app -eq 'mathlens' -and $Value.data_id -eq $dataId) }
 function Stop-OldServer([int]$OwnedPid) {
     $ownedProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$OwnedPid"
@@ -64,7 +72,10 @@ try {
     $saved = Read-Address
     $health = if ($saved) { Read-Health $saved.url } else { $null }
     if (Is-OwnHealth $health) {
-        if ($health.version -ne $expectedVersion) { Stop-OldServer ([int]$saved.pid); $health = $null }
+        if ($Restart -or $health.version -ne $expectedVersion -or (Test-CodeNewer ([int]$saved.pid))) {
+            Write-Host 'Restarting MathLens to load the current code (a running AI task becomes retryable)...'
+            Stop-OldServer ([int]$saved.pid); $health = $null
+        }
     } else { $health = $null }
     # Recognise managed releases that predate the address file.
     if (-not $health) {

@@ -377,6 +377,8 @@ export type BankCollection = {
   kind: 'exam' | 'book' | 'other' | 'example'
   total: number
   ready: number
+  /** 各数学类别的题数，稀疏（没有题的类别不出现）。B16 起提供 */
+  math_types?: { math_type: MathType; total: number; ready: number }[]
 }
 
 /** GET /api/bank/topics?bank_id=… */

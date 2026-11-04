@@ -47,6 +47,12 @@ describe('bank page', () => {
     expect(within(tabs).queryByRole('radio', { name: '其他' })).not.toBeInTheDocument()
     expect(await screen.findByText('2026 数学一 · 第 7 题')).toBeInTheDocument()
     expect(screen.getByLabelText('年份')).toBeInTheDocument()
+    const types = screen.getByRole('radiogroup', { name: '数学类别' })
+    expect(
+      within(types)
+        .getAllByRole('radio')
+        .map((r) => r.textContent),
+    ).toEqual(['全部', '数一'])
 
     await userEvent.click(within(tabs).getByRole('radio', { name: '张宇1000题' }))
     expect(
@@ -57,6 +63,20 @@ describe('bank page', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('题号未知的教辅题')).toBeInTheDocument()
     expect(screen.queryByLabelText('年份')).not.toBeInTheDocument()
+    const bookTypes = screen.getByRole('radiogroup', { name: '数学类别' })
+    expect(
+      within(bookTypes)
+        .getAllByRole('radio')
+        .map((r) => r.textContent),
+    ).toEqual(['全部', '数一'])
+    await userEvent.click(within(bookTypes).getByRole('radio', { name: '数一' }))
+    await vi.waitFor(() =>
+      expect(
+        fetch.mock.calls.some(
+          ([url]) => /collection=zhangyu-1000/.test(String(url)) && /math_type=1/.test(String(url)),
+        ),
+      ).toBe(true),
+    )
     expect(screen.queryByText('2026 数学一 · 第 7 题')).not.toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/null|undefined/)
     const urls = fetch.mock.calls

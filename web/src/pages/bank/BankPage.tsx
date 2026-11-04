@@ -13,6 +13,7 @@ import { BankQuestionCard, BankQuestionDialog, bookSection, type BankTopic } fro
 import styles from './BankPage.module.css'
 
 const pageSize = 24
+const typeLabel: Record<string, string> = { '1': '数一', '2': '数二', '3': '数三' }
 const thisYear = 2026
 const years = Array.from({ length: thisYear - 1987 + 1 }, (_, i) => String(thisYear - i))
 
@@ -42,9 +43,16 @@ export function BankPage() {
   const collection =
     shown.find((c) => c.id === asked) ?? shown.find((c) => c.id === 'zhenti') ?? shown[0]
   const isExam = collection?.kind === 'exam'
+  // 第二层：本题集里有题的数学类别（接口还没给 math_types 时，真题按三类显示）
+  const mathTypes = collection?.math_types
+    ? collection.math_types.filter((m) => m.total > 0).map((m) => String(m.math_type))
+    : isExam
+      ? ['1', '2', '3']
+      : []
+  const askedType = params.get('math_type') ?? ''
   const filter: BankFilter = {
     collection: collection?.id ?? '',
-    mathType: isExam ? (params.get('math_type') ?? '') : '',
+    mathType: mathTypes.includes(askedType) ? askedType : '',
     year: isExam ? (params.get('year') ?? '') : '',
     topic: params.get('topic') ?? '',
   }
@@ -87,7 +95,7 @@ export function BankPage() {
     <>
       <PageHeader
         title="题库"
-        subtitle="按题集浏览；真题还可以按类别、年份筛选，都能按考点筛选。"
+        subtitle="按题集和数学类别浏览；真题还可以按年份筛选，都能按考点筛选。"
       />
       {shown.length > 1 && collection && (
         <div className={styles.collections}>
@@ -100,19 +108,20 @@ export function BankPage() {
         </div>
       )}
       <Card className={styles.filters} aria-label="筛选">
+        {collection && !isExam && <span className={styles.collectionName}>{collection.name}</span>}
+        {mathTypes.length > 0 && (
+          <Segmented<string>
+            label="数学类别"
+            items={[
+              { value: '', label: '全部' },
+              ...mathTypes.map((type) => ({ value: type, label: typeLabel[type] ?? type })),
+            ]}
+            value={filter.mathType}
+            onChange={(value) => update({ math_type: value })}
+          />
+        )}
         {isExam && (
           <>
-            <Segmented<string>
-              label="类别"
-              items={[
-                { value: '', label: '全部' },
-                { value: '1', label: '数学一' },
-                { value: '2', label: '数学二' },
-                { value: '3', label: '数学三' },
-              ]}
-              value={filter.mathType}
-              onChange={(value) => update({ math_type: value })}
-            />
             <label className={styles.yearField}>
               年份
               <select
@@ -129,7 +138,6 @@ export function BankPage() {
             </label>
           </>
         )}
-        {collection && !isExam && <span className={styles.collectionName}>{collection.name}</span>}
         {filter.topic && (
           <span className={styles.topicFilter}>
             考点：
@@ -161,7 +169,9 @@ export function BankPage() {
       )}
       {data && data.total === 0 && (
         <Card padded className={styles.notice}>
-          {isExam ? '没有符合条件的题目，换个类别或年份试试。' : '没有符合条件的题目。'}
+          {isExam
+            ? '没有符合条件的题目，换个类别或年份试试。'
+            : '没有符合条件的题目，换个类别试试。'}
         </Card>
       )}
       <div style={{ opacity: isPlaceholderData ? 0.6 : 1 }}>

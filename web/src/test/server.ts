@@ -143,7 +143,7 @@ export const bankCards: BankCard[] = [
   },
   {
     id: 'zy-q-3',
-    math_type: 0,
+    math_type: 1,
     year: '',
     number: 0,
     can_view: true,
@@ -165,7 +165,7 @@ export const bankCards: BankCard[] = [
   },
   {
     id: 'zy-q-x',
-    math_type: 0,
+    math_type: 1,
     year: '',
     number: 0,
     can_view: true,
@@ -181,8 +181,25 @@ export const bankCards: BankCard[] = [
 ]
 
 export const bankCollections: BankCollection[] = [
-  { id: 'zhenti', name: '真题', kind: 'exam', total: 2, ready: 2 },
-  { id: 'zhangyu-1000', name: '张宇1000题', kind: 'book', total: 2, ready: 2 },
+  {
+    id: 'zhenti',
+    name: '真题',
+    kind: 'exam',
+    total: 2,
+    ready: 2,
+    math_types: [
+      { math_type: 1, total: 2, ready: 2 },
+      { math_type: 2, total: 0, ready: 0 },
+    ],
+  },
+  {
+    id: 'zhangyu-1000',
+    name: '张宇1000题',
+    kind: 'book',
+    total: 2,
+    ready: 2,
+    math_types: [{ math_type: 1, total: 2, ready: 2 }],
+  },
   { id: 'other', name: '其他', kind: 'other', total: 0, ready: 0 },
 ]
 

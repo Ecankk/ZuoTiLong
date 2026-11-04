@@ -277,7 +277,7 @@ def retry_job(conn, root, data, job_id):
 
 def cancel_job(conn, job_id):
     job = conn.execute('SELECT * FROM workflow_jobs WHERE id=?', (job_id,)).fetchone()
-    if not job or job['task_id'] or job['status'] not in ('queued', 'blocked'):
+    if not job or job['task_id'] or job['status'] not in ('queued', 'blocked','failed'):
         raise ValueError('该阶段已交给Agent，请先在任务栏停止并核对原轮次')
     mark(conn, job_id, 'abandoned', '用户取消等待；原卷、作答和已保存结果保留')
 

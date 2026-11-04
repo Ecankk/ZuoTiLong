@@ -41,6 +41,9 @@ def initialize(conn):
 
 
 def materials(conn, data, bank_id):
+    from app.bank.capture_view import active
+    view=active(conn)
+    if view is not None and bank_id in view._materials:return view._materials[bank_id]
     from app.learning.tasks import resource_digest
     row = conn.execute('SELECT * FROM bank_questions WHERE id=?', (bank_id,)).fetchone()
     if not row:raise ValueError('题库题目不存在')
@@ -284,6 +287,11 @@ def definition_review_draft(conn,data,bank_id,source,release):
 
 
 def current(conn, data, bank_id, *, read_view=None):
+    from app.bank.capture_view import active
+    view=active(conn)
+    if view is not None:
+        import copy
+        return copy.deepcopy(view.annotations.get(bank_id))
     if read_view is not None and (read_view.conn is not conn or read_view.data!=data):
         raise ValueError('只读标注视图不属于当前事务或资料目录')
     if read_view is not None:read_view.validate()

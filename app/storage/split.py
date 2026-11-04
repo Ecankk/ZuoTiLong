@@ -62,6 +62,8 @@ def initialize_split(config):
                 if 'library_state' in names:
                     from app.bank.collections import initialize as collections
                     collections(conn)
+                    from app.bank.applicability import initialize as applicability
+                    applicability(conn)
                     from app.storage.navigation_index import initialize as navigation
                     navigation(conn)
                     from app.storage.library_identity import initialize

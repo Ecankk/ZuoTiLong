@@ -1,5 +1,6 @@
 """Bounded prepared candidates; the model chooses, never searches the bank."""
 import copy,json
+from app.learning.tasks import task_inputs
 from app.bank import annotations
 from app.bank.access import policy_group
 from app.bank.exam_identity import metadata
@@ -98,7 +99,7 @@ def public(scope):
 def normalize(conn,data,task,result):
     from app.learning.tasks import require_read,digest
     from app.learning.practice_knowledge import require_binding
-    inputs=json.loads(task['input_json']);scope=inputs['selection'];targets={t['goal']['id']:t for t in scope['targets']}
+    inputs=task_inputs(conn,task);scope=inputs['selection'];targets={t['goal']['id']:t for t in scope['targets']}
     if set(result['limitations'])!={*targets}:raise ValueError('每个候选目标须返回限制说明（无缺口可为空字符串）')
     counts={gid:0 for gid in targets};atoms={};used=set();exercises=[]
     for old in scope['retained_exercises']:

@@ -17,7 +17,7 @@ def convert(item):
     # chapter-local numbers are source locators, not verified printed book IDs.
     return dict(schema=SCHEMA,source_id='S03',revision=REVISION,source_uid=source['source_uid'],
         locator=dict(path=source['source_file'],pointer='#q'+str(source['source_question_number']),source_sha256=source['source_file_sha256']),
-        exam_year=None,math_type=None,number=None,question_type=TYPES[kind],max_score=None,
+        exam_year=None,math_type=None,number=None,math_types=[1],question_type=TYPES[kind],max_score=None,
         stem=resource(content['stem']),answer=resource(content['answer'] or ''),analysis=resource(content['explanation']),
         options=[dict(label=o['key'],content=resource(o['value'])) for o in content['options']],
         original=dict(source_text=book['title']+' / '+book['part']+' / '+book['chapter']+' / '+book['locator'],

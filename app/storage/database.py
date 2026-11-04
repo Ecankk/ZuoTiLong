@@ -133,6 +133,8 @@ def _initialize_connection(database,conn):
     initialize_bank_sources(conn)
     from app.bank.collections import initialize as initialize_collections
     initialize_collections(conn)
+    from app.bank.applicability import initialize as applicability
+    applicability(conn)
     from app.storage.navigation_index import initialize as initialize_navigation
     initialize_navigation(conn)
     if database.config.demo and conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0:

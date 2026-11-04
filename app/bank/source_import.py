@@ -156,6 +156,8 @@ def _apply(conn, config, batch, report, asset_root):
     initialize(conn)
     from app.bank.collections import initialize as collections
     collections(conn)
+    from app.bank.applicability import initialize as applicability
+    applicability(conn)
     from app.storage.navigation_index import initialize as navigation
     navigation(conn)
     excluded = {r['source_uid'] for r in report['excluded']}
@@ -175,6 +177,7 @@ def _apply(conn, config, batch, report, asset_root):
             (bid, record['source_id'], record['source_uid'], manifest['question']['text'], manifest['answer']['text'],
              manifest['analysis']['text'], records.canonical(record['tags']), now_iso()))
         conn.execute('UPDATE bank_questions SET collection_id=? WHERE id=?',(report['collection_id'],bid))
+        conn.execute('UPDATE bank_questions SET math_types_json=? WHERE id=?',(records.canonical(record.get('math_types',[record['math_type']] if record['math_type'] in (1,2,3) else [])),bid))
         paths = [manifest[r].get('display_image', manifest[r]['images'][0])['path'] if manifest[r]['images'] else ''
                  for r in ('question', 'analysis', 'answer')]
         conn.execute('''INSERT INTO bank_resources VALUES(?,?,?,?,?) ON CONFLICT(bank_id) DO UPDATE SET

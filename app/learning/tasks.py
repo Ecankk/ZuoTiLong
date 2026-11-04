@@ -21,6 +21,16 @@ from app.bank.access import require_access, preferences, aliases
 from app.learning.plans import practice_state, plan_goals
 
 
+def task_inputs(conn,task):
+    from app.bank.capture_view import active
+    view=active(conn)
+    if view is None:return json.loads(task['input_json'])
+    if not hasattr(view,'task_inputs'):view.task_inputs={}
+    key=(task['id'],task['input_revision'])
+    if key not in view.task_inputs:view.task_inputs[key]=json.loads(task['input_json'])
+    return view.task_inputs[key]
+
+
 def encode(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
@@ -110,6 +120,11 @@ def resource_digest(path, data):
 
 
 def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract_version=None, review_request=None, task_scope=None, knowledge_request=None,annotation_rule_revision=None):
+    from app.bank.capture_view import active,capture
+    if kind=='prepare_practice' and contract_version=='1.10' and active(conn) is None:
+        with capture(conn,data):
+            return capture_input(conn,root,data,kind,paper_id,attempt_id,contract_version=contract_version,
+                review_request=review_request,task_scope=task_scope,knowledge_request=knowledge_request,annotation_rule_revision=annotation_rule_revision)
     if kind in PREPARATION_KINDS:
         if paper_id is not None or attempt_id is not None:
             raise ValueError('通用知识任务不应关联或伪造学生试卷/作答')
@@ -207,6 +222,21 @@ def task_record(conn, task_id):
     return dict(row)
 
 
+@contextmanager
+def task_write(conn,versions):
+    if versions is None:
+        with atomic(conn):yield
+        return
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        actual=tuple(conn.execute('PRAGMA '+db+'.data_version').fetchone()[0] for db in ('main','library'))
+        if actual!=versions:raise ValueError('任务材料在准备期间变化，请重试')
+        yield
+        conn.commit()
+    except BaseException:
+        conn.rollback();raise
+
+
 def create_task(conn, root, data, kind, paper_id, session_id, request_id, attempt_id=None, workflow_id=None, *, review_request=None, task_scope=None, knowledge_request=None, contract_version=None):
     if kind not in KINDS or not session_id:
         raise ValueError('任务类型或学习会话无效')
@@ -236,7 +266,13 @@ def create_task(conn, root, data, kind, paper_id, session_id, request_id, attemp
     result_schema(kind,task_version)
     if knowledge_request is not None and (kind!='organize_knowledge' or task_version!='1.8'):
         raise ValueError('只有1.8知识整理可以携带证据范围')
-    with atomic(conn):
+    prepared=None;versions=None
+    if kind=='prepare_practice' and not conn.in_transaction:
+        with atomic(conn):
+            versions=tuple(conn.execute('PRAGMA '+db+'.data_version').fetchone()[0] for db in ('main','library'))
+            prepared=capture_input(conn,root,data,kind,paper_id,attempt_id,contract_version=task_version,
+                review_request=review_request,task_scope=task_scope,knowledge_request=knowledge_request)
+    with task_write(conn,versions):
         old = conn.execute('SELECT * FROM learning_tasks WHERE request_id=?', (request_id,)).fetchone()
         if old:
             if (old['kind'], old['paper_id'], old['attempt_id'], old['session_id']) != (kind, paper_id, attempt_id, session_id):
@@ -262,7 +298,7 @@ def create_task(conn, root, data, kind, paper_id, session_id, request_id, attemp
             if knowledge_request is None:
                 knowledge_request={'source_ids':[s['source_id'] for s in versions.select_sources(conn,paper_id)],'refresh':True}
             knowledge_request=versions.normalize_request(knowledge_request)
-        inputs = capture_input(conn, root, data, kind, paper_id, attempt_id, contract_version=task_version,
+        inputs = prepared if prepared is not None else capture_input(conn, root, data, kind, paper_id, attempt_id, contract_version=task_version,
                                review_request=review_request, task_scope=task_scope, knowledge_request=knowledge_request)
         inputs['contract_version']=task_version
         if kind=='prepare_practice':
@@ -326,9 +362,32 @@ def receipt(conn, task_id):
 
 
 def deliver(conn, root, data, payload, lease):
+    from app.bank.capture_view import active,capture,ACTIVE
+    task=check_lease(conn,lease,allow_completed=True)
+    if task['kind']!='prepare_practice' or task_inputs(conn,task).get('contract_version')!='1.10' or receipt(conn,task['id']):
+        return _deliver(conn,root,data,payload,lease)
+    if conn.in_transaction:
+        with capture(conn,data):return _deliver(conn,root,data,payload,lease)
+    with atomic(conn):
+        versions=tuple(conn.execute('PRAGMA '+db+'.data_version').fetchone()[0] for db in ('main','library'))
+        with capture(conn,data) as view:
+            validate_result(payload,task['kind'],'1.10')
+            current=capture_input(conn,root,data,task['kind'],task['paper_id'],contract_version='1.10')
+            current['contract_version']='1.10'
+            from app.learning.practice_knowledge import validate_input
+            validate_input(conn,task,task_inputs(conn,task),current,payload['result'])
+            from app.learning.selection import normalize
+            normalized=normalize(conn,data,task,payload['result'])
+    with task_write(conn,versions):
+        token=ACTIVE.set(view)
+        try:return _deliver(conn,root,data,payload,lease,prepared=current,normalized=normalized)
+        finally:ACTIVE.reset(token)
+
+
+def _deliver(conn, root, data, payload, lease,*,prepared=None,normalized=None):
     with atomic(conn):
         task = check_lease(conn, lease,allow_completed=True)
-        inputs=json.loads(task['input_json'])
+        inputs=task_inputs(conn,task)
         validate_result(payload, task['kind'],inputs.get('contract_version','1.0'))
         if payload['task_id'] != task['id'] or any(payload[k] != task[k] for k in ('kind', 'paper_id', 'input_revision')):
             raise ValueError('结果与任务范围或输入版本不一致')
@@ -341,7 +400,7 @@ def deliver(conn, root, data, payload, lease):
         frozen = {q['bank_id']: q['revision_base']['analysis']
                   for q in inputs.get('bank_questions', []) if q.get('revision_base')}
         validate_result_text(payload['result'], legacy_questions=frozen)
-        current = capture_input(conn, root, data, task['kind'], task['paper_id'], task['attempt_id'],
+        current = prepared if prepared is not None else capture_input(conn, root, data, task['kind'], task['paper_id'], task['attempt_id'],
                                 contract_version=inputs.get('contract_version','1.0'),
                                 review_request=inputs.get('question_review',inputs.get('practice_review',{})).get('request'),task_scope=inputs.get('task_scope'),
                                 knowledge_request=inputs.get('knowledge_request'),
@@ -417,7 +476,7 @@ def deliver(conn, root, data, payload, lease):
         elif task['kind'] == 'prepare_practice':
             if inputs.get('contract_version')=='1.10':
                 from app.learning.selection import normalize
-                result=normalize(conn,data,task,result)
+                result=normalized if normalized is not None else normalize(conn,data,task,result)
             result_projection = _save_plan(conn, data, task, rid, result)
             if inputs.get('contract_version') in ('1.9','1.10'):
                 from app.learning.practice_knowledge import save_new_bindings
@@ -490,7 +549,7 @@ def _validate_reference(conn, paper_id, ref):
 
 def _save_plan(conn, data, task, result_id, result):
     paper_id = task['paper_id']
-    inputs = json.loads(task['input_json'])
+    inputs = task_inputs(conn,task)
     explicit = inputs.get('contract_version') in ('1.3','1.4','1.5','1.6','1.9','1.10')
     previous = inputs.get('practice_plan', {}).get('state', {})
     retained = result.get('retained_exercises', [])
@@ -606,7 +665,7 @@ def _save_plan(conn, data, task, result_id, result):
 
 
 def require_bank_read(conn,data,task,bank_id,*,probe_id=None):
-    inputs=json.loads(task['input_json'])
+    inputs=task_inputs(conn,task)
     if task['kind']=='prepare_practice' and inputs.get('contract_version')=='1.10':
         if probe_id:return
         from app.learning.practice_knowledge import require_binding
@@ -653,7 +712,7 @@ def finish_task(conn, task_id):
 
 def task_package(conn, task_id):
     task = task_record(conn, task_id)
-    inputs=json.loads(task['input_json'])
+    inputs=task_inputs(conn,task)
     if task['kind']=='prepare_practice' and inputs.get('contract_version')=='1.10':
         from app.learning.selection import public
         return {**{k:task[k] for k in ('id','kind','paper_id','input_revision','status')},
@@ -764,7 +823,7 @@ def task_package(conn, task_id):
 def retry_task(conn, root, data, task_id):
     with atomic(conn):
         task = task_record(conn, task_id)
-        inputs=json.loads(task['input_json'])
+        inputs=task_inputs(conn,task)
         # A saved result changed its own projections, including its parent
         # report. Only an unsaved task needs a fresh input capture here.
         if not task['result_id']:

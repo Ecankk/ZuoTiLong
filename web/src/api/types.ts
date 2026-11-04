@@ -262,6 +262,24 @@ export type Preferences = {
   mask_same_type: boolean
   paper_marking_convention: string
   reserved: { math_type: MathType; year: string }[]
+  /** 判断类任务（分析试卷、单题复核、批改作答）和整理类任务（选择练习、整理考点、总结）用的模型 */
+  execution_profiles: Record<ProfileTier, ExecutionProfile>
+}
+
+export type ProfileTier = 'judgment' | 'organization'
+export type ExecutionProfile = { model: string; effort: string }
+
+/** POST /api/preferences 的请求体：按字段合并；execution_profiles 为 null 时恢复默认 */
+export type PreferencesChange = Partial<Omit<Preferences, 'execution_profiles'>> & {
+  execution_profiles?: Partial<Record<ProfileTier, ExecutionProfile>> | null
+}
+
+/** GET /api/agent/models：本机 Codex 可用的模型 */
+export type AgentModels = {
+  status: 'available' | 'checking' | 'unavailable'
+  reason: null | 'not_installed' | 'not_logged_in' | 'other' | 'disabled'
+  message: string
+  items: { id: string; name: string; efforts: string[] }[]
 }
 
 /** POST /api/papers/import 的返回中前端用到的部分 */

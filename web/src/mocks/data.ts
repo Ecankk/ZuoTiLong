@@ -4,6 +4,7 @@
  */
 import type {
   Access,
+  AgentModels,
   Correctness,
   MathType,
   Page,
@@ -443,6 +444,21 @@ export const preferences: Preferences = {
   mask_same_type: true,
   paper_marking_convention: '黑笔为考试作答，红笔为事后批改。',
   reserved: [],
+  execution_profiles: {
+    judgment: { model: 'gpt-6-luna', effort: 'xhigh' },
+    organization: { model: 'gpt-6-luna', effort: 'high' },
+  },
+}
+
+export const agentModels: AgentModels = {
+  status: 'available',
+  reason: null,
+  message: '',
+  items: [
+    { id: 'gpt-6-luna', name: 'GPT-6 Luna', efforts: ['low', 'medium', 'high', 'xhigh'] },
+    { id: 'gpt-6-luna-mini', name: 'GPT-6 Luna Mini', efforts: ['low', 'medium', 'high'] },
+    { id: 'gpt-6-swift', name: 'GPT-6 Swift', efforts: ['minimal', 'low'] },
+  ],
 }
 
 /* 刚上传、已切题、还没开始分析的试卷 */

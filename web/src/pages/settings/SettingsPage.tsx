@@ -7,6 +7,7 @@ import { Card } from '../../components/ui/Card'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
 import { DataCard } from './DataCard'
+import { ModelCard } from './ModelCard'
 import { ConventionCard, MaskCard } from './PreferenceCards'
 import styles from './SettingsPage.module.css'
 
@@ -54,6 +55,7 @@ export function SettingsPage() {
           <AiServiceStatus />
           <Button onClick={openOnboarding}>重新查看新手引导</Button>
         </Card>
+        <ModelCard />
         <MaskCard />
         <ConventionCard />
         <DataCard />

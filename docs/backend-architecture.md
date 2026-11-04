@@ -52,9 +52,9 @@ flowchart LR
 Agent参与过程：
 
 1. 用户上传/点击分析、选题或提交作答，后端先保存材料或作答，再排入持久阶段任务。上传照片本身不批改。
-2. 调度器为每个任务启动本机`codex app-server --listen stdio://`并新建一个会话（thread/start），按任务档位设置模型与推理强度（app/agent/models.py），交付或失败后关闭本次执行；bridge只持有当前一次执行，会话ID只作记录。执行进程与会话使用工作区下的空目录agent-runtime并以只读沙箱运行（规则见[Agent协议](agent-workflow.md#执行入口与会话)）。登录和模型调用由Codex负责，不要求网页填写模型API URL。
+2. 调度器为每个任务启动本机`codex app-server --listen stdio://`并新建一个会话（thread/start），按任务档位设置模型与推理强度（app/agent/models.py），交付或失败后关闭本次执行；bridge只持有当前一次执行，会话ID只作记录。执行进程与会话使用工作区下的agent-runtime目录（内含由模板生成的AGENTS.md）并以只读沙箱运行（规则见[Agent协议](agent-workflow.md#执行入口与会话)）。登录和模型调用由Codex负责，不要求网页填写模型API URL。
 3. 任务创建时捕获明确的试卷/作答范围、材料版本、schema和写入身份。app/agent/material_package.py把任务头与所需材料组装为初始输入，并为实际提供的材料生成阅读回执；选题候选由app/learning/selection.py按规范原子召回、排除和排序，Agent只判断适配并选择。需补看时通过动态mathlens工具读取。
-4. Agent按固定JSON契约交付，可先preflight（与保存同一套校验后回滚）。后端校验身份、材料/引用及结构，在同一事务内保存结果、业务投影和回执；标注任务同时发布出处。模型聊天文字不自动成为报告，Agent不直接修改用户数据库。
+4. Agent按固定JSON契约交付，直接deliver_result（preflight仅调试用，与保存同一套校验后回滚）。后端校验身份、材料/引用及结构，在同一事务内保存结果、业务投影和回执；标注任务同时发布出处。模型聊天文字不自动成为报告，Agent不直接修改用户数据库。
 5. 保存回执写入即任务完成，应用派发下一阶段；重启或断线时有回执直接完成，无回执失败、重试新建会话。单题复核的逐题语义依赖（正误、首错、考点）由app/learning/semantic_dependencies.py比较并写入record_versions，不改写历史输入和散列。网页展示已保存的逐题分析/练习/反馈及必要进度，不展示内部思考或要求用户维护JSON。
 
 学习session由应用独占使用；Desktop/CLI接管需先释放，不能两个客户端同时控制。CLI/MCP入口及具体阶段、工具参数见[Agent协议](agent-workflow.md)。
@@ -100,14 +100,14 @@ ZuoTiLong/
 | 归属 | 主要数据与存储 |
 | --- | --- |
 | 通用目录 | knowledge_catalog_*、knowledge_source_*、knowledge_nodes及目录包/来源表 |
-| 通用题目 | bank_questions、bank_resources、bank_identity、bank_links、同题审核及导航校正 |
+| 通用题目 | bank_collections（题集）、bank_questions（每题一个collection_id）、bank_resources、bank_identity、bank_links、同题审核、导航校正及navigation_changes变更计数 |
 | 通用标注 | question_annotations、question_annotation_links、question_annotation_topics、annotation_provenance及共享索引表 |
 | 个人原卷 | papers、questions、agent_reports、question_diagnoses、paper_question_bindings |
 | 个人练习 | diagnostic_probes、practice_goals、计划成员/关联表、probe_attempts、固定材料绑定、批改与解答修订历史 |
 | 个人证据与设置 | learning_events、knowledge_mappings、knowledge_mapping_versions、preferences、bank_views、bank_exposures、bank_cross_reviews；画像为只读聚合 |
 | 本机执行 | learning_tasks、learning_results、task_reads、workflow_jobs、knowledge_preparation_*、tool_audit、record_versions；包含通用维护任务的执行日志，也只保存在工作区 |
 
-默认学习连接以工作区为main，附加只读library数据库，现有跨域查询仍可关联；ATTACH不合并物理文件。只有题库/目录导入和维护入口显式申请通用库写权限。所属表集合集中在app/storage/boundaries.py，数据库组装、迁移分别在database.py和split.py。只读导航快照仅在内存中合并查询，不产生第三份持久业务库。
+默认学习连接以工作区为main，附加只读library数据库，现有跨域查询仍可关联；ATTACH不合并物理文件。只有题库/目录导入和维护入口显式申请通用库写权限。所属表集合集中在app/storage/boundaries.py，数据库组装、迁移分别在database.py和split.py。工作区的navigation-index.db是可删除、可重建的导航派生缓存，不含学习证据，也不进个人备份；不是第三份业务库。
 
 目录描述数学知识，通用标注描述题目；个人记录描述本次作答、安排与长期表现。个人错因、练习回答范围、总结、知识证据映射、曝光、预留、备考类别和自定义笔迹约定均留在工作区。普通学习不把个人分析提升为通用标注，也不把用户卷面裁切写入公共题图。
 
@@ -131,7 +131,7 @@ ZuoTiLong/
 
 app/services/knowledge_links.py统一处理题目正查、考点反查、子树去重和完成判定。复用annotations.current的有效性判断，不调用Agent补标签。
 
-app/storage/knowledge_reads.py先复制所需元数据和原rowid，再释放正式库连接；文件校验在临时只读快照中执行，避免长时间阻塞学习写入。app/bank/annotation_view.py只在该次快照内复用目录、材料与身份读取。缓存依赖实际材料内容和相关记录；navigation_revision用于避免页面混用不同版本的统计与列表。
+app/storage/navigation_index.py把逐题校验后的导航、材料清单和定义依赖持久化在工作区navigation-index.db；通用库navigation_changes触发器只累计实际变更，题目/资源/标注变化只复核该题及同题组，目录变化先比较依赖，个人记录写入只刷新个人表现。服务启动时先完成首次或增量索引升级再提供页面（首次升级约半分钟，可先运行scripts/build_navigation_index.py预构建），之后考点读取不再整库复制和校验。app/storage/knowledge_reads.py只复制必要个人表；navigation_revision用于避免页面混用不同版本的统计与列表。
 
 关联API只返回标签、角色、出处和状态，不回传解法或记录曝光。题库浏览与Agent选题使用不同过滤规则，个人完成数不等于题库数量或掌握状态。旧的/api/profile是环节汇总，不是规范考点树；退役前需核消费者。
 

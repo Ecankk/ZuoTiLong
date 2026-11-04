@@ -2,7 +2,7 @@
 
 本文件维护会话、工具和结果交付。数学判断见[产品规则](paper-review-workflow.md)及当前任务Skill；代码开发另见[项目架构](backend-architecture.md)与[开发验收](full-loop-test-checklist.md)。这里只描述已有操作，不维护发布流水或开发待办。
 
-应用内Agent执行学习任务：后端下发角色与当前任务提示，`context`提供任务契约，`read_skill`提供当前环节的方法；安装配置另见[配置教程](setup.md)。安装和学习任务不依赖维护者本机的开发约定文件。
+应用内Agent执行学习任务：后端在运行目录生成通用执行说明，并随任务材料提供本角色的方法正文；安装配置另见[配置教程](setup.md)。安装和学习任务不依赖维护者本机的开发约定文件。
 
 ## 执行入口与会话
 
@@ -10,9 +10,9 @@
 
 应用通过本机codex app-server和现有登录执行任务，不需要AI URL。每个学习/资料任务新建一个Codex会话，交付或失败后结束；不复用、不压缩、不恢复旧会话，会话ID只作执行记录。模型与推理强度按档位取自设置（见[配置教程](setup.md)）：判断档为analyze_paper、review_question、grade_attempt、review_practice、maintain_catalog、annotate_questions；整理档为prepare_practice、organize_knowledge、summarize_paper。所选模型或强度本机不可用时任务在执行前失败并提示，不换模型。当前一次只执行一个任务。
 
-初始输入即材料包：任务头（id、kind、input_revision、result_schema、要求）及该任务所需材料，包内材料由后端生成对应阅读回执。选题1.10给目标、原卷错因摘要、候选摘要和规范定义；批改给作答文字与带角色的图片、回答范围、固定参考文字/图片及相关定义；整理给已保存证据与定义；其他任务按需用read_skill和读取工具。Agent不维护记忆、不串阶段、不派生Agent、不使用Shell。
+初始输入即材料包：任务头（id、kind、input_revision、result_schema、要求）及该任务所需材料，包内材料由后端生成对应阅读回执。选题1.10给目标、原卷错因摘要、候选摘要和规范定义；批改给作答文字与带角色的图片、回答范围、固定参考文字/图片及相关定义；整理给选定的已保存证据、event_topics模板、相关定义与回执；复核给本题完整页与局部、参考文字/图片和规范定义。每类任务的固定方法（kind→技能见app/agent/methods.py）随包作为role_method提供；包标明materials_complete时无需再调context或补读，只有实际发现的新缺口才用读取工具。Agent不维护记忆、不串阶段、不派生Agent、不使用Shell。
 
-执行会话的cwd是工作区数据目录下的空目录`agent-runtime/`（数据目录位于项目内时改用系统临时目录），沙箱只读，并按会话关闭技能说明、内置技能及插件/应用注入，因此不加载项目的开发约定和`.agents/skills`清单。角色说明经developerInstructions、任务材料经初始输入、工具经动态mathlens工具提供；read_skill等读取由后端进程执行，不依赖会话cwd。
+执行会话的cwd是工作区数据目录下的`agent-runtime/`（数据目录位于项目内时改用系统临时目录），沙箱只读，并按会话关闭技能说明、内置技能及插件/应用注入，因此不加载项目的开发约定和`.agents/skills`清单。后端每次执行前由模板app/agent/runtime_agents.md生成该目录的AGENTS.md（角色边界、mathlens各action的payload形状、kind→技能、交付与公式规则），Codex自动读取；不要手改生成文件。任务材料经初始输入、工具经动态mathlens工具提供；read_skill等读取由后端进程执行，不依赖会话cwd。
 
 本地交付事务通过全部校验并写入保存回执即为完成（标注同时发布出处），不等远端结束；后续阶段由应用队列派发。面向学生的数学式必须用`$...$`或`$$...$$`包裹。网页显示进度、结果和必要授权，不展示内部思考、调试或JSON。
 
@@ -52,9 +52,9 @@
 | action | 用途 |
 | --- | --- |
 | context | 获取当前任务、schema、范围、输入版本、写入身份及历史入口 |
-| preflight | payload={result:完整任务封装}；执行与保存相同的校验后回滚，不写数据或发布文件，成功返回{valid,sha256} |
+| preflight | payload={result:完整任务封装}；执行与保存相同的校验后回滚，不写数据或发布文件，成功返回{valid,sha256}；仅调试用，正常流程直接交付 |
 | deliver_result | 提交完整任务封装并取得保存回执 |
-| read_skill | 按任务读取paper-diagnosis、bank-search/probe-design、learning-update、knowledge-index；资料准备用catalog-maintenance/question-topics |
+| read_skill | payload={name:"mathlens-技能名"}，补读其他方法；本角色方法已随包提供。合法名：paper-diagnosis、bank-search、probe-design、learning-update、knowledge-index、catalog-maintenance、question-topics（均加mathlens-前缀） |
 | read_paper | 读原页及作答；每次1～4页。regions使用原PDF点坐标，每次1～4区，用于放大核对 |
 | catalog | 按原子/子树召回或浏览题源导航，详见[题源接口](bank-source-interface.md)；候选不算已读 |
 | read_bank | 实际读题干/参考。通用准备和新绑定练习可用role=all；指定probe_id时沿固定材料，不用最新库图替换 |
@@ -77,7 +77,7 @@
 
     {result: 完整任务封装}
 
-校验错误由当前会话按错误修正后再交付，后端不自动开修复轮次；不直接写SQLite、使用旧写入口绕过。重复交付沿原回执，旧身份/变化输入不能覆盖新结果；不以最终聊天回复解锁下一步。
+deliver_result与preflight同为payload={result:完整封装}。正常直接交付，不例行预检；校验错误由当前会话按错误修正后再交付，后端不自动开修复轮次；不直接写SQLite、使用旧写入口绕过。重复交付沿原回执，旧身份/变化输入不能覆盖新结果；不以最终聊天回复解锁下一步。
 
 选题1.10：后端只对非correct题的已映射原子召回候选——当前ready且材料/目录依赖有效的标注题，排除本卷原题、做过/已曝光/已有练习、预留卷及同题共享保护的题；按主关联、同题型、年份新、bank_id排序，每目标至多5题。Agent每目标选0～2题、每原子含保留练习合计不超过3题，一题可关联多个目标、不重复选；未选的目标须在limitations写明原因。召回回执、实际发送的候选摘要回执和定义回执分别保存，不伪造图片阅读。旧契约练习保持可读。图片暂存不算提交，看解析后的完成与独立完成分开。
 

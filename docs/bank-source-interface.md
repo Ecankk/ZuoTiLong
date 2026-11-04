@@ -8,6 +8,10 @@
 
 先用新格式的少量题走通导入、读取和展示，再逐批准备；不因资料数量大就先整库标注。当前哪些来源仍在staging，以题源目录为准，不能凭本地文件存在就调用read_bank。
 
+## 题集与来源
+
+题集是用户可见的分区，也是导入和分发单位，登记在通用库bank_collections：zhenti（真题）、zhangyu-1000（张宇1000题）、other（其他）、example（示例）。来源（S01/S02/S03…）只记录文件出处与版本。每题恰好属于一个题集；一个题集可来自多个来源，一个来源也可拆入多个题集。已有题目不能由新导入改题集，冲突在预演中列出并拒绝写入。选题默认使用全部题集的ready题，真题保护照旧。
+
 ## 来源与材料字段
 
 - 固定source_id、revision、source_uid和locator；书籍另存书名、版次、篇章/组别、原题号或页码。未知值留空，不伪造B组或ISBN映射。
@@ -39,6 +43,7 @@
 | options | `[{label:string,content:Resource}]`；无选项为空数组 |
 | original | `{source_text:string,record:object,sha256:SHA256}`；完整原始来源题目及原始出处文字，sha256 对 canonical JSON(record) 计算 |
 | tags | string[]，仅来源导航标签，不表示原子标注或学生错因 |
+| book | 可选；`{title,edition,part,chapter,number,locator}`，均为string或null。教辅书名、版次、篇、章及书上原题号；未核的原题号为null，章节内局部序号只放locator |
 
 Resource 为 `{text:string,sha256:SHA256,images:[{path:string,sha256:SHA256,media_type:string}]}`。text 保留文本/Markdown/LaTeX，散列为其 UTF-8 字节 SHA256（空文本亦有散列）。图片路径相对 `--asset-root`（默认 JSONL 所在目录），禁止绝对路径、父目录穿越和指向根外的符号链接；散列按真实文件字节计算。选项连同题干规范化组合后供显示，原文和分角色资源仍保留，不能丢选项。无题图可正常入库；缺题干（无文字且无图）为校验错误，缺答案/解析/题型/分值为报告项，不编造补齐。
 
@@ -75,11 +80,11 @@ reason/evidence 必须非空，注明原卷页码、核验依据或用户明确�
 ### 唯一标准导入入口与预演
 
 ```text
-python scripts/agent_tasks.py import-source --source S02 --input <records.jsonl> --overrides <overrides.json> --asset-root <来源根目录> --dry-run
-python scripts/agent_tasks.py import-source --source S02 --input <records.jsonl> --overrides <overrides.json> --asset-root <来源根目录> --confirm <plan_sha256>
+python scripts/agent_tasks.py import-source --source S02 --collection zhenti --input <records.jsonl> --overrides <overrides.json> --asset-root <来源根目录> --dry-run
+python scripts/agent_tasks.py import-source --source S02 --collection zhenti --input <records.jsonl> --overrides <overrides.json> --asset-root <来源根目录> --confirm <plan_sha256>
 ```
 
-操作前备份目标库，并在该进程显式设置 `MATHLENS_DATA_DIR`（目标工作区）与 `MATHLENS_LIBRARY_DIR`（目标通用库）；开发实跑只指向 TEMP 副本。转换器默认不覆盖已有 JSONL。导入命令可用 `--report <私有路径/report.json>` 另存报告；确认须使用本次预演给出的完整摘要，库有变化即重新预演。入口只初始化/写入通用库，不迁移个人工作区。正式主库导入及待标注 ID 的交接由标注会话在备份后执行。
+`--collection`必填，题集ID计入plan_sha256。S03强化篇的适配器为`zhangyu-html`（固定revision与37个输入文件散列见scripts/bank_source_adapters/zhangyu_html.hashes.json），导入题集zhangyu-1000。共享题目标注索引包为`mathlens.question-index/v2`，条目带受散列保护的collection_id，可按题集导出、预览和导入；v1包仍可导入。操作前备份目标库，并在该进程显式设置 `MATHLENS_DATA_DIR`（目标工作区）与 `MATHLENS_LIBRARY_DIR`（目标通用库）；开发实跑只指向 TEMP 副本。转换器默认不覆盖已有 JSONL。导入命令可用 `--report <私有路径/report.json>` 另存报告；确认须使用本次预演给出的完整摘要，库有变化即重新预演。入口只初始化/写入通用库，不迁移个人工作区。正式主库导入及待标注 ID 的交接由标注会话在备份后执行。
 
 没有 --confirm 时只预演；--dry-run 不初始化工作区、不创建数据库、不复制图片、不写学习记录。所有记录、覆盖、文本/图片及原始记录散列先校验。提供 --confirm 后重读并校验；确认摘要须与当前输入、覆盖、相关库记录和身份重叠一致，否则拒绝，须重新预演，不沿用旧确认。写入只涉及通用库，已有工作区的标注、阅读笔记、作答、曝光不删除。
 

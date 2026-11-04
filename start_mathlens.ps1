@@ -97,7 +97,9 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Dependencies are missing. Run setup_mathlens.bat once to update the local environment.' }
         $arguments = @('-u','-X','utf8','-m','app','--host','127.0.0.1','--port',"$Port",'--auto-port')
         $process = Start-Process -FilePath $pythonPath -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $dataDirectory 'server.stdout.log') -RedirectStandardError (Join-Path $dataDirectory 'server.stderr.log') -PassThru
-        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+        Write-Host 'Starting MathLens (the first start after an upgrade may take about a minute)...'
+        # First start after an upgrade builds the navigation index (~35s at 6000 questions).
+        for ($attempt = 0; $attempt -lt 480; $attempt++) {
             $saved = Read-Address
             $health = if ($saved) { Read-Health $saved.url } else { $null }
             if ((Is-OwnHealth $health) -and $health.version -eq $expectedVersion) { break }

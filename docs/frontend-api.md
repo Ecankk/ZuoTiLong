@@ -57,11 +57,12 @@ actions 取 submit/supplement/reveal_question/reveal_analysis 的实际允许子
 
 | 方法/路径 | 参数 | 响应 |
 | --- | --- | --- |
-| GET /api/knowledge/topics/{topic_id} | 无；支持已发布目录的历史 ID 重定向 | `{topic:{id:string,parent_id:string|null,name:string,kind:string,definition:string,conditions:string[],boundaries:string[]},performance:{state:string,state_reason:string,successes:integer,failures:integer,pending:integer,attempt_count:integer},question_counts:{completed:integer,bank:integer},practice_counts:PracticeCounts}` |
-| GET /api/bank | math_type:''/'1'/'2'/'3'=''，year:string=''，topic_id:string?，分页参数 | Page<BankCard>，按年份降序、math_type、题号、bank ID 稳定排序后分页；考点筛选包含其子树，通过已核关联投影，不按导航标签猜关联 |
+| GET /api/knowledge/topics/{topic_id} | 无；支持已发布目录的历史 ID 重定向 | `{topic:{id:string,parent_id:string|null,name:string,kind:string,definition:string,conditions:string[],boundaries:string[]},performance:{state:string,state_reason:string,successes:integer,failures:integer,pending:integer,attempt_count:integer},question_counts:{completed:integer,bank:integer},collection_counts:[{collection_id:string,bank:integer,ready:integer,completed:integer}],practice_counts:PracticeCounts}`；collection_counts按子树同题实体去重、稀疏（无关联题集可缺），各题集计数不能相加当全局数 |
+| GET /api/bank/collections | 无 | `[{id:string,name:string,kind:'exam'|'book'|'other'|'example',total:integer,ready:integer}]`，按排序返回；total为来源题记录数，ready为当前有效就绪数 |
+| GET /api/bank | math_type:''/'1'/'2'/'3'=''，year:string=''，topic_id:string?，collection:string?（未知题集400；指定即分页响应），分页参数 | Page<BankCard>，按年份降序、math_type、题号、bank ID 稳定排序后分页；考点筛选包含其子树，通过已核关联投影，不按导航标签猜关联 |
 
-BankCard 是原 public_bank(view=library)（id、math_type、year、number、can_view、reserved、reason、analysis_allowed、stem、tags、question_image、analysis_image）加 `{question_type:string|null,max_score:number|null,question_text?:string,analysis_text?:string}`；analysis_text 仅在 analysis_allowed 时返回，真正展开解析仍走 POST /api/bank/{id}/reveal 记录曝光。题库浏览保持 library 策略；练习遮挡按 practice access，不混用入口。
-考点树用 GET /api/knowledge/catalog/tree 一次取全：`{release_id:string|null,total:integer,items:[{id,parent_id,name,kind,aliases:string[],child_count:integer}]}`（child_count为直接子节点数，不含定义与个人表现）；关联题复用现有 GET /api/knowledge/catalog、/api/knowledge/links、/api/knowledge/links/summary（既有参数和响应不变）。本批不新增画像图表。应用托管 dist 时，dist 中真实存在的文件按静态返回，其余非 /api 路径回退 index.html（考点 ID 含点也可直接打开/刷新）；/api 下未知路径保持 404。
+BankCard 是原 public_bank(view=library)（id、math_type、year、number、can_view、reserved、reason、analysis_allowed、stem、tags、question_image、analysis_image）加 `{collection_id:string,question_type:string|null,max_score:number|null,question_text?:string,analysis_text?:string,book?:{title,edition,part,chapter,number,locator}}`（book各字段string|null，仅教辅题）；analysis_text 仅在 analysis_allowed 时返回，真正展开解析仍走 POST /api/bank/{id}/reveal 记录曝光。题库浏览保持 library 策略；练习遮挡按 practice access，不混用入口。
+考点树用 GET /api/knowledge/catalog/tree 一次取全：`{release_id:string|null,total:integer,items:[{id,parent_id,name,kind,aliases:string[],child_count:integer}]}`（child_count为直接子节点数，不含定义与个人表现）；关联题复用现有 GET /api/knowledge/catalog、/api/knowledge/links、/api/knowledge/links/summary；/api/knowledge/links与/api/bank/search新增可选collection过滤（筛选先于同题去重），题卡与existing_exercises带collection_id（已完成原题对不上库题时为null），/api/bank/{id}/topics与批量/api/bank/topics题卡同样带collection_id。本批不新增画像图表。应用托管 dist 时，dist 中真实存在的文件按静态返回，其余非 /api 路径回退 index.html（考点 ID 含点也可直接打开/刷新）；/api 下未知路径保持 404。
 
 ## 任务摘要与动作
 

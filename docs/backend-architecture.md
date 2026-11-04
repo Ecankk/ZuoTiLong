@@ -131,7 +131,7 @@ ZuoTiLong/
 
 app/services/knowledge_links.py统一处理题目正查、考点反查、子树去重和完成判定。复用annotations.current的有效性判断，不调用Agent补标签。
 
-app/storage/navigation_index.py把逐题校验后的导航、材料清单和定义依赖持久化在工作区navigation-index.db；通用库navigation_changes触发器只累计实际变更，题目/资源/标注变化只复核该题及同题组，目录变化先比较依赖，个人记录写入只刷新个人表现。服务启动时先完成首次或增量索引升级再提供页面（首次升级约半分钟，可先运行scripts/build_navigation_index.py预构建），之后考点读取不再整库复制和校验。app/storage/knowledge_reads.py只复制必要个人表；navigation_revision用于避免页面混用不同版本的统计与列表。
+app/storage/navigation_index.py把逐题校验后的导航、材料清单和定义依赖持久化在工作区navigation-index.db；通用库navigation_changes触发器只累计实际变更，题目/资源/标注变化只复核该题及同题组，目录变化先比较依赖，个人记录写入只刷新个人表现。服务启动时先完成首次或增量索引升级再提供页面（首次升级约半分钟，可先运行scripts/build_navigation_index.py预构建），之后考点读取不再整库复制和校验。app/storage/knowledge_reads.py只复制必要个人表；navigation_revision用于避免页面混用不同版本的统计与列表。题卡标签批量读取只按请求的题从持久索引取。选题创建与交付分两阶段：先在只读快照内捕获候选、校验并规范化（同一次捕获内复用已验证的标注与材料），再开短写事务核对两库data_version后写入，数据变化即拒绝重试；期间不持有bridge执行锁，HTTP读与retry/cancel不等待候选计算。
 
 关联API只返回标签、角色、出处和状态，不回传解法或记录曝光。题库浏览与Agent选题使用不同过滤规则，个人完成数不等于题库数量或掌握状态。旧的/api/profile是环节汇总，不是规范考点树；退役前需核消费者。
 

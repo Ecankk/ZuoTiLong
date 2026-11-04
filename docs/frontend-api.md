@@ -58,10 +58,10 @@ actions 取 submit/supplement/reveal_question/reveal_analysis 的实际允许子
 | 方法/路径 | 参数 | 响应 |
 | --- | --- | --- |
 | GET /api/knowledge/topics/{topic_id} | 无；支持已发布目录的历史 ID 重定向 | `{topic:{id:string,parent_id:string|null,name:string,kind:string,definition:string,conditions:string[],boundaries:string[]},performance:{state:string,state_reason:string,successes:integer,failures:integer,pending:integer,attempt_count:integer},question_counts:{completed:integer,bank:integer},collection_counts:[{collection_id:string,bank:integer,ready:integer,completed:integer}],practice_counts:PracticeCounts}`；collection_counts按子树同题实体去重、稀疏（无关联题集可缺），各题集计数不能相加当全局数 |
-| GET /api/bank/collections | 无 | `[{id:string,name:string,kind:'exam'|'book'|'other'|'example',total:integer,ready:integer}]`，按排序返回；total为来源题记录数，ready为当前有效就绪数 |
-| GET /api/bank | math_type:''/'1'/'2'/'3'=''，year:string=''，topic_id:string?，collection:string?（未知题集400；指定即分页响应），分页参数 | Page<BankCard>，按年份降序、math_type、题号、bank ID 稳定排序后分页；考点筛选包含其子树，通过已核关联投影，不按导航标签猜关联 |
+| GET /api/bank/collections | 无 | `[{id:string,name:string,kind:'exam'|'book'|'other'|'example',total:integer,ready:integer,math_types:[{math_type:1|2|3,total:integer,ready:integer}]}]`，按排序返回；total为来源题记录数，ready为当前有效就绪数；math_types按适用数学类别稀疏分组（只列有题的类别，多类别题在各类别都计） |
+| GET /api/bank | math_type:''/'1'/'2'/'3'=''，year:string=''，topic_id:string?，collection:string?（未知题集400；指定即分页响应），分页参数 | Page<BankCard>，math_type按题目适用数学类别过滤（对所有题集生效）；真题按年份降序、math_type、题号、bank ID 稳定排序，教辅题集按book的篇、章、原题号/定位（数值）排序；考点筛选包含其子树，通过已核关联投影，不按导航标签猜关联 |
 
-BankCard 是原 public_bank(view=library)（id、math_type、year、number、can_view、reserved、reason、analysis_allowed、stem、tags、question_image、analysis_image）加 `{collection_id:string,question_type:string|null,max_score:number|null,question_text?:string,analysis_text?:string,book?:{title,edition,part,chapter,number,locator}}`（book各字段string|null，仅教辅题）；analysis_text 仅在 analysis_allowed 时返回，真正展开解析仍走 POST /api/bank/{id}/reveal 记录曝光。题库浏览保持 library 策略；练习遮挡按 practice access，不混用入口。
+BankCard 是原 public_bank(view=library)（id、math_type、year、number、can_view、reserved、reason、analysis_allowed、stem、tags、question_image、analysis_image）加 `{collection_id:string,math_types:number[],question_type:string|null,max_score:number|null,question_text?:string,analysis_text?:string,book?:{title,edition,part,chapter,number,locator}}`（book各字段string|null，仅教辅题；math_type仍只表示考试身份，适用类别看math_types；无题图资源时不返回question_image/analysis_image）；analysis_text 仅在 analysis_allowed 时返回，真正展开解析仍走 POST /api/bank/{id}/reveal 记录曝光。题库浏览保持 library 策略；练习遮挡按 practice access，不混用入口。
 考点树用 GET /api/knowledge/catalog/tree 一次取全：`{release_id:string|null,total:integer,items:[{id,parent_id,name,kind,aliases:string[],child_count:integer}]}`（child_count为直接子节点数，不含定义与个人表现）；关联题复用现有 GET /api/knowledge/catalog、/api/knowledge/links、/api/knowledge/links/summary；/api/knowledge/links与/api/bank/search新增可选collection过滤（筛选先于同题去重），题卡与existing_exercises带collection_id（已完成原题对不上库题时为null），/api/bank/{id}/topics与批量/api/bank/topics题卡同样带collection_id。本批不新增画像图表。应用托管 dist 时，dist 中真实存在的文件按静态返回，其余非 /api 路径回退 index.html（考点 ID 含点也可直接打开/刷新）；/api 下未知路径保持 404。
 
 ## 任务摘要与动作
@@ -89,7 +89,7 @@ Task = {
 分页只影响 items，active/counts 始终是全队列摘要，不受 status 筛选影响。排队/运行优先，其次需处理项，最后历史；同级创建时间倒序并以 ID 排序。status 参数枚举不合法返回 400。
 kind 沿用 workflow kind。进度只到试卷（如“正在分析《2023 数学一》”），不猜题号/模型完成比例；不输出会话 ID、聊天、工具日志、输入或执行令牌。error 是已保存业务错误；安装登录问题在 availability 中表达。
 
-POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。运行中的任务不提供动作。failed 任务在无其他执行时可 retry：保留旧执行记录，新建请求、任务和会话重新执行；已有保存回执的任务不会重跑。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。
+POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。运行中的任务不提供动作；failed/blocked且尚未建立执行任务的可cancel（标为已取消，原卷、作答和已存结果保留）。failed 任务在无其他执行时可 retry：保留旧执行记录，新建请求、任务和会话重新执行；已有保存回执的任务不会重跑。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。
 
 每个任务新开一次 Codex 会话，结束即关闭；应用重启或断线时，已保存回执的任务直接完成，无回执的任务标为 failed（error 为“执行已中断；重试将在新会话重新执行”）。后台在有排队任务时自动检查命令和账户，首次有工作时立即检查，失败后约30秒重新检查，无需用户点击连接。未检查时 availability 为 checking；未安装/未登录不消费排队任务，保存数据始终可读。所选模型/强度不可用时任务在执行前标为 failed，error 给出可读提示。
 

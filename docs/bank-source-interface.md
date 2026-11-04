@@ -43,6 +43,7 @@
 | options | `[{label:string,content:Resource}]`；无选项为空数组 |
 | original | `{source_text:string,record:object,sha256:SHA256}`；完整原始来源题目及原始出处文字，sha256 对 canonical JSON(record) 计算 |
 | tags | string[]，仅来源导航标签，不表示原子标注或学生错因 |
+| math_types | 可选；适用数学类别，[1,2,3]的不重复子集，未知为[]；计入记录与plan散列。真题由身份导出；S03固定版强化篇为[1]（整套为数学一版），既有S03记录由升级迁移确定性回填，不改bank_id与标注；S02无上游值时不猜 |
 | book | 可选；`{title,edition,part,chapter,number,locator}`，均为string或null。教辅书名、版次、篇、章及书上原题号；未核的原题号为null，章节内局部序号只放locator |
 
 Resource 为 `{text:string,sha256:SHA256,images:[{path:string,sha256:SHA256,media_type:string}]}`。text 保留文本/Markdown/LaTeX，散列为其 UTF-8 字节 SHA256（空文本亦有散列）。图片路径相对 `--asset-root`（默认 JSONL 所在目录），禁止绝对路径、父目录穿越和指向根外的符号链接；散列按真实文件字节计算。选项连同题干规范化组合后供显示，原文和分角色资源仍保留，不能丢选项。无题图可正常入库；缺题干（无文字且无图）为校验错误，缺答案/解析/题型/分值为报告项，不编造补齐。

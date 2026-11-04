@@ -180,6 +180,54 @@ class ExecutionTests(unittest.TestCase):
         b.submit_task('summarize_paper','paper-test',str(uuid.uuid4()))
         self.wait(lambda:b._active() and b._active().get('codex_turn_id') and not b._active()['codex_turn_id'].startswith('pending-'))
         self.assertNotIn('pending-session-',b.state['session_id'])
+
+    def test_readonly_execution_uses_empty_external_cwd_and_absolute_images(self):
+        from pathlib import Path
+        from PIL import Image
+        paths=[]
+        for folder in ('answer-images','practice-materials','agent-input'):
+            target=self.data/folder/'runtime-test.png';target.parent.mkdir(exist_ok=True)
+            Image.new('RGB',(12,12),'white').save(target);paths.append(target.resolve())
+        case=self
+        class CheckedServer(FakeServer):
+            def __init__(self,root,*args):
+                case.assertFalse(root.is_relative_to(case.root));self.process_cwd=root
+                super().__init__(root,*args)
+            def request(self,method,params):
+                if method in ('thread/start','turn/start'):
+                    cwd=Path(params['cwd']);case.assertEqual(cwd,self.process_cwd)
+                    case.assertFalse(cwd.is_relative_to(case.root))
+                    case.assertEqual(list(cwd.iterdir()),[])
+                    case.assertEqual(params['approvalPolicy'],'never')
+                    if method=='thread/start':
+                        case.assertEqual(params['sandbox'],'read-only')
+                        for key in ('skills.include_instructions','skills.bundled.enabled','features.plugins','features.apps'):
+                            case.assertIs(params['config'][key],False)
+                    else:
+                        case.assertEqual(params['sandboxPolicy'],{'type':'readOnly'})
+                        supplied=[Path(i['path']) for i in params['input'] if i['type']=='localImage']
+                        case.assertEqual(supplied,paths)
+                        for image in supplied:
+                            case.assertTrue(image.is_absolute());case.assertTrue(image.read_bytes())
+                            with Image.open(image) as decoded:case.assertEqual(decoded.size,(12,12))
+                return super().request(method,params)
+        original=initial_inputs
+        def package(*args):return original(*args)+[{'type':'localImage','path':str(p)} for p in paths]
+        b=CodexBridge(self.root,self.data,CheckedServer);self.addCleanup(b.close)
+        b.connect();self.wait(lambda:b.connected)
+        with patch('app.agent.material_package.initial_inputs',side_effect=package):
+            b.submit_task('summarize_paper','paper-test',str(uuid.uuid4()))
+        self.wait(lambda:b._active() and not b._active()['codex_turn_id'].startswith('pending-'))
+
+    def test_external_workspace_uses_its_own_runtime_directory(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory(prefix='mathlens-runtime-test-') as directory:
+            b=CodexBridge(self.root,Path(directory),FakeServer)
+            try:
+                self.assertEqual(b._runtime_directory(),Path(directory).resolve()/'agent-runtime')
+                self.assertEqual(list(b._runtime_directory().iterdir()),[])
+            finally:b.close()
     def test_unavailable_model_fails_job_without_fallback(self):
         save_preferences(self.conn,{'execution_profiles':{'organization':{'model':'missing-model','effort':'high'}}});self.conn.commit()
         b=self.bridge();b.queue_task('summarize_paper','paper-test',str(uuid.uuid4()));b._drain_workflows()

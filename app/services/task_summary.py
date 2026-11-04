@@ -56,7 +56,7 @@ class TaskSummary:
             actions = []
             if not locked and self.rt.bridge is not None and not job.get('direct'):
                 if job['recovery_required'] or value in ('blocked', 'failed'):
-                    if not job['task_id'] or state.get('connected') or job['recovery_required']:actions.append('retry')
+                    actions.append('retry')
                 if not job['task_id'] and raw in ('queued', 'blocked'):actions.append('cancel')
             elif owned and state.get('connected') and state.get('status') in ('failed', 'interrupted') and not state.get('external_control'):
                 actions.append('retry')

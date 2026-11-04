@@ -255,7 +255,8 @@ def validate_input(conn,task,inputs,current,result):
         return value
     if catalog.digest(stable(current))!=catalog.digest(stable(inputs)):
         raise ValueError('任务证据或材料绑定已变化，拒绝覆盖新内容')
-    if task['kind']=='prepare_practice':require_topics(conn,task,inputs,result)
+    if task['kind']=='prepare_practice':
+        if inputs.get('contract_version')!='1.10':require_topics(conn,task,inputs,result)
     else:require_current_definitions(conn,inputs['grading_knowledge']['catalog_nodes'],result['topic_ids'])
 
 

@@ -55,7 +55,7 @@ class PreparationRunTests(unittest.TestCase):
             self.assertEqual(json.loads(task['input_json'])['task_scope'],json.loads(job['scope_json']))
             self.assertEqual(sum(name=='turn/start' for name,_ in bridge.transport.calls),1)
             self.assertEqual(bridge._active()['context'],{})
-            self.assertEqual(bridge._active()['agent_prompt'],'')
+            self.assertEqual(bridge._active().get('agent_prompt',''),'')
             self.assertNotIn('核对整卷可见作答',bridge._active()['inputs'][0]['text'])
         finally:bridge.close()
 
@@ -111,9 +111,9 @@ class PreparationRunTests(unittest.TestCase):
         self.assertFalse((self.data/'agent-session.db').exists())
         job=self.dispatch();self.f.tool('task_context',{'source_ids':['GS-04-001']})
         self.f.tool('apply_report',{'result':self.f.envelope(self.f.maintenance_result())})
-        with self.assertRaisesRegex(ValueError,'尚未确认完成'):
-            continue_job(self.conn,self.root,self.data,job,task_record(self.conn,self.f.task['id']))
-        self.assertEqual(self.conn.execute('SELECT count(*) FROM knowledge_preparation_runs').fetchone()[0],1)
+        self.assertEqual(task_record(self.conn,self.f.task['id'])['status'],'completed')
+        continue_job(self.conn,self.root,self.data,job,task_record(self.conn,self.f.task['id']))
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM knowledge_preparation_runs').fetchone()[0],2)
         self.finish()
         self.assertEqual(self.conn.execute('SELECT count(*) FROM knowledge_preparation_runs').fetchone()[0],2)
         self.dispatch();self.assertEqual(self.f.task['kind'],'annotate_questions')

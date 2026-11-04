@@ -123,7 +123,7 @@ class FastAPIAppTests(unittest.TestCase):
                 job=conn.execute('SELECT * FROM workflow_jobs').fetchone()
                 self.assertEqual(job['kind'],'analyze_paper')
                 self.assertEqual((job['auto_prepare'],job['index_after']),(1,1))
-                self.assertEqual((job['practice_contract_version'],job['contract_version']),('1.9','2.0'))
+                self.assertEqual((job['practice_contract_version'],job['contract_version']),('1.10','2.0'))
                 self.assertEqual(conn.execute('SELECT count(*) FROM papers').fetchone()[0],1)
                 self.assertEqual(conn.execute('SELECT count(*) FROM learning_tasks').fetchone()[0],0)
 

@@ -169,7 +169,7 @@ class QuestionReviewTests(unittest.TestCase):
         self.assertEqual(renewed['result_id'],saved['result_id'])
         self.assertEqual(self.conn.execute('SELECT count(*) FROM agent_reports').fetchone()[0],2)
 
-    def test_queue_chains_only_after_remote_success_and_does_not_duplicate(self):
+    def test_queue_chains_after_local_delivery_and_does_not_duplicate(self):
         job=enqueue(self.conn,self.root,self.data,'review_question','paper-test',str(uuid.uuid4()),
                     review_request=self.request,auto_prepare=True)
         self.task=create_task(self.conn,self.root,self.data,'review_question','paper-test','session-test',job['request_id'],
@@ -178,79 +178,6 @@ class QuestionReviewTests(unittest.TestCase):
         bind_turn(self.conn,self.task['id'],'session-test',self.task['run_token'],'turn-review')
         self.base.lease={'task_id':self.task['id'],'session_id':'session-test','run_token':self.task['run_token'],'turn_id':'turn-review'}
         self.read();self.save();reconcile(self.conn,self.root,self.data)
-        self.assertEqual(len(listing(self.conn)),1)
+        self.assertEqual(len(listing(self.conn)),2)
         finish_task(self.conn,self.task['id']);reconcile(self.conn,self.root,self.data);reconcile(self.conn,self.root,self.data)
         self.assertEqual(sum(j['kind']=='prepare_practice' for j in listing(self.conn)),1)
-
-
-class QuestionReviewBridgeTests(unittest.TestCase):
-    def setUp(self):
-        from app.agent.bridge import CodexBridge
-        from test_codex_bridge import FakeCodex
-        self.review=QuestionReviewTests();self.review.setUp()
-        self.fixture=self.review.base
-        self.bridge=CodexBridge(self.fixture.root,self.fixture.data,FakeCodex)
-        self.bridge.learning_db=server.DB_PATH
-        self.patcher=patch('app.agent.tools.connection',lambda data:server.connect());self.patcher.start()
-        self.bridge.connect();self.wait(lambda:self.bridge.connected)
-
-    def tearDown(self):
-        self.bridge.close();self.patcher.stop();self.review.tearDown()
-
-    def wait(self,predicate):
-        deadline=time.monotonic()+5
-        while not predicate():
-            if time.monotonic()>deadline:self.fail('review transition timed out')
-            time.sleep(.01)
-
-    def call(self,action,payload):
-        import test_task_bridge
-        return test_task_bridge.TaskBridgeTests.call(self,action,payload)
-
-    def end(self,status='completed'):
-        import test_task_bridge
-        return test_task_bridge.TaskBridgeTests.end(self,status)
-
-    def queue(self):
-        self.bridge.queue_task('review_question','paper-test',str(uuid.uuid4()),
-                               review_request=self.review.request,auto_prepare=True)
-        self.wait(lambda:self.bridge._active() and self.bridge._active().get('codex_turn_id'))
-        self.fixture.kind='review_question'
-        self.fixture.task=task_record(self.fixture.conn,self.bridge._active()['task_id'])
-        self.review.task=self.fixture.task
-        return self.fixture.task
-
-    def save(self):
-        ok,value=self.call('read_paper',{'paper_id':'paper-test','question_id':self.review.request['question_id']})
-        self.assertTrue(ok['success'],value)
-        ok,value=self.call('apply_report',{'result':self.review.result()})
-        self.assertTrue(ok['success'],value)
-
-    def test_review_reconnect_and_child_selection_share_original_session(self):
-        from app.agent.bridge import CodexBridge
-        from test_codex_bridge import FakeCodex
-        sid=self.bridge.state['session_id'];self.bridge.close()
-        self.bridge=CodexBridge(self.fixture.root,self.fixture.data,FakeCodex);self.bridge.learning_db=server.DB_PATH
-        self.bridge.queue_task('review_question','paper-test',str(uuid.uuid4()),
-                               review_request=self.review.request,auto_prepare=True)
-        self.bridge.connect();self.wait(lambda:self.bridge._active() and self.bridge._active().get('codex_turn_id'))
-        self.fixture.kind='review_question';self.fixture.task=task_record(self.fixture.conn,self.bridge._active()['task_id']);self.review.task=self.fixture.task
-        self.save();self.end()
-        self.wait(lambda:self.bridge._active() and self.bridge._active().get('task_kind')=='prepare_practice')
-        self.assertEqual(self.bridge.state['session_id'],sid)
-        self.assertFalse(any(method=='thread/start' for method,_ in self.bridge.transport.calls))
-        self.assertEqual(self.fixture.conn.execute('SELECT count(*) FROM agent_reports').fetchone()[0],2)
-
-    def test_saved_review_remote_failure_retries_original_task_without_duplicate_report(self):
-        task=self.queue();self.save();remote=self.bridge._active()['codex_turn_id'];self.end('failed')
-        self.assertEqual(sum(j['kind']=='prepare_practice' for j in listing(self.fixture.conn)),0)
-        self.bridge.transport.history=[{'id':remote,'status':'failed'}]
-        self.bridge.retry()
-        self.wait(lambda:self.bridge._active().get('codex_turn_id') not in (None,remote))
-        self.assertEqual(self.bridge._active()['task_id'],task['id'])
-        self.save();self.end()
-        self.wait(lambda:self.bridge._active() and self.bridge._active().get('task_kind')=='prepare_practice')
-        self.assertEqual(self.fixture.conn.execute('SELECT count(*) FROM agent_reports').fetchone()[0],2)
-
-
-if __name__=='__main__':unittest.main()

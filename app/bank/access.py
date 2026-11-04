@@ -40,11 +40,16 @@ def preferences(conn):
     convention=value.get('paper_marking_convention')
     value['paper_marking_convention']=convention.strip() if isinstance(convention,str) and convention.strip() else DEFAULT_AGENT_PROMPT
     value['default_agent_prompt']=DEFAULT_AGENT_PROMPT
+    from app.agent.models import profiles
+    value['execution_profiles']=profiles(value.get('execution_profiles'))
     return value
 
 
 def save_preferences(conn, body):
-    body={**preferences(conn),**body}
+    current=preferences(conn)
+    if isinstance(body.get('execution_profiles'),dict):
+        body={**body,'execution_profiles':{**current['execution_profiles'],**body['execution_profiles']}}
+    body={**current,**body}
     if body.get('study_type') not in (1,2,3):raise ValueError('请选择数学一、二或三')
     mask_same_type = body.get('mask_same_type', preferences(conn)['mask_same_type'])
     if type(mask_same_type) is not bool:raise ValueError('检验题隐藏选项需要是开关值')
@@ -56,6 +61,8 @@ def save_preferences(conn, body):
         if not isinstance(item,dict) or set(item)!={'math_type','year'} or item['math_type'] not in (1,2,3) or not re.fullmatch(r'\d{4}',str(item['year'])):
             raise ValueError('预留卷需要数学类别和四位年份')
     value={'study_type':body['study_type'],'mask_same_type':mask_same_type,'paper_marking_convention':convention.strip() or DEFAULT_AGENT_PROMPT,'reserved':[{'math_type':v['math_type'],'year':str(v['year'])} for v in reserved]}
+    from app.agent.models import profiles
+    value['execution_profiles']=profiles(body.get('execution_profiles'))
     conn.execute('UPDATE preferences SET payload=? WHERE id=1',(json.dumps(value),))
     return value
 

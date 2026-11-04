@@ -58,7 +58,10 @@ def dependencies(nodes,topic_ids):
 
 def metadata(inputs,mapping):
     nodes=inputs['knowledge_catalog']
+    source=next((s for s in inputs['knowledge_sources'] if s['source_id']==mapping['source_id']),None)
+    from app.learning.semantic_dependencies import signature
     return {'source_revision':mapping['source_revision'],
+            'question_semantics':signature(source['content']['diagnosis']) if source and source['kind']=='question' else None,
             'catalog_revision':inputs['knowledge_catalog_revision'],
             'rule_revision':inputs['knowledge_rule_revision'],
             'dependencies':dependencies(nodes,mapping['topic_ids']),
@@ -98,6 +101,8 @@ def latest(conn,nodes):
             if record:version=json.loads(record[0])
         values[(row['source_id'],row['source_revision'])]={'mapping':payload,'version':version,
             'status':inspect(conn,payload,version,nodes),'result_id':row['result_id']}
+    from app.learning.semantic_dependencies import adopt_mappings
+    adopt_mappings(conn,values)
     return values
 
 

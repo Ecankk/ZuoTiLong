@@ -126,8 +126,8 @@ def enqueue(conn, root, data, kind, paper_id, request_id, attempt_id=None, *,
         from app.learning.practice_knowledge import grading_contract
         version=grading_contract(conn,attempt_id,contract_version or (prior_job['contract_version'] if prior_job else None))
     practice_version=practice_contract_version or (prior_job['practice_contract_version'] if prior_job else '1.6')
-    if practice_version not in ('1.6','1.9'):raise ValueError('后续选题契约版本不合法')
-    if type(continue_practice) is not bool or continue_practice and (kind!='organize_knowledge' or version!='1.8' or practice_version!='1.9'):
+    if practice_version not in ('1.6','1.9','1.10'):raise ValueError('后续选题契约版本不合法')
+    if type(continue_practice) is not bool or continue_practice and (kind!='organize_knowledge' or version!='1.8' or practice_version not in ('1.9','1.10')):
         raise ValueError('只有1.8前置知识整理可以继续1.9选题')
     result_schema(kind,version);result_schema('organize_knowledge',index_contract_version)
     if knowledge_request is not None and (kind!='organize_knowledge' or version!='1.8'):
@@ -187,7 +187,7 @@ def request_practice(conn,root,data,paper_id,request_id,*,workflow_id=None,index
     with atomic(conn):
         old=conn.execute('SELECT * FROM workflow_jobs WHERE request_id=?',(request_id,)).fetchone()
         if old:
-            if (old['paper_id']!=paper_id or old['practice_contract_version']!='1.9'
+            if (old['paper_id']!=paper_id or old['practice_contract_version'] not in ('1.9','1.10')
                     or not (old['kind']=='prepare_practice' or old['kind']=='organize_knowledge' and old['continue_practice'])):
                 raise ValueError('同一请求不能用于其他任务或选题策略')
             return dict(old)
@@ -197,9 +197,9 @@ def request_practice(conn,root,data,paper_id,request_id,*,workflow_id=None,index
         if pending:
             return enqueue(conn,root,data,'organize_knowledge',paper_id,request_id,workflow_id=workflow_id,
                 contract_version='1.8',knowledge_request={'source_ids':pending,'refresh':True},
-                practice_contract_version='1.9',continue_practice=True,index_after=index_after)
+                practice_contract_version='1.10',continue_practice=True,index_after=index_after)
         return enqueue(conn,root,data,'prepare_practice',paper_id,request_id,workflow_id=workflow_id,
-            contract_version='1.9',practice_contract_version='1.9',index_after=index_after)
+            contract_version='1.10',practice_contract_version='1.10',index_after=index_after)
 
 
 def listing(conn):
@@ -220,7 +220,7 @@ def mark(conn, job_id, status, error=None, task_id=None):
 
 
 def reconcile(conn, root, data):
-    """Recover the task/job handoff atomically; never infer remote completion."""
+    """Advance only from committed local completion receipts."""
     from app.learning.tasks import atomic
     with atomic(conn):
         for job in conn.execute("SELECT * FROM workflow_jobs WHERE status IN ('queued','dispatching','running')").fetchall():
@@ -242,17 +242,31 @@ def reconcile(conn, root, data):
 
 
 def next_job(conn):
-    return conn.execute("SELECT * FROM workflow_jobs WHERE status='queued' ORDER BY created_at,rowid LIMIT 1").fetchone()
+    return conn.execute("SELECT * FROM workflow_jobs WHERE status='queued' AND recovery_required=0 ORDER BY created_at,rowid LIMIT 1").fetchone()
 
 
 def retry_job(conn, root, data, job_id):
     job = conn.execute('SELECT * FROM workflow_jobs WHERE id=?', (job_id,)).fetchone()
     if not job or job['status'] not in ('blocked', 'failed', 'interrupted'):
         raise ValueError('该阶段无需重新排入')
-    # A dispatched task is owned by the bridge's original-turn retry/reconcile.
-    # A queue button cannot replace an unknown remote turn with a new one.
-    if job['task_id']:
-        raise ValueError('该任务已有执行记录，请先核对原会话并使用“重试未完成阶段”')
+    if job['task_id'] or job['recovery_required']:
+        task=conn.execute('SELECT * FROM learning_tasks WHERE id=?',(job['task_id'],)).fetchone() if job['task_id'] else None
+        if task and task['result_id']:
+            if task['status']!='completed':
+                from app.learning.tasks import finish_task
+                finish_task(conn,task['id'])
+            continue_job(conn,root,data,dict(job),dict(conn.execute('SELECT * FROM learning_tasks WHERE id=?',(task['id'],)).fetchone()))
+            mark(conn,job_id,'completed');return
+        mark(conn,job_id,'abandoned','重试使用新的任务与会话，旧执行保留')
+        replacement=enqueue(conn,root,data,job['kind'],job['paper_id'],str(uuid.uuid4()),job['attempt_id'],
+            workflow_id=job['workflow_id'],auto_prepare=bool(job['auto_prepare']),index_after=bool(job['index_after']),
+            review_request=json.loads(job['review_json']) if job['review_json'] else None,
+            task_scope=json.loads(job['scope_json']) if job['scope_json'] else None,
+            knowledge_request=json.loads(job['knowledge_json']) if job['knowledge_json'] else None,
+            contract_version=job['contract_version'],index_contract_version=job['index_contract_version'],
+            practice_contract_version=job['practice_contract_version'],continue_practice=bool(job['continue_practice']))
+        conn.execute("UPDATE knowledge_preparation_items SET job_id=? WHERE job_id=? AND status='running'",(replacement['id'],job_id))
+        return
     from app.learning.tasks import encode
     conn.execute("UPDATE workflow_jobs SET guard_json=?,status='queued',error=NULL,updated_at=? WHERE id=?",
                  (encode(guard(conn, root, data, job['kind'], job['paper_id'], job['attempt_id'],
@@ -269,7 +283,7 @@ def cancel_job(conn, job_id):
 
 
 def continue_job(conn,root,data,job,task):
-    """Schedule only from a saved result whose remote task actually completed."""
+    """Schedule from a locally validated, committed task result."""
     if task['status']!='completed' or not task['result_id']:
         raise ValueError('原阶段尚未确认完成')
     if task['kind'] in ('maintain_catalog','annotate_questions'):
@@ -278,10 +292,14 @@ def continue_job(conn,root,data,job,task):
         return
     if job['auto_prepare'] and task['kind'] in ('analyze_paper','review_question'):
         payload=json.loads(conn.execute('SELECT payload_json FROM learning_results WHERE id=?',(task['result_id'],)).fetchone()[0])['result']
+        if task['kind']=='review_question':
+            from app.learning.semantic_dependencies import signature
+            before=json.loads(task['input_json'])['question_review']['question']
+            if signature(before)==signature(payload['question']):return
         review=payload['report'].get('review',{}) if task['kind']=='analyze_paper' else payload['review']
         if payload['completion']=='complete' and review.get('status')=='verified':
             request=str(uuid.uuid5(uuid.NAMESPACE_URL,'mathlens:prepare:'+job['id']))
-            if job.get('practice_contract_version','1.6')=='1.9':
+            if job.get('practice_contract_version','1.6') in ('1.9','1.10'):
                 request_practice(conn,root,data,job['paper_id'],request,workflow_id=job['workflow_id'],
                                  index_after=bool(job.get('index_after')))
             else:

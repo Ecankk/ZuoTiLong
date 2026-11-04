@@ -67,12 +67,15 @@ def image_path(data,binding,role):
     return _folder(data,binding['snapshot_key'])[1]/item['image_file']
 
 
+from contextvars import ContextVar
+PREVIEW = ContextVar('practice_material_preview',default=False)
+
 def freeze(conn,data,binding):
     actual=materials(conn,data,binding['bank_id'])
     if digest(actual)!=binding['material_revision'] or actual['question']['sha256']!=binding['content_revision']:
         raise ValueError('练习材料在选题保存前已变化')
     key=digest({'bank_id':binding['bank_id'],'material_revision':binding['material_revision']})
-    root,target=_folder(data,key);root.mkdir(parents=True,exist_ok=True)
+    root,target=_folder(data,key)
     manifest={'format':'mathlens.practice-materials/v1','bank_id':binding['bank_id'],
               'material_revision':binding['material_revision'],'content_revision':binding['content_revision'],'resources':{}}
     blobs={}
@@ -88,6 +91,10 @@ def freeze(conn,data,binding):
         manifest['resources'][role]={k:item[k] for k in ('text','image_sha256','sha256')}
         manifest['resources'][role].update(source_path=item['path'],image_file=filename)
     expected=digest(manifest)
+    if PREVIEW.get():
+        if target.exists():load(data,key,expected)
+        return {**binding,'snapshot_key':key,'snapshot_sha256':expected,'material_manifest':manifest}
+    root.mkdir(parents=True,exist_ok=True)
     if not target.exists():
         # Publish a complete directory; failed DB transactions can reuse this
         # verified, unreferenced cache. Never overwrite a previous snapshot.

@@ -49,6 +49,6 @@ class PracticeService:
         with self.database.session(write=True) as conn:
             row=conn.execute('SELECT paper_id FROM questions WHERE id=?',(question_id,)).fetchone()
             if not row:raise ValueError('原题不存在')
-            job=enqueue(conn,self.config.root,self.config.data,'review_question',row['paper_id'],body.get('request_id'),auto_prepare=True,index_after=True,practice_contract_version='1.9',contract_version='2.0',
+            job=enqueue(conn,self.config.root,self.config.data,'review_question',row['paper_id'],body.get('request_id'),auto_prepare=True,index_after=True,practice_contract_version='1.10',contract_version='2.0',
                 review_request={**{k:body.get(k) for k in ('report_id',)},'question_id':question_id,'note':body.get('note',''),'image_ids':body.get('image_ids',[]),'image_roles':body.get('image_roles',{})})
             return {'agent_queued':True,'job_id':job['id']}

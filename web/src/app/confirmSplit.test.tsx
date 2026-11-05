@@ -34,7 +34,7 @@ it('asks to check the question numbers before analysis and starts it after confi
   await userEvent.click(within(dialog).getByRole('button', { name: '开始分析' }))
   const call = fetch.mock.calls.find(([url]) => String(url).includes('/analyze'))
   expect(String(call?.[0])).toBe('/api/papers/paper-fresh/analyze')
-  expect(JSON.parse(String(call?.[1]?.body))).toEqual({ confirmed: false })
+  expect(JSON.parse(String(call?.[1]?.body))).toEqual({ confirmed: true })
 })
 
 it('does not show the step for an analysed paper', async () => {

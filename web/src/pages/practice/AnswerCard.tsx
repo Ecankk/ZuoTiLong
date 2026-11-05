@@ -9,7 +9,11 @@ import { RevealButton } from './RevealButton'
 import styles from './PracticeCard.module.css'
 
 /** 练习题面：图片题显示原题图，纯文字题按公式排版。 */
-export function QuestionContent({ question }: { question: PracticeResponse['question'] }) {
+export function QuestionContent({
+  question,
+}: {
+  question: { question_text?: string | null; question_image?: string | null } | null
+}) {
   if (!question) return null
   return (
     <>

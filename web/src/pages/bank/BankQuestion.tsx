@@ -3,16 +3,32 @@ import { EyeOff, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { endpoints } from '../../api/endpoints'
-import { useAction } from '../../api/queries'
+import { useAction, useFreePractice } from '../../api/queries'
 import type { BankCard, BankTopics, BookLocator } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
-import { Button } from '../../components/ui/Button'
+import { Button, ButtonLink } from '../../components/ui/Button'
 import { Chip } from '../../components/ui/Chip'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { cx } from '../../lib/cx'
 import { mathTypeName } from '../../lib/labels'
 import { RevealButton } from '../practice/RevealButton'
 import styles from './BankPage.module.css'
+
+export const practiceLink = (bankId: string) => `/bank/${encodeURIComponent(bankId)}/practice`
+
+/** 打开整题时读一次做题接口，按它给的 actions 决定是否显示入口 */
+function PracticeEntry({ bankId }: { bankId: string }) {
+  const { data } = useFreePractice(bankId)
+  if (!data?.actions.includes('submit')) return null
+  return (
+    <div className={styles.cardActions}>
+      <ButtonLink variant="primary" to={practiceLink(bankId)}>
+        做这道题
+      </ButtonLink>
+      {data.attempt_count > 0 && <span className={styles.count}>已做 {data.attempt_count} 次</span>}
+    </div>
+  )
+}
 
 export type BankTopic = BankTopics['items'][number]['topics'][number]
 
@@ -24,7 +40,7 @@ export const bookSection = (book: BookLocator | undefined) =>
  * 题目标题：真题用“年份 类别 · 第N题”，教辅题用“篇章 · 原题号”。
  * 缺少的部分不显示，全都不知道时返回空字符串。
  */
-export function bankTitle(card: BankCard) {
+export function bankTitle(card: Pick<BankCard, 'book' | 'year' | 'math_type' | 'number'>) {
   if (card.book) {
     const number = card.book.number?.trim()
     const label = number ? (/^\d+$/.test(number) ? `第 ${number} 题` : number) : ''
@@ -173,6 +189,12 @@ export function BankQuestionCard({
         <Button size="sm" onClick={onOpen}>
           查看整题
         </Button>
+        {/* 列表里只按题卡状态粗筛；能否提交以做题页读到的 actions 为准 */}
+        {card.can_view && !card.reserved && (
+          <ButtonLink size="sm" variant="soft" to={practiceLink(card.id)}>
+            做这道题
+          </ButtonLink>
+        )}
       </div>
     </article>
   )
@@ -203,6 +225,7 @@ export function BankQuestionDialog({
           <Meta card={card} />
           <QuestionBody card={card} full />
           <TopicTags topics={topics} />
+          {card.can_view && !card.reserved && <PracticeEntry bankId={card.id} />}
           <Analysis card={card} />
         </Dialog.Content>
       </Dialog.Portal>

@@ -21,12 +21,18 @@ import {
   tasks,
 } from '../mocks/data'
 
-const json = (body: unknown, status = 200) =>
+export const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
 /** 按 docs/frontend-api.md 的路径模拟本地服务，供页面测试使用。 */
 export function mockServer(
-  overrides: { tasks?: TasksResponse; agentModels?: AgentModels[]; preferences?: Preferences } = {},
+  overrides: {
+    tasks?: TasksResponse
+    agentModels?: AgentModels[]
+    preferences?: Preferences
+    /** 测试自定义的路由，返回 undefined 时继续走默认处理 */
+    routes?: (path: string, init: RequestInit | undefined, url: URL) => Response | undefined
+  } = {},
 ) {
   let savedPreferences = overrides.preferences ?? preferences
   const modelReads = [...(overrides.agentModels ?? [agentModels])]
@@ -34,6 +40,20 @@ export function mockServer(
     const url = new URL(String(input), 'http://localhost')
     const path = url.pathname
     const notFound = json({ error: 'not found' }, 404)
+    const custom = overrides.routes?.(path, init, url)
+    if (custom) return custom
+    if (path === '/api/profile')
+      return json({
+        free_practice: {
+          total: 0,
+          correct: 0,
+          wrong: 0,
+          pending: 0,
+          independent_correct: 0,
+          assisted_correct: 0,
+        },
+      })
+    if (path === '/api/drafts') return json(init?.method === 'POST' ? { ok: true } : {})
     if (path === '/api/tasks') return json(overrides.tasks ?? tasks)
     if (path === '/api/agent/models')
       return json(modelReads.length > 1 ? modelReads.shift() : modelReads[0])
@@ -69,6 +89,8 @@ export function mockServer(
       const items = bankCards.filter(
         (card) =>
           card.collection_id === url.searchParams.get('collection') &&
+          (!url.searchParams.get('q') ||
+            (card.question_text ?? '').includes(url.searchParams.get('q')!)) &&
           (!url.searchParams.get('math_type') ||
             String(card.math_type) === url.searchParams.get('math_type')) &&
           (!url.searchParams.get('year') || card.year === url.searchParams.get('year')),

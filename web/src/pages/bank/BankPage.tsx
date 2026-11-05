@@ -59,6 +59,7 @@ export function BankPage() {
     mathType: mathTypes.includes(askedType) ? askedType : '',
     year: isExam ? (params.get('year') ?? '') : '',
     topic: params.get('topic') ?? '',
+    q: params.get('q') ?? '',
   }
   const page = Math.max(1, Number(params.get('page')) || 1)
   const openId = params.get('open')
@@ -143,7 +144,19 @@ export function BankPage() {
           </>
         )}
         {collection && (
-          <TopicSearch scope={collection.name} onPick={(id) => update({ topic: id })} />
+          <TopicSearch
+            scope={collection.name}
+            onPick={(id) => update({ topic: id })}
+            onText={(text) => update({ q: text })}
+          />
+        )}
+        {filter.q && (
+          <span className={styles.topicFilter}>
+            题面：<Chip tone="primary">{filter.q}</Chip>
+            <button type="button" aria-label="清除题面搜索" onClick={() => update({ q: '' })}>
+              <X size={14} aria-hidden />
+            </button>
+          </span>
         )}
         {filter.topic && (
           <span className={styles.topicFilter}>
@@ -176,9 +189,11 @@ export function BankPage() {
       )}
       {data && data.total === 0 && (
         <Card padded className={styles.notice}>
-          {isExam
-            ? '没有符合条件的题目，换个类别或年份试试。'
-            : '没有符合条件的题目，换个类别试试。'}
+          {filter.q
+            ? `没有找到题面含“${filter.q}”的题目，可以换个说法，或清除其他筛选。`
+            : isExam
+              ? '没有符合条件的题目，换个类别或年份试试。'
+              : '没有符合条件的题目，换个类别试试。'}
         </Card>
       )}
       <div style={{ opacity: isPlaceholderData ? 0.6 : 1 }}>

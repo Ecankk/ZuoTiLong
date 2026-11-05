@@ -15,7 +15,7 @@ import {
   searchCatalog,
   type CatalogIndex,
 } from '../../lib/catalog'
-import { bankTitle } from '../bank/BankQuestion'
+import { bankTitle, practiceLink } from '../bank/BankQuestion'
 import { TopicTree } from './TopicTree'
 import styles from './TopicsPage.module.css'
 
@@ -40,6 +40,53 @@ function SearchResults({ index, query }: { index: CatalogIndex; query: string })
         )
       })}
     </ul>
+  )
+}
+
+/** 按来源拆分：原卷、对口练习是表现记录数；自由练习是整题作答次数，独立和受提示分开。 */
+function SourceCounts({
+  counts,
+}: {
+  counts: NonNullable<TopicResponse['performance']['source_counts']>
+}) {
+  const free = counts.free_practice
+  return (
+    <section className={styles.sources} aria-label="按来源">
+      <h4>按来源</h4>
+      <dl>
+        <div>
+          <dt>原卷</dt>
+          <dd>{counts.exam} 条记录</dd>
+        </div>
+        <div>
+          <dt>对口练习</dt>
+          <dd>{counts.practice} 条记录</dd>
+        </div>
+        <div>
+          <dt>自由练习</dt>
+          <dd>
+            {free.total} 次
+            {free.total > 0 && (
+              <small>
+                {[
+                  `独立做对 ${free.independent_correct}`,
+                  `看过答案后做对 ${free.assisted_correct}`,
+                  `做错 ${free.wrong}`,
+                  free.pending > 0 ? `待批改 ${free.pending}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </small>
+            )}
+          </dd>
+        </div>
+      </dl>
+      {free.total > 0 && (
+        <p className={styles.muted}>
+          自由练习按整题记录，用来参考；做对一次不代表已经掌握这个考点。
+        </p>
+      )}
+    </section>
   )
 }
 
@@ -89,6 +136,11 @@ function RelatedQuestions({
               {bankTitle(card) || '题目（未标注题号）'}
               {card.question_type && <small>{card.question_type}</small>}
             </Link>
+            {card.can_view && !card.reserved && (
+              <Link className={styles.doIt} to={practiceLink(card.id)}>
+                做这道题
+              </Link>
+            )}
           </li>
         ))}
       </ul>
@@ -202,6 +254,7 @@ function TopicDetail({ index, topicId }: { index: CatalogIndex; topicId: string 
               <dd>{counts.completed}</dd>
             </div>
           </dl>
+          {performance.source_counts && <SourceCounts counts={performance.source_counts} />}
           {practiceActive > 0 && (
             <ButtonLink size="sm" to={`/practice?topic=${encodeURIComponent(topic.id)}`}>
               这个考点的练习：{practice.pending} 道待做

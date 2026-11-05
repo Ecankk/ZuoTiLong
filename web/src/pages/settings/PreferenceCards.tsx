@@ -28,6 +28,31 @@ export function MaskCard() {
   )
 }
 
+/** 画像计入自由练习（preferences.include_free_practice，默认计入） */
+export function FreePracticeCard() {
+  const { data } = usePreferences()
+  const save = useSavePreferences()
+  if (!data) return null
+  return (
+    <Card padded className={styles.section} aria-label="自由练习">
+      <h2>自由练习</h2>
+      <p>
+        在题库里单独做的题会记成“自由练习”，和原卷、对口练习分开统计。关闭后画像和考点表现不再计入，做过的记录仍然保留。
+      </p>
+      <label className={styles.switchRow}>
+        <input
+          type="checkbox"
+          checked={data.include_free_practice !== false}
+          disabled={save.isPending}
+          onChange={(event) => save.mutate({ include_free_practice: event.target.checked })}
+        />
+        画像计入自由练习
+      </label>
+      {save.error && <p className={styles.error}>{save.error.message}</p>}
+    </Card>
+  )
+}
+
 function ConventionForm({ preferences }: { preferences: Preferences }) {
   const [text, setText] = useState(preferences.paper_marking_convention)
   const save = useSavePreferences()

@@ -264,7 +264,81 @@ export type Preferences = {
   reserved: { math_type: MathType; year: string }[]
   /** 判断类任务（分析试卷、单题复核、批改作答）和整理类任务（选择练习、整理考点、总结）用的模型 */
   execution_profiles: Record<ProfileTier, ExecutionProfile>
+  /** 画像和考点表现是否计入自由练习，默认计入 */
+  include_free_practice?: boolean
 }
+
+/* ---------- 题库题目自由练习（B18） ---------- */
+
+export type FreePracticeCounts = {
+  total: number
+  correct: number
+  wrong: number
+  pending: number
+  independent_correct: number
+  assisted_correct: number
+}
+
+export type FreeQuestion = { question_text?: string; question_image?: string }
+export type FreeReference = {
+  answer_text?: string
+  answer_image?: string
+  analysis_text?: string
+  analysis_image?: string
+}
+
+export type FreeAttempt = {
+  id: string
+  bank_id: string
+  source: 'free_practice'
+  request_id?: string
+  question_type: string | null
+  collection_id: string
+  response: string
+  choice?: string | null
+  image_ids: string[]
+  image_roles: Record<string, string>
+  answer_exposed: boolean
+  elapsed_seconds: number | null
+  created_at: string
+  assessment: Assessment | null
+  job: { id: string; status: string } | null
+  /** 这次作答自己的固定快照；未判定时 reference 为 null */
+  materials: { question: FreeQuestion; reference: FreeReference | null }
+}
+
+/** GET /api/bank/{id}/practice */
+export type FreePractice = {
+  bank_id: string
+  question_type: string | null
+  collection_id: string
+  question: FreeQuestion
+  source: {
+    math_type: MathType | 0 | null
+    year: string | null
+    number: number | null
+    question_type?: string | null
+    max_score?: number | null
+    book?: BookLocator
+  }
+  reference: FreeReference | null
+  actions: ('submit' | 'reveal_analysis')[]
+  latest_attempt: FreeAttempt | null
+  attempt_count: number
+}
+
+export type FreeAttemptBody = {
+  request_id: string
+  response: string
+  choice?: string
+  image_ids: string[]
+  image_roles: Record<string, ImageRole>
+  answer_exposed: boolean
+  elapsed_seconds: number
+}
+
+/** GET /api/profile 中前端用到的部分 */
+export type ProfileResponse = { free_practice?: FreePracticeCounts }
 
 export type ProfileTier = 'judgment' | 'organization'
 export type ExecutionProfile = { model: string; effort: string }
@@ -423,6 +497,8 @@ export type TopicResponse = {
     failures: number
     pending: number
     attempt_count: number
+    /** 按来源拆分：原卷、对口练习为表现事件数；自由练习为整题作答次数 */
+    source_counts?: { exam: number; practice: number; free_practice: FreePracticeCounts }
   }
   question_counts: { completed: number; bank: number }
   /** 各题集的关联题数；稀疏，不能相加当总数 */

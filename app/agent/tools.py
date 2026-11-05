@@ -282,6 +282,8 @@ def execute(root,data,action,payload,*,lease=None):
                         'read_scope':'regions' if regions else 'full_pages','regions':regions or [],
                         'coordinate_instruction':'regions.bbox使用原PDF点坐标[x0,y0,x1,y1]，不是返回图片的像素；每页尺寸见page_dimensions。',
                         'questions':[dict(q) for q in conn.execute('SELECT * FROM questions WHERE paper_id=?',(row['id'],))]}
+                from app.learning.analysis_materials import expectations
+                result.update(expectations(conn,dict(row)))
                 if not task or task['kind'] in ('analyze_paper', 'review_question'):
                     from app.bank.paper_candidates import locate
                     result['bank_locator_candidates'] = locate(conn, dict(row),

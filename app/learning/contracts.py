@@ -61,6 +61,7 @@ QUESTION = obj({'number': {'type': 'integer', 'minimum': 1, 'maximum': 100},
                 'answer_evidence': ANSWER_EVIDENCE,
                 'solution_guide': {'anyOf':[{'type':'null'},SOLUTION_GUIDE]},
                 'cause_summary': string()},optional=('answer_evidence','solution_guide','cause_summary'))
+QUESTION['properties']['correctness']['description']='作答可辨时对照给定参考判定；unknown仅用于作答不可辨或参考缺失，并在observation说明具体页/局部/行。错因未知不等于正误未知。'
 REPORT = obj({'author': string(nonempty=True, limit=100), 'method': string(nonempty=True),
               'source_sha256': {**SHA,'description':'可省略，由后端按捕获原卷摘要填写；主动提供时必须完全一致。'}, 'expected_count': {'type': 'integer', 'minimum': 1, 'maximum': 100},
               'summary': string(nonempty=True), 'score_status': {'enum': ['unknown', 'estimated']},
@@ -192,7 +193,7 @@ def result_schema(kind, version=None):
                    'result': shape})}
 
 
-def validate_result(payload, kind, version=None):
+def validate_result(payload, kind, version=None, *, analysis_context=None):
     try:
         encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError):
@@ -203,62 +204,73 @@ def validate_result(payload, kind, version=None):
                     key=lambda e: '/'.join(map(str, e.absolute_path)))
     if issues:
         raise ValueError('结果结构不合法：' + '；'.join(
-            '/'.join(map(str, e.absolute_path)) + ': ' + e.message[:240] for e in issues[:8]))
+            '/'.join(map(str, e.absolute_path)) + ': ' + e.message[:240] for e in (issues if kind=='analyze_paper' else issues[:8])))
     result = payload['result']
     if kind == 'analyze_paper':
+        errors=[]
         report = result['report']
         numbers = [q['number'] for q in report['questions']]
         if len(numbers) != report['expected_count'] or set(numbers) != set(range(1, report['expected_count'] + 1)):
-            raise ValueError('报告必须逐一覆盖全部题号，未知或不可辨题也保留记录')
+            errors.append('报告必须逐一覆盖全部题号；缺失题号='+str(sorted(set(range(1,report['expected_count']+1))-set(numbers)))+'；未知或不可辨题也保留记录')
         if report['author'] != payload['author']:
-            raise ValueError('结果作者与报告作者不一致')
+            errors.append('结果作者与报告作者不一致')
         for q in report['questions']:
             if payload['schema_version'] in ('1.2','1.3','1.4','1.5','1.6','2.0'):
                 if q['solution_guide'] is None and q['evidence_status']!='missing':
-                    raise ValueError('题干可读时每题须提供切入点、解题策略、关键步骤及注意事项')
+                    errors.append(f"第{q['number']}题："+'题干可读时每题须提供切入点、解题策略、关键步骤及注意事项')
                 if q['correctness']!='correct' and not q['cause_summary'].strip():
-                    raise ValueError('错题、未完成及未知题须提供可能原因的分析或具体证据限制')
+                    errors.append(f"第{q['number']}题："+'错题、未完成及未知题须提供可能原因的分析或具体证据限制')
             if payload['schema_version'] in ('1.3','1.4','1.5','1.6','2.0') and q['evidence_status']=='readable':
                 if any(not value.strip() for value in q['knowledge'] + q['fingerprint']['methods'] + q['fingerprint']['operations']):
-                    raise ValueError('题干可读时须提供具体考点、方法和必要操作，原因未知不影响考点分析')
+                    errors.append(f"第{q['number']}题："+'题干可读时须提供具体考点、方法和必要操作，原因未知不影响考点分析')
             evidence=q.get('answer_evidence')
             if evidence:
                 disputed=report.get('review',{}).get('status')=='needs_review' and bool(report['review']['issues'])
                 if evidence['marking']!='none' and not evidence['marking_note'].strip():
-                    raise ValueError('存在批改时须描述其含义和位置，不能将批改答案当作原作答')
+                    errors.append(f"第{q['number']}题："+'存在批改时须描述其含义和位置，不能将批改答案当作原作答')
                 if evidence['student_state']=='visible' and not evidence['student_work'].strip():
-                    raise ValueError('原作答可辨时须保留实际作答内容')
+                    errors.append(f"第{q['number']}题："+'原作答可辨时须保留实际作答内容')
                 if q['correctness']=='correct' and (evidence['student_state']=='not_attempted' or evidence['marking']=='wrong' and not disputed):
-                    raise ValueError('未作答或明确批错的题不能标正确；红笔更正不是原作答')
+                    errors.append(f"第{q['number']}题："+'未作答或明确批错的题不能标正确；红笔更正不是原作答')
                 if q['correctness']=='correct' and evidence['student_state']=='unreadable' and evidence['marking']!='correct':
-                    raise ValueError('没有可辨原作答或明确判对依据，不能标正确')
+                    errors.append(f"第{q['number']}题："+'没有可辨原作答或明确判对依据，不能标正确')
                 if evidence['student_state']=='not_attempted' and q['first_error'] is not None:
-                    raise ValueError('未作答不能虚构首个计算或推导错误')
+                    errors.append(f"第{q['number']}题："+'未作答不能虚构首个计算或推导错误')
                 if payload['schema_version'] in ('1.2','1.3','1.4','1.5','1.6','2.0') and evidence['student_state']=='not_attempted' and q['evidence_status']!='missing':
                     if q['correctness']!='wrong':
-                        raise ValueError('已确认未作答纳入错题补强，仍保留未作答状态')
+                        errors.append(f"第{q['number']}题："+'已确认未作答纳入错题补强，仍保留未作答状态')
                     if any(e['kind'] in ('exam_error','exam_success') for e in q['skill_events']):
-                        raise ValueError('空白只支持未完成证据，不证明某个数学操作确实做错')
+                        errors.append(f"第{q['number']}题："+'空白只支持未完成证据，不证明某个数学操作确实做错')
                 if evidence['marking']=='wrong' and q['correctness']=='unknown' and not disputed:
-                    raise ValueError('已明确批错不能因错因未知而将正误也记为未知')
+                    errors.append(f"第{q['number']}题："+'已明确批错不能因错因未知而将正误也记为未知')
                 if (evidence['marking']=='correct' and q['correctness']=='wrong'
                     or evidence['student_state']=='unreadable' and q['correctness']=='unknown') and report.get('review',{}).get('status')=='verified':
-                    raise ValueError('批改冲突或原作答不可辨仍未核清，须暂缓选题')
+                    errors.append(f"第{q['number']}题："+'批改冲突或原作答不可辨仍未核清，须暂缓选题')
             if q['correctness']!='correct' and any(e['kind']=='exam_success' for e in q['skill_events']):
-                raise ValueError('非正确题不能写入原卷成功证据')
+                errors.append(f"第{q['number']}题："+'非正确题不能写入原卷成功证据')
             if not q['regions'] and not (q['evidence_status']=='missing' and q['correctness']=='unknown' and result['completion']!='complete'):
-                raise ValueError('仅缺失证据的未知题可无区域，且不得标整卷完整')
+                errors.append(f"第{q['number']}题："+'仅缺失证据的未知题可无区域，且不得标整卷完整')
             if q['correctness'] == 'correct' and q['first_error'] is not None:
-                raise ValueError('有实质性步骤错误不能标记为完整正确；终值正误与过程分开')
+                errors.append(f"第{q['number']}题："+'有实质性步骤错误不能标记为完整正确；终值正误与过程分开')
             if q['correctness'] != 'unknown' and not q['reference_reasoning'].strip():
-                raise ValueError('判定作答前须提供核验解法与关键推导')
+                errors.append(f"第{q['number']}题："+'判定作答前须提供核验解法与关键推导')
         if result['completion'] != 'complete' and not report['limitations']:
-            raise ValueError('部分分析或需补材料须说明具体限制')
+            errors.append('部分分析或需补材料须说明具体限制')
         review=report.get('review')
         if review and (review['status']=='needs_review' and not review['issues'] or review['status']=='verified' and review['issues']):
-            raise ValueError('核对未完成须说明具体问题，核对通过不能保留未解决的冲突')
+            errors.append('核对未完成须说明具体问题，核对通过不能保留未解决的冲突')
         if payload['schema_version'] in ('1.4','1.5','1.6','2.0') and review['status']=='verified' and result['completion']!='complete':
-            raise ValueError('completion表示分析覆盖与核对是否完成，不表示学生是否全部答对或做完。核对通过时应为complete；已确认空白、错因未知或总分未核定不能使分析partial。若确有题意/判定/关键解法缺口，请保留needs_review并指出具体缺口。')
+            errors.append('completion表示分析覆盖与核对是否完成，不表示学生是否全部答对或做完。核对通过时应为complete；已确认空白、错因未知或总分未核定不能使分析partial。若确有题意/判定/关键解法缺口，请保留needs_review并指出具体缺口。')
+        if analysis_context:
+            expected=analysis_context['expected_count']
+            if expected and report['expected_count']!=expected:
+                errors.append(f'expected_count须为后端提供的{expected}；缺失题号='+str(sorted(set(range(1,expected+1))-set(numbers))))
+            references={e['number'] for e in analysis_context['entries'] if e['reference_available']}
+            for q in report['questions']:
+                evidence=q.get('answer_evidence',{})
+                if q['number'] in references and evidence.get('student_state')=='visible' and q['evidence_status']=='readable' and q['correctness']=='unknown':
+                    errors.append(f"第{q['number']}题：作答可辨且已提供参考答案/解析，须对照核验后判定正误；不能因错因未知而将正误记未知")
+        if errors:raise ValueError('分析交付校验失败：\n'+'\n'.join(errors))
     elif kind == 'prepare_practice' and payload['schema_version']!='1.10':
         goals = {g['id']: g for g in result['goals']}
         if len(goals) != len(result['goals']):

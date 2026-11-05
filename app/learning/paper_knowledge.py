@@ -116,7 +116,7 @@ def read(conn, data, task, lease, payload, image_content):
 
 
 def validate_input(conn, data, task, inputs, current, result):
-    ordinary = lambda value: {k: v for k, v in value.items() if k != 'paper_knowledge'}
+    ordinary = lambda value: {k: v for k, v in value.items() if k not in ('paper_knowledge','analysis_materials')}
     if catalog.digest(ordinary(inputs)) != catalog.digest(ordinary(current)):
         raise ValueError('原卷任务证据已变化，拒绝覆盖新内容')
     references = result['references']

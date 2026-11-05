@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { Attempt, PracticeGroup, PracticeResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button, ButtonLink } from '../../components/ui/Button'
+import { practiceLink } from '../bank/BankQuestion'
 import { Card } from '../../components/ui/Card'
 import { Chip, CorrectnessChip } from '../../components/ui/Chip'
 import { Fold } from '../../components/ui/Fold'
@@ -144,6 +145,9 @@ export function GradedCard({
                   补充步骤或照片
                 </Button>
               )}
+              <ButtonLink size="sm" variant="ghost" to={practiceLink(practice.bank_id)}>
+                单独再做一次
+              </ButtonLink>
               {detail.actions.includes('reveal_analysis') && (
                 <RevealButton
                   bankId={practice.bank_id}

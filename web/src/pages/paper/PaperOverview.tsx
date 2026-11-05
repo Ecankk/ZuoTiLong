@@ -86,7 +86,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
               <Button
                 variant="primary"
                 disabled={analyze.isPending}
-                onClick={() => analyze.mutate(false)}
+                onClick={() => analyze.mutate(true)}
               >
                 开始分析
               </Button>

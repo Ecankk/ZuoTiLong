@@ -101,7 +101,7 @@ export function useAction<TArgs, TResult>(
 export const useSavePreferences = () =>
   useAction(
     (change: PreferencesChange) => endpoints.savePreferences(change),
-    [queryKeys.preferences, ['practices']],
+    [queryKeys.preferences, ['practices'], ['profile'], ['knowledge', 'topic']],
   )
 
 export const useImportPaper = () =>
@@ -121,6 +121,7 @@ export const useBank = (filter: BankFilter, offset: number, limit: number) =>
       filter.mathType,
       filter.year,
       filter.topic,
+      filter.q ?? '',
       offset,
       limit,
     ],
@@ -128,6 +129,23 @@ export const useBank = (filter: BankFilter, offset: number, limit: number) =>
     enabled: Boolean(filter.collection),
     placeholderData: keepPreviousData,
   })
+
+/* 自由练习：第一段 'bank'，题库资源变化或查看解析后一起刷新 */
+export const useFreePractice = (bankId: string) =>
+  useQuery({
+    queryKey: ['bank', bankId, 'practice'],
+    queryFn: () => endpoints.freePractice(bankId),
+    retry: false,
+  })
+
+export const useFreeAttempts = (bankId: string, offset: number, limit: number) =>
+  useQuery({
+    queryKey: ['bank', bankId, 'practice', 'attempts', offset, limit],
+    queryFn: () => endpoints.freeAttempts(bankId, offset, limit),
+    placeholderData: keepPreviousData,
+  })
+
+export const useProfile = () => useQuery({ queryKey: ['profile'], queryFn: endpoints.profile })
 
 export const useBankCollections = () =>
   useQuery({ queryKey: ['bank', 'collections'], queryFn: endpoints.bankCollections })

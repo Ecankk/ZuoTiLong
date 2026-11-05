@@ -272,7 +272,7 @@
 }
 
 .topicSearch input {
-  width: 220px;
+  width: 260px;
   border: 0;
   outline: none;
   background: transparent;
@@ -328,4 +328,14 @@
 .topicResults small {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
+}
+
+.topicResults .textSearch {
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.topicResults .textSearch strong {
+  color: var(--color-primary);
 }

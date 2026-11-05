@@ -74,11 +74,11 @@ it('does not call a queued practice selection an analysis', async () => {
 it('finds a topic by alias and filters the current collection by it', async () => {
   const fetch = mockServer()
   const router = renderAt('/bank')
-  const input = await screen.findByRole('searchbox', { name: '按考点找题' })
-  expect(input).toHaveAttribute('placeholder', '在真题里按考点找题')
+  const input = await screen.findByRole('searchbox', { name: '搜索考点或题面' })
+  expect(input).toHaveAttribute('placeholder', '在真题里搜考点或题面文字')
   await userEvent.click(input)
   await userEvent.type(input, '代换')
-  const results = await screen.findByRole('group', { name: '考点搜索结果' })
+  const results = await screen.findByRole('group', { name: '搜索建议' })
   await userEvent.click(await within(results).findByRole('button', { name: /等价无穷小替换/ }))
   expect(router.state.location.search).toContain('topic=a1')
   await vi.waitFor(() =>

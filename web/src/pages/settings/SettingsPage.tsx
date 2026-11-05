@@ -8,7 +8,7 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
 import { DataCard } from './DataCard'
 import { ModelCard } from './ModelCard'
-import { ConventionCard, MaskCard } from './PreferenceCards'
+import { ConventionCard, FreePracticeCard, MaskCard } from './PreferenceCards'
 import styles from './SettingsPage.module.css'
 
 function StudyType() {
@@ -57,6 +57,7 @@ export function SettingsPage() {
         </Card>
         <ModelCard />
         <MaskCard />
+        <FreePracticeCard />
         <ConventionCard />
         <DataCard />
         <Card padded className={styles.section} aria-label="关于">

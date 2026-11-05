@@ -9,6 +9,10 @@ import type {
   AttemptBody,
   BankCard,
   BankCollection,
+  FreeAttempt,
+  FreeAttemptBody,
+  FreePractice,
+  ProfileResponse,
   BankTopics,
   CatalogNode,
   CatalogPage,
@@ -33,7 +37,14 @@ import type {
 export type PracticeGrouping = 'topic' | 'paper'
 export type PaperScope = '0' | '1'
 /** collection 必填：不同题集不混在一起浏览 */
-export type BankFilter = { collection: string; mathType: string; year: string; topic: string }
+export type BankFilter = {
+  collection: string
+  mathType: string
+  year: string
+  topic: string
+  /** 题面文字搜索 */
+  q?: string
+}
 
 const enc = encodeURIComponent
 
@@ -78,8 +89,20 @@ export const endpoints = {
     if (filter.year) query.set('year', filter.year)
     if (filter.topic) query.set('topic_id', filter.topic)
     query.set('collection', filter.collection)
+    if (filter.q) query.set('q', filter.q)
     return request<Page<BankCard>>(`/api/bank?${query}`)
   },
+  freePractice: (bankId: string) => request<FreePractice>(`/api/bank/${enc(bankId)}/practice`),
+  freeAttempts: (bankId: string, offset: number, limit: number) =>
+    request<Page<FreeAttempt>>(
+      `/api/bank/${enc(bankId)}/practice/attempts?offset=${offset}&limit=${limit}`,
+    ),
+  submitFreeAttempt: (bankId: string, body: FreeAttemptBody) =>
+    postJson<FreeAttempt>(`/api/bank/${enc(bankId)}/practice/attempts`, body),
+  draft: async <T>(key: string): Promise<T | null> =>
+    (await request<{ value?: T }>(`/api/drafts?key=${enc(key)}`)).value ?? null,
+  saveDraft: (key: string, value: unknown) => postJson('/api/drafts', { key, value }),
+  profile: () => request<ProfileResponse>('/api/profile'),
   bankCollections: () => request<BankCollection[]>('/api/bank/collections'),
   bankTopics: (ids: string[]) =>
     request<BankTopics>(`/api/bank/topics?${ids.map((id) => `bank_id=${enc(id)}`).join('&')}`),

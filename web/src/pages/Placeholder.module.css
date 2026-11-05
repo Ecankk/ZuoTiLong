@@ -14,3 +14,38 @@
   color: var(--text-muted);
   font-size: var(--font-size-sm);
 }
+
+.card + .card {
+  margin-top: var(--space-4);
+}
+
+.title {
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-h3);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.stats > div {
+  min-width: 96px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.stats dt {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.stats dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--font-size-h3);
+  font-variant-numeric: tabular-nums;
+}

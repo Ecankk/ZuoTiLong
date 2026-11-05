@@ -43,3 +43,25 @@ it('does not show the step for an analysed paper', async () => {
   expect(await screen.findByRole('region', { name: '正误分布' })).toBeInTheDocument()
   expect(screen.queryByRole('region', { name: '核对切题' })).not.toBeInTheDocument()
 })
+
+it('starts the first analysis from the analysis card with confirmed:true', async () => {
+  const fetch = mockServer()
+  const original = fetch.getMockImplementation()!
+  // 题号还没建立（共 0 题）时不显示核对切题，分析卡片直接给出“开始分析”
+  fetch.mockImplementation(async (input, init) => {
+    const response = await original(input, init)
+    if (String(input) !== '/api/papers/paper-fresh') return response
+    const data = await response.json()
+    const paper = { ...data.paper, counts: { ...data.paper.counts, total: 0 } }
+    return new Response(JSON.stringify({ ...data, paper }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
+  renderAt('/papers/paper-fresh')
+  const card = await screen.findByRole('region', { name: '分析' })
+  await userEvent.click(within(card).getByRole('button', { name: '开始分析' }))
+  const call = fetch.mock.calls.find(([url]) => String(url).includes('/analyze'))
+  expect(String(call?.[0])).toBe('/api/papers/paper-fresh/analyze')
+  expect(JSON.parse(String(call?.[1]?.body))).toEqual({ confirmed: true })
+})

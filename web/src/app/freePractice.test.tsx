@@ -236,3 +236,24 @@ it('shows image-only questions and references without text', async () => {
   expect(await screen.findByRole('img', { name: '解析' })).toBeInTheDocument()
   expect(document.body.textContent).not.toMatch(/null|undefined/)
 })
+
+it('shows the correction note next to a visible reference', async () => {
+  practiceServer({
+    view: practice({
+      latest_attempt: attempt({
+        materials: {
+          question: { question_text: '下列正确的是（ ）' },
+          reference: {
+            answer_text: 'B',
+            errata: [{ role: 'answer', reason: '原答案误印为 C', evidence: '按题设计算得 B' }],
+          },
+        },
+      }),
+      attempt_count: 1,
+    }),
+  })
+  renderAt('/bank/q1/practice')
+  const latest = await screen.findByRole('region', { name: '最近一次作答' })
+  expect(within(latest).getByText('本题已按勘误修正')).toBeInTheDocument()
+  expect(within(latest).getByText(/原答案误印为 C/)).toBeInTheDocument()
+})

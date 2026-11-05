@@ -31,7 +31,11 @@ export function mockServer(
     agentModels?: AgentModels[]
     preferences?: Preferences
     /** 测试自定义的路由，返回 undefined 时继续走默认处理 */
-    routes?: (path: string, init: RequestInit | undefined, url: URL) => Response | undefined
+    routes?: (
+      path: string,
+      init: RequestInit | undefined,
+      url: URL,
+    ) => Response | Promise<Response> | undefined
   } = {},
 ) {
   let savedPreferences = overrides.preferences ?? preferences
@@ -40,7 +44,7 @@ export function mockServer(
     const url = new URL(String(input), 'http://localhost')
     const path = url.pathname
     const notFound = json({ error: 'not found' }, 404)
-    const custom = overrides.routes?.(path, init, url)
+    const custom = await overrides.routes?.(path, init, url)
     if (custom) return custom
     if (path === '/api/profile')
       return json({

@@ -176,3 +176,39 @@
 .section .rowNote {
   color: var(--status-partial);
 }
+
+.fileButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.fileButton:focus-within {
+  box-shadow: var(--focus-ring);
+}
+
+.fileButton input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.packReport {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.packReport .facts {
+  margin-top: 0;
+}

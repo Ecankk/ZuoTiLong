@@ -13,6 +13,7 @@ import { cx } from '../../lib/cx'
 import { mathTypeName } from '../../lib/labels'
 import { RevealButton } from '../practice/RevealButton'
 import styles from './BankPage.module.css'
+import { ErrataNote } from './Errata'
 
 export const practiceLink = (bankId: string) => `/bank/${encodeURIComponent(bankId)}/practice`
 
@@ -58,6 +59,7 @@ function Meta({ card }: { card: BankCard }) {
       {card.question_type && <Chip>{card.question_type}</Chip>}
       {card.max_score !== null && <Chip>{card.max_score} 分</Chip>}
       {card.reserved && <Chip tone="unknown">留作整卷自测</Chip>}
+      {Boolean(card.errata?.length) && <Chip tone="primary">本题已按勘误修正</Chip>}
     </div>
   )
 }
@@ -123,11 +125,18 @@ function Analysis({ card }: { card: BankCard }) {
   const reveal = useAction(() => endpoints.reveal(card.id, 'analysis'), [['bank']])
   const hasAnalysis = Boolean(card.analysis_image || card.analysis_text)
   if (!card.can_view) return null
-  if (!hasAnalysis) return <p className={styles.note}>这道题暂时没有解析。</p>
+  if (!hasAnalysis)
+    return (
+      <>
+        <p className={styles.note}>这道题暂时没有解析。</p>
+        <ErrataNote errata={card.errata} answerVisible={false} />
+      </>
+    )
   if (shown)
     return (
       <section className={styles.analysis}>
         <h3>参考解析</h3>
+        <ErrataNote errata={card.errata} answerVisible />
         {card.analysis_image && (
           <img className={styles.questionImage} src={card.analysis_image} alt="参考解析" />
         )}
@@ -152,6 +161,7 @@ function Analysis({ card }: { card: BankCard }) {
   }
   return (
     <>
+      <ErrataNote errata={card.errata} answerVisible={false} />
       <Button onClick={() => setConfirm(true)}>查看解析</Button>
       <ConfirmDialog
         open={confirm}

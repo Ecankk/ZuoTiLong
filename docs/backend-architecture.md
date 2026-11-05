@@ -104,6 +104,7 @@ ZuoTiLong/
 | 通用标注 | question_annotations、question_annotation_links、question_annotation_topics、annotation_provenance及共享索引表 |
 | 个人原卷 | papers、questions、agent_reports、question_diagnoses、paper_question_bindings |
 | 个人练习 | diagnostic_probes、practice_goals、计划成员/关联表、probe_attempts、固定材料绑定、批改与解答修订历史 |
+| 个人自由练习 | free_practice_attempts（题库单题作答，request_id唯一，每次作答冻结题面/参考/标注/定义快照于practice-materials，个人备份包含、闲置上传清理保留其照片）；聚合为独立来源free_practice，同步整题判定不扩散为各考点证据，只有AI批改明确指出且属于冻结标注的topic_ids影响原子状态，可由preferences.include_free_practice排除 |
 | 个人证据与设置 | learning_events、knowledge_mappings、knowledge_mapping_versions、preferences、bank_views、bank_exposures、bank_cross_reviews；画像为只读聚合 |
 | 本机执行 | learning_tasks、learning_results、task_reads、workflow_jobs、knowledge_preparation_*、tool_audit、record_versions；包含通用维护任务的执行日志，也只保存在工作区 |
 
@@ -121,7 +122,7 @@ ZuoTiLong/
 
 任务创建时捕获范围、材料和契约版本；保存校验与结果/投影/回执在同一事务内完成。明确提交作答与排入批改也在同一事务。本地保存回执即完成依据，不能用聊天结束替代回执。
 
-原卷参考由paper_question_bindings关联；练习由practice_question_bindings和practice_attempt_materials关联固定材料。app/storage/practice_materials.py保存材料，app/agent/practice_materials.py按当前任务读取。题库更新不替换已布置题，已有真实作答和在途任务按原身份/版本处理。
+原卷参考由paper_question_bindings关联；练习由practice_question_bindings和practice_attempt_materials关联固定材料。app/storage/practice_materials.py保存材料，app/agent/practice_materials.py按当前任务读取。题库更新不替换已布置题，已有真实作答和在途任务按原身份/版本处理。题面文字搜索（GET /api/bank?q）沿题干文本扫描，先应用题集/类别/考点筛选，再按与单题access一致的同题、身份、预留、遮挡策略批量过滤，不建持久FTS。questions.id只是内部主键、不编码题号；切题、重新识别和报告补建题号时用app/storage/question_ids.py的available_question_id避开已占用ID。
 
 共享目录和标注分别通过app/knowledge/packages.py、app/bank/annotation_packages.py处理；外部索引有独立出处，不伪造本机任务、阅读凭据或学生表现。停用影响后续准入，原练习仍沿固定材料。
 

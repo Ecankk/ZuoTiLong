@@ -53,13 +53,34 @@ Access 沿用现有 access 对象（id、math_type、year、number、reserved、
 question 仅包含允许返回的 question_text/question_image、analysis_text/analysis_image、expected/solution_note；隐藏时为 null，inactive 时为 null。参考字段同时要求已经提交且 analysis_allowed。图片 URL 带固定快照 probe_id；不得以当前通用库替代旧练习固定材料。
 actions 取 submit/supplement/reveal_question/reveal_analysis 的实际允许子集；草稿仍用 GET/POST /api/drafts，提交/补充/上传/确认查看沿用旧接口。
 
+## 自由练习（题库单题作答）
+
+从题库/考点页单独做一道可查看的题，与原卷、对口练习分开记录（个人表 free_practice_attempts，个人备份包含）。产品规则见本机方案 plans/FREE-PRACTICE.md。
+
+| 方法/路径 | 参数 | 响应 |
+| --- | --- | --- |
+| GET /api/bank/{bank_id}/practice | 无 | `{bank_id,question_type,collection_id,source:{math_type,year,number,question_type,max_score,book?},question:{question_text?,question_image?},reference:{answer_text?,analysis_text?,answer_image?,analysis_image?}|null,actions:('submit'|'reveal_analysis')[],latest_attempt:FreeAttempt|null,attempt_count:integer}`；reference 仅在已判定或明确 reveal 后返回；question_text 已含选项文字，无单独 options |
+| POST /api/bank/{bank_id}/practice/attempts | `{request_id:UUID,response?:string,choice?:string,image_ids?:string[],image_roles?:object,answer_exposed?:boolean,elapsed_seconds?:number}` | FreeAttempt；同 request_id 同 body 复用，不同 body 409 |
+| GET /api/bank/{bank_id}/practice/attempts | offset、limit=20 | `{items:FreeAttempt[],total,offset,limit}`，倒序 |
+| GET /api/bank/{bank_id}/practice/attempts/{attempt_id}/materials/{role} | role=question/answer/analysis | 该次固定快照图片；参考需该次已判定或当前已 reveal |
+
+`FreeAttempt={id,bank_id,source:'free_practice',question_type,collection_id,request_id,response,choice,image_ids,image_roles,answer_exposed,elapsed_seconds,created_at,assessment:object|null,job:{id,status}|null,materials:{question:{...},reference:{...}|null}}`；assessment 结构同练习 Attempt。
+
+- 判定：选择题参考可归一为单个 A–D 时同步判定；参考缺失/非单字母走 AI。填空做保守归一（NFKC、空白、`$`、tfrac/dfrac、left/right 等），一致判对，否则交 AI 判等价，不先判错。解答题交 AI。AI 判定返回 assessment=null 与 job，经任务栏/SSE 刷新后重读历史。
+- 曝光：看答案/解析沿用 POST /api/bank/{id}/reveal（role=analysis 同时允许答案与解析）。提交先保存曝光快照，再公开参考；看过参考或 answer_exposed=true 记“受提示完成”。
+- 每次作答独立记录并冻结题面快照；换通用库后历史仍显示自己的快照。
+- actions 在当前可查看且非预留时为 [submit,reveal_analysis]，否则为空（历史仍可读）。预留或遮挡题新作答返回 403，题干遮挡需先 reveal(question)；不要只凭题卡 can_view 放行。
+- 图片用 POST /api/answer-images，草稿用 /api/drafts（客户端独立 key）。
+- 错误：400 参数/UUID/材料/角色；403 预留或未允许查看；404 题或作答不存在；409 request_id 冲突或活动执行写保护。
+- 画像：`preferences.include_free_practice` 默认 true，false 时只从画像和考点聚合中排除，历史不删。GET /api/profile 增加 `free_practice:{total,correct,wrong,pending,independent_correct,assisted_correct}`；考点详情 performance 增加 `source_counts:{exam,practice,free_practice:{同上}}`，free_practice 是绑定该节点的整题作答次数，不证明原子已掌握；successes/failures/state 只用批改明确指出的 topic_ids。
+
 ## 考点与题库
 
 | 方法/路径 | 参数 | 响应 |
 | --- | --- | --- |
 | GET /api/knowledge/topics/{topic_id} | 无；支持已发布目录的历史 ID 重定向 | `{topic:{id:string,parent_id:string|null,name:string,kind:string,definition:string,conditions:string[],boundaries:string[]},performance:{state:string,state_reason:string,successes:integer,failures:integer,pending:integer,attempt_count:integer},question_counts:{completed:integer,bank:integer},collection_counts:[{collection_id:string,bank:integer,ready:integer,completed:integer}],practice_counts:PracticeCounts}`；collection_counts按子树同题实体去重、稀疏（无关联题集可缺），各题集计数不能相加当全局数 |
 | GET /api/bank/collections | 无 | `[{id:string,name:string,kind:'exam'|'book'|'other'|'example',total:integer,ready:integer,math_types:[{math_type:1|2|3,total:integer,ready:integer}]}]`，按排序返回；total为来源题记录数，ready为当前有效就绪数；math_types按适用数学类别稀疏分组（只列有题的类别，多类别题在各类别都计） |
-| GET /api/bank | math_type:''/'1'/'2'/'3'=''，year:string=''，topic_id:string?，collection:string?（未知题集400；指定即分页响应），分页参数 | Page<BankCard>，math_type按题目适用数学类别过滤（对所有题集生效）；真题按年份降序、math_type、题号、bank ID 稳定排序，教辅题集按book的篇、章、原题号/定位（数值）排序；考点筛选包含其子树，通过已核关联投影，不按导航标签猜关联 |
+| GET /api/bank | math_type:''/'1'/'2'/'3'=''，year:string=''，topic_id:string?，collection:string?（未知题集400；指定即分页响应），q:string?（题面文字，只搜题干含选项、不搜解析；与其他筛选组合并触发分页；不返回预留或当前遮挡题），分页参数 | Page<BankCard>，math_type按题目适用数学类别过滤（对所有题集生效）；真题按年份降序、math_type、题号、bank ID 稳定排序，教辅题集按book的篇、章、原题号/定位（数值）排序；考点筛选包含其子树，通过已核关联投影，不按导航标签猜关联 |
 
 BankCard 是原 public_bank(view=library)（id、math_type、year、number、can_view、reserved、reason、analysis_allowed、stem、tags、question_image、analysis_image）加 `{collection_id:string,math_types:number[],question_type:string|null,max_score:number|null,question_text?:string,analysis_text?:string,book?:{title,edition,part,chapter,number,locator}}`（book各字段string|null，仅教辅题；math_type仍只表示考试身份，适用类别看math_types；无题图资源时不返回question_image/analysis_image）；analysis_text 仅在 analysis_allowed 时返回，真正展开解析仍走 POST /api/bank/{id}/reveal 记录曝光。题库浏览保持 library 策略；练习遮挡按 practice access，不混用入口。
 考点树用 GET /api/knowledge/catalog/tree 一次取全：`{release_id:string|null,total:integer,items:[{id,parent_id,name,kind,aliases:string[],child_count:integer}]}`（child_count为直接子节点数，不含定义与个人表现）；关联题复用现有 GET /api/knowledge/catalog、/api/knowledge/links、/api/knowledge/links/summary；/api/knowledge/links与/api/bank/search新增可选collection过滤（筛选先于同题去重），题卡与existing_exercises带collection_id（已完成原题对不上库题时为null），/api/bank/{id}/topics与批量/api/bank/topics题卡同样带collection_id。本批不新增画像图表。应用托管 dist 时，dist 中真实存在的文件按静态返回，其余非 /api 路径回退 index.html（考点 ID 含点也可直接打开/刷新）；/api 下未知路径保持 404。

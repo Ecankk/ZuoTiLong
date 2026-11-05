@@ -135,6 +135,8 @@ def _rebase_paths(value,old_data,destination):
 def cleanup_images(conn,data,min_age=86400):
     references=set()
     for row in conn.execute('SELECT images_json FROM probe_attempts'):references.update(json.loads(row[0]))
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='free_practice_attempts'").fetchone():
+        for row in conn.execute('SELECT body_json FROM free_practice_attempts'):references.update(json.loads(row[0]).get('image_ids',[]))
     if conn.execute("SELECT 1 FROM sqlite_master WHERE name='workflow_jobs'").fetchone():
         for row in conn.execute('SELECT review_json FROM workflow_jobs WHERE review_json IS NOT NULL'):
             references.update(json.loads(row[0]).get('image_ids', []))

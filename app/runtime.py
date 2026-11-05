@@ -33,6 +33,8 @@ class AppRuntime:
 
         self.papers = PaperService(config, self.database)
         self.practice = PracticeService(config, self.database)
+        from app.learning.free_practice import FreePracticeService
+        self.free_practice=FreePracticeService(config,self.database)
         self.workspace = WorkspaceService(config, self.database)
         self.resources = ResourceService(config, self.database)
         self.library = LibraryService(config, self.database)

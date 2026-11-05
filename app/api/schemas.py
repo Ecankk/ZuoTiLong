@@ -48,6 +48,9 @@ class Attempt(RequestModel):
     answer_exposed:StrictBool=False
     request_id:str|None=None
     elapsed_seconds:float|None=None
+class FreeAttempt(Attempt):
+    request_id:str
+    choice:Literal['A','B','C','D']|None=None
 class QuestionReview(RequestModel):
     request_id:str
     report_id:str
@@ -108,6 +111,7 @@ class Draft(RequestModel):
     value:Any=None
 class Prompt(RequestModel):prompt:str=Field(max_length=1000)
 class Preferences(RequestModel):
+    include_free_practice:StrictBool=True
     execution_profiles:dict[str,dict[str,str]]|None=None
     study_type:StrictInt|None=Field(default=None,ge=1,le=3)
     mask_same_type:StrictBool=True

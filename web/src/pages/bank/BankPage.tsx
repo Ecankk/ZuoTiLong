@@ -11,6 +11,7 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
 import { BankQuestionCard, BankQuestionDialog, bookSection, type BankTopic } from './BankQuestion'
 import styles from './BankPage.module.css'
+import { TopicSearch } from './TopicSearch'
 
 const pageSize = 24
 const typeLabel: Record<string, string> = { '1': '数一', '2': '数二', '3': '数三' }
@@ -42,7 +43,10 @@ export function BankPage() {
   const shown = (collections ?? []).filter((c) => c.total > 0 || c.id === asked)
   const collection =
     shown.find((c) => c.id === asked) ?? shown.find((c) => c.id === 'zhenti') ?? shown[0]
-  const isExam = collection?.kind === 'exam'
+  // 题集列表还没回来时先按地址（默认真题）取题，两个请求并行，首屏更快
+  const loaded = collections !== undefined
+  const collectionId = loaded ? (collection?.id ?? '') : (asked ?? 'zhenti')
+  const isExam = loaded ? collection?.kind === 'exam' : collectionId === 'zhenti'
   // 第二层：本题集里有题的数学类别（接口还没给 math_types 时，真题按三类显示）
   const mathTypes = collection?.math_types
     ? collection.math_types.filter((m) => m.total > 0).map((m) => String(m.math_type))
@@ -51,7 +55,7 @@ export function BankPage() {
       : []
   const askedType = params.get('math_type') ?? ''
   const filter: BankFilter = {
-    collection: collection?.id ?? '',
+    collection: collectionId,
     mathType: mathTypes.includes(askedType) ? askedType : '',
     year: isExam ? (params.get('year') ?? '') : '',
     topic: params.get('topic') ?? '',
@@ -138,6 +142,9 @@ export function BankPage() {
             </label>
           </>
         )}
+        {collection && (
+          <TopicSearch scope={collection.name} onPick={(id) => update({ topic: id })} />
+        )}
         {filter.topic && (
           <span className={styles.topicFilter}>
             考点：
@@ -162,7 +169,7 @@ export function BankPage() {
           题库里还没有题目。
         </Card>
       )}
-      {(!collections || isLoading) && !collectionsError && (
+      {(isLoading || (!collections && !data)) && !collectionsError && (
         <Card padded className={styles.notice}>
           正在读取…
         </Card>

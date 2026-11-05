@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { endpoints } from '../../api/endpoints'
 import { useAction, usePaper, usePreferences, useTasks } from '../../api/queries'
-import type { Correctness, MathType, PaperResponse } from '../../api/types'
+import type { Correctness, MathType, PaperResponse, Task } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button, ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -32,8 +32,16 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
     [['papers'], ['questions'], ['tasks']],
   )
   const prepare = useAction(() => endpoints.preparePractice(paper.id), [['practices'], ['tasks']])
-  const running = tasks?.active?.paper_id === paper.id ? tasks.active : null
-  const queued = tasks?.items.some((t) => t.paper_id === paper.id && t.status === 'queued')
+  // 只看这份试卷的分析任务；选题（准备练习）等其他任务不算“分析”
+  const isAnalysis = (t: Task) => t.paper_id === paper.id && t.kind === 'analyze_paper'
+  const running = tasks?.active && isAnalysis(tasks.active) ? tasks.active : null
+  const queued = tasks?.items.some((t) => isAnalysis(t) && t.status === 'queued')
+  const preparing = tasks?.items.some(
+    (t) =>
+      t.paper_id === paper.id &&
+      t.kind === 'prepare_practice' &&
+      (t.status === 'queued' || t.status === 'running'),
+  )
   const unavailable = tasks?.availability.status === 'unavailable'
   const canAnalyze = data.actions.includes('analyze')
 
@@ -65,7 +73,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
             <>
               <Button
                 variant="primary"
-                disabled={prepare.isPending}
+                disabled={prepare.isPending || preparing}
                 onClick={() => prepare.mutate(undefined)}
               >
                 为薄弱考点准备练习
@@ -86,7 +94,9 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
           )}
         </div>
       )}
-      {prepare.isSuccess && <p className={styles.ok}>已开始准备练习，完成后会出现在“练习”里。</p>}
+      {(prepare.isSuccess || preparing) && (
+        <p className={styles.ok}>已开始准备练习，完成后会出现在“练习”里。</p>
+      )}
       {(prepare.error || (!confirm && analyze.error)) && (
         <p className={styles.error}>{(prepare.error ?? analyze.error)?.message}</p>
       )}

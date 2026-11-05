@@ -83,16 +83,9 @@ export const endpoints = {
   bankCollections: () => request<BankCollection[]>('/api/bank/collections'),
   bankTopics: (ids: string[]) =>
     request<BankTopics>(`/api/bank/topics?${ids.map((id) => `bank_id=${enc(id)}`).join('&')}`),
-  /** 完整考点目录：接口每页最多 100 项，分页取全后在前端建树 */
-  catalog: async (): Promise<CatalogNode[]> => {
-    const first = await request<CatalogPage>('/api/knowledge/catalog?limit=100&offset=0')
-    const rest = await Promise.all(
-      Array.from({ length: Math.max(0, Math.ceil(first.total / 100) - 1) }, (_, i) =>
-        request<CatalogPage>(`/api/knowledge/catalog?limit=100&offset=${(i + 1) * 100}`),
-      ),
-    )
-    return [first, ...rest].flatMap((page) => page.items)
-  },
+  /** 完整考点目录（只含名称、别名和层级），一次取全后在前端建树 */
+  catalog: async (): Promise<CatalogNode[]> =>
+    (await request<CatalogPage>('/api/knowledge/catalog/tree')).items,
   /** 历史考点 ID 由后端重定向，返回的 topic.id 可能与请求不同 */
   topic: (topicId: string) =>
     orNull(request<TopicResponse>(`/api/knowledge/topics/${enc(topicId)}`)),

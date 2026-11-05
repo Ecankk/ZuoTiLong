@@ -212,3 +212,27 @@ it('saves the free practice switch in settings', async () => {
   )
   expect(JSON.parse(String(post?.[1]?.body))).toEqual({ include_free_practice: false })
 })
+
+it('shows image-only questions and references without text', async () => {
+  practiceServer({
+    view: practice({
+      question: { question_text: null, question_image: '/api/bank/q1/question' },
+      reference: {
+        answer_text: 'A',
+        analysis_text: null,
+        analysis_image: '/api/bank/q1/analysis',
+      },
+    }),
+  })
+  renderAt('/bank/q1/practice')
+  const question = await screen.findByRole('region', { name: '题目' })
+  expect(within(question).getByRole('img', { name: '练习原题' })).toBeInTheDocument()
+  const options = await screen.findByRole('radiogroup', { name: '选项' })
+  expect(within(options).getAllByRole('radio')).toHaveLength(4)
+  await userEvent.click(screen.getByRole('button', { name: /看答案\/解析/ }))
+  await userEvent.click(
+    within(await screen.findByRole('dialog')).getByRole('button', { name: '确认查看' }),
+  )
+  expect(await screen.findByRole('img', { name: '解析' })).toBeInTheDocument()
+  expect(document.body.textContent).not.toMatch(/null|undefined/)
+})

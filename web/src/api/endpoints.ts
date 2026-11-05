@@ -156,7 +156,11 @@ export const endpoints = {
    */
   correctQuestions: (
     paperId: string,
-    questions: { number: string; question_ids: string[] }[],
+    questions: {
+      number: string
+      question_ids: string[]
+      split?: { page: number; y: number; lower_number: string }
+    }[],
     deleteIds: string[],
   ) =>
     postJson<{ question_ids: string[]; deleted_question_ids: string[] }>(

@@ -127,6 +127,8 @@ export type QuestionResponse = {
   diagnosis: Diagnosis | null
   topics: TopicRef[]
   evidence_urls: string[]
+  /** 每段切图的图片和换算参数（B20），用于在图上选择拆分位置 */
+  evidence_regions?: EvidenceRegion[]
   practice_counts: PracticeCounts
   previous_id: string | null
   next_id: string | null
@@ -279,12 +281,13 @@ export type FreePracticeCounts = {
   assisted_correct: number
 }
 
-export type FreeQuestion = { question_text?: string; question_image?: string }
+/** B20 起老图片题的文字可能是 null，只显示图片 */
+export type FreeQuestion = { question_text?: string | null; question_image?: string | null }
 export type FreeReference = {
-  answer_text?: string
-  answer_image?: string
-  analysis_text?: string
-  analysis_image?: string
+  answer_text?: string | null
+  answer_image?: string | null
+  analysis_text?: string | null
+  analysis_image?: string | null
 }
 
 export type FreeAttempt = {
@@ -442,6 +445,17 @@ export type BookLocator = {
   chapter: string | null
   number: string | null
   locator: string | null
+}
+
+export type EvidenceRegion = {
+  region_index: number
+  page: number
+  bbox: number[]
+  image_url: string
+  image_width: number
+  image_height: number
+  image_origin: [number, number]
+  scale: number
 }
 
 /** GET /api/bank/collections 的一项，已按显示顺序返回 */

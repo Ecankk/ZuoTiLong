@@ -38,7 +38,7 @@ export function ReferenceBlock({
   reference: FreeReference
   open?: boolean
 }) {
-  const parts: [string, string | undefined, string | undefined][] = [
+  const parts: [string, string | null | undefined, string | null | undefined][] = [
     ['参考答案', reference.answer_text, reference.answer_image],
     ['解析', reference.analysis_text, reference.analysis_image],
   ]

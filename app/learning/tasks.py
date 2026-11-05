@@ -76,6 +76,8 @@ def init_tasks(conn):
         WHERE status IN ('queued','running','result_saved','repairing')''',
     ):
         conn.execute(sql)
+    from app.learning.free_practice import initialize as init_free
+    init_free(conn)
     from app.knowledge.index import initialize
     initialize(conn)
     from app.bank.annotations import initialize as initialize_annotations
@@ -125,6 +127,10 @@ def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract
         with capture(conn,data):
             return capture_input(conn,root,data,kind,paper_id,attempt_id,contract_version=contract_version,
                 review_request=review_request,task_scope=task_scope,knowledge_request=knowledge_request,annotation_rule_revision=annotation_rule_revision)
+    if kind=='grade_attempt' and contract_version=='1.11':
+        if paper_id is not None:raise ValueError('自由练习不关联原卷')
+        from app.learning.free_practice import capture as capture_free
+        return capture_free(conn,data,attempt_id)
     if kind in PREPARATION_KINDS:
         if paper_id is not None or attempt_id is not None:
             raise ValueError('通用知识任务不应关联或伪造学生试卷/作答')
@@ -486,6 +492,9 @@ def _deliver(conn, root, data, payload, lease,*,prepared=None,normalized=None):
             record(conn,'practice_semantic_dependencies',rid,{'schema':'mathlens.practice-dependencies/v1',
                 'report_id':inputs['reports'][-1]['id'],'questions':{str(q['number']):signature(q) for q in base['questions']},
                 'goals':{g['id']:g['question_numbers'] for g in result['goals']}})
+        elif task['kind']=='grade_attempt' and inputs.get('contract_version')=='1.11':
+            from app.learning.free_practice import save as save_free
+            result_projection=save_free(conn,task,current,result,rid)
         elif task['kind'] == 'grade_attempt':
             if result['attempt_id'] != task['attempt_id']:
                 raise ValueError('批改结果引用了其他作答')
@@ -713,6 +722,9 @@ def finish_task(conn, task_id):
 def task_package(conn, task_id):
     task = task_record(conn, task_id)
     inputs=task_inputs(conn,task)
+    if inputs.get('contract_version')=='1.11':
+        return {**{k:task[k] for k in ('id','kind','paper_id','attempt_id','input_revision','status')},
+                'result_schema':result_schema(task['kind'],'1.11'),'receipt':receipt(conn,task_id),'free_practice':inputs['free_practice']}
     if task['kind']=='prepare_practice' and inputs.get('contract_version')=='1.10':
         from app.learning.selection import public
         return {**{k:task[k] for k in ('id','kind','paper_id','input_revision','status')},

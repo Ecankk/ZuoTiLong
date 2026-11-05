@@ -127,6 +127,18 @@ def initial_inputs(conn,root,data,task_id,lease):
             record_read(conn,lease,'candidate_summary',bid,'summary',digest(summary(c)))
             record_read(conn,lease,'prepared_recall',bid,c['annotation_id'],digest(c['binding']))
         for n in scope['definitions']:record_read(conn,lease,'practice_definition',n['id'],inputs['practice_knowledge']['catalog_revision'],digest(n))
+    elif task['kind']=='grade_attempt' and inputs['contract_version']=='1.11':
+        scope=inputs['free_practice'];header['free_practice']=scope
+        header['grading_mode']='fill_equivalence' if scope['snapshot']['question_type']=='填空题' else 'whole_question'
+        header['assignment']={'prompt':'本题全部要求；填空题仅判断所填结果的数学等价性。'}
+        from app.storage.practice_materials import image_path
+        for role,item in scope['snapshot']['material_manifest']['resources'].items():
+            if item['image_file']:pictures.append(('固定题目材料 '+role,image_path(data,scope['snapshot'],role)))
+        from app.storage.images import image_records,image_path as answer_image
+        for image in image_records(conn,scope['body']['image_ids']):
+            pictures.append(('作答图片 角色 '+scope['body']['image_roles'].get(image['id'],'own_work'),answer_image(image,data)))
+        header['requirements']+=['仅判断本题，不选题、不整理。填空题只核验数学等价并给一句说明；答案不一致不能据此判错。题干/参考/定义/作答已齐。不要把整题正误扩散到全部考点；topic_ids只列有实际证据的快照考点。']
+        record_read(conn,lease,'free_practice',scope['id'],'materials',digest(scope))
     elif task['kind']=='grade_attempt':
         attempt=next(a for a in inputs['attempts'] if a['id']==task['attempt_id'])
         probe=next(p for p in inputs['probes'] if p['id']==attempt['probe_id'])

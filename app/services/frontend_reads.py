@@ -288,9 +288,11 @@ class FrontendReads:
             origin = node['origin']
             cards = [c for c in self._cards(conn,include_access=False) if any(t['topic_id'] == canonical for t in c['topics'])]
         counts = self._navigation()['counts'][canonical]
+        from app.learning.free_practice import counts as free_counts
+        with self.rt.database.session() as conn:free=free_counts(conn,canonical)
         return dict(topic=dict(id=canonical, parent_id=node['parent_id'], name=node['label'], kind=origin.get('node_kind', node['scope_level']),
                                definition=origin.get('definition', ''), conditions=origin.get('conditions', []), boundaries=origin.get('boundaries', [])),
-                    performance={k: node[k] for k in ('state', 'state_reason', 'successes', 'failures', 'pending', 'attempt_count')},
+                    performance={**{k: node[k] for k in ('state', 'state_reason', 'successes', 'failures', 'pending', 'attempt_count')},'source_counts':{'exam':sum(e['source']=='exam' for e in node['events']),'practice':sum(e['source'] not in ('exam','free_practice') for e in node['events']),'free_practice':free}},
                     question_counts={v: counts[v] for v in ('completed', 'bank')},
                       practice_counts=practice_counts(cards),collection_counts=self._navigation()['collection_counts'][canonical])
 
@@ -308,7 +310,7 @@ class FrontendReads:
                 groups.append(dict(id=row['id'],name=row['name'],kind=row['kind'],total=len(questions),ready=sum(q['id'] in ready for q in questions),math_types=[counts[k] for k in sorted(counts)]))
             return groups
 
-    def bank(self, math_type='', year='', topic_id=None, offset=0, limit=20,collection=None):
+    def bank(self, math_type='', year='', topic_id=None, offset=0, limit=20,collection=None,q=''):
         if math_type not in ('', '1', '2', '3'):
             raise ValueError('数学类别不合法')
         allowed = None
@@ -330,6 +332,12 @@ class FrontendReads:
                 from app.bank.applicability import book_key
                 books={r[0]:json.loads(r[1] or '{}') for r in conn.execute("SELECT bank_id,json_extract(metadata_json,'$.book') FROM bank_resources")}
                 ids.sort(key=lambda bid:book_key(books.get(bid,{}),bid))
+            if q:
+                from app.bank.access import viewable_ids
+                query=q.casefold().strip()
+                matched={r['id'] for r in conn.execute('SELECT id,stem FROM bank_questions') if query in r['stem'].casefold()}
+                visible=viewable_ids(conn)
+                ids=[bid for bid in ids if bid in matched and bid in visible]
             result = page(ids, offset, limit)
             result['items'] = [{**public_bank(conn, bid, view='library'), **metadata(conn, bid)} for bid in result['items']]
             from app.bank.access import text_resources

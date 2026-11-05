@@ -32,7 +32,8 @@ def build_profile(conn: sqlite3.Connection) -> dict:
     repeated = rows(conn, """SELECT q.error_type AS label, COUNT(*) AS count FROM questions q JOIN papers p ON p.id=q.paper_id
                             WHERE p.archived_at IS NULL AND q.error_type IS NOT NULL AND q.error_type != ''
                             GROUP BY q.error_type ORDER BY count DESC LIMIT 5""")
-    return {"stages": stage, "repeated_errors": repeated}
+    from app.learning.free_practice import counts
+    return {"stages": stage, "repeated_errors": repeated,"free_practice":counts(conn)}
 
 class WorkspaceService:
     def __init__(self,config,database):

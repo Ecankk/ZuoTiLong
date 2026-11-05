@@ -55,6 +55,9 @@ def execute(root,data,action,payload,*,lease=None):
             from app.learning.tasks import check_lease
             task=check_lease(conn,lease,allow_completed=action in ('deliver_result','preflight') or action in ('apply_report','assess') and set(payload)=={'result'})
             task_inputs=json.loads(task['input_json'])
+            if task_inputs.get('contract_version')=='1.11' and action in ('read_bank','read_attempt','task_context'):
+                from app.learning.free_practice import supplement
+                return supplement(conn,data,task,action,payload,image_content)
             if task['kind']=='prepare_practice' and task_inputs.get('contract_version')=='1.10':
                 if action not in ('context','preflight','deliver_result','apply_report','read_bank','read_skill'):raise ValueError('选题只判断后端候选，不自行召回或读取候选外材料')
                 if action=='read_bank' and (payload.get('bank_id') not in task_inputs['selection']['candidates'] or payload.get('role','question')!='question' or set(payload)-{'bank_id','role'}):

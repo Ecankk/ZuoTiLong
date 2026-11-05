@@ -118,6 +118,12 @@ def default_version(kind):
 def result_schema(kind, version=None):
     import copy
     version=version or default_version(kind)
+    if kind=='grade_attempt' and version=='1.11':
+        schema=result_schema(kind,'1.0')
+        schema['properties']['schema_version']={'const':'1.11'}
+        schema['properties']['paper_id']={'type':'null'}
+        schema['$id']='urn:mathlens:learning-result:1.11:grade_attempt'
+        return schema
     if kind=='prepare_practice' and version=='1.10':
         shape=obj({'selections':array(obj({'bank_id':ID,'goal_ids':array(ID,minimum=1,maximum=30,unique=True),
             'selection_reason':string(nonempty=True),'prompt':string(nonempty=True)}),maximum=100),

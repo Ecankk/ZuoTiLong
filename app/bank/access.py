@@ -36,7 +36,7 @@ def init_access(conn):
 
 
 def preferences(conn):
-    value={'mask_same_type': True, **json.loads(conn.execute('SELECT payload FROM preferences WHERE id=1').fetchone()[0])}
+    value={'include_free_practice':True,'mask_same_type': True, **json.loads(conn.execute('SELECT payload FROM preferences WHERE id=1').fetchone()[0])}
     convention=value.get('paper_marking_convention')
     value['paper_marking_convention']=convention.strip() if isinstance(convention,str) and convention.strip() else DEFAULT_AGENT_PROMPT
     value['default_agent_prompt']=DEFAULT_AGENT_PROMPT
@@ -62,6 +62,8 @@ def save_preferences(conn, body):
             raise ValueError('预留卷需要数学类别和四位年份')
     value={'study_type':body['study_type'],'mask_same_type':mask_same_type,'paper_marking_convention':convention.strip() or DEFAULT_AGENT_PROMPT,'reserved':[{'math_type':v['math_type'],'year':str(v['year'])} for v in reserved]}
     from app.agent.models import profiles
+    if type(body.get('include_free_practice')) is not bool:raise ValueError('自由练习选项需要开关值')
+    value['include_free_practice']=body['include_free_practice']
     value['execution_profiles']=profiles(body.get('execution_profiles'))
     conn.execute('UPDATE preferences SET payload=? WHERE id=1',(json.dumps(value),))
     return value
@@ -115,6 +117,27 @@ def aliases(conn,bid):
 def policy_group(conn,bid):
     """Conservative exam/exposure protection, including sources imported later."""
     return _related(conn,bid,exam=True)
+
+def viewable_ids(conn):
+    """Batch question visibility for text search, with the same policy closure."""
+    identities=list(conn.execute('SELECT * FROM bank_identity'));parents={};hashes={};exams={}
+    def find(bid):
+        parents.setdefault(bid,bid)
+        while parents[bid]!=bid:parents[bid]=parents[parents[bid]];bid=parents[bid]
+        return bid
+    def join(a,b):parents[find(a)]=find(b)
+    for row in identities:
+        bid=row['bank_id'];find(bid)
+        if row['sha256']:join(bid,hashes.setdefault(row['sha256'],bid))
+        if row['math_type'] in (1,2,3) and re.fullmatch(r'\d{4}',str(row['year'])) and row['number'] and row['number']>0:
+            join(bid,exams.setdefault((row['math_type'],row['year'],row['number']),bid))
+    from app.bank.identity_reviews import confirmed_pairs
+    for a,b in list(conn.execute('SELECT left_id,right_id FROM bank_links'))+confirmed_pairs(conn):join(a,b)
+    policy=preferences(conn)
+    reserved={find(r['bank_id']) for r in identities if {'math_type':r['math_type'],'year':r['year']} in policy['reserved']}
+    confirmed={find(r[0]) for r in conn.execute("SELECT bank_id FROM bank_views WHERE role='question'")}
+    return {r['bank_id'] for r in identities if find(r['bank_id']) not in reserved and
+            (not policy['mask_same_type'] or r['math_type']!=policy['study_type'] or find(r['bank_id']) in confirmed)}
 
 
 def access(conn,bid):

@@ -231,6 +231,10 @@ def snapshot(conn):
             for tid in {canonical(t) for t in binding['topic_ids']}:
                 if tid in grouped:
                     grouped[tid]['events'].append(event)
+    from app.learning.free_practice import topic_events
+    for tid,event in topic_events(conn):
+        tid=canonical(tid)
+        if tid in grouped:grouped[tid]['events'].append(event)
     from app.knowledge.profile import aggregate
     for item in grouped.values():
         aggregate(item)

@@ -53,6 +53,10 @@ def guard(conn, root, data, kind, paper_id, attempt_id=None, *, review_request=N
         from app.knowledge.maintenance import guard as preparation_guard
         return preparation_guard(conn,data,kind,task_scope)
     if task_scope is not None:raise ValueError('试卷任务不能夹带题库作用域')
+    if kind=='grade_attempt' and conn.execute("SELECT 1 FROM free_practice_attempts WHERE id=?",(attempt_id,)).fetchone():
+        if paper_id is not None:raise ValueError('自由练习不关联原卷')
+        from app.learning.free_practice import capture
+        return capture(conn,data,attempt_id)
     paper = conn.execute('SELECT * FROM papers WHERE id=?', (paper_id,)).fetchone()
     if not paper or paper['archived_at'] or not paper['source_path']:
         raise ValueError('试卷不存在、已归档或缺少原PDF')

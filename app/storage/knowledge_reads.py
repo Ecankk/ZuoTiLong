@@ -18,7 +18,7 @@ TABLES=('bank_questions','bank_resources','bank_identity','bank_links','bank_ide
         'papers','questions','question_diagnoses','agent_reports','diagnostic_probes','probe_attempts',
         'learning_events','retired_probes','record_versions','learning_results','learning_tasks',
         'practice_plan_members','practice_goals','probe_goals','goal_questions','practice_deferred_probes',
-        'paper_question_bindings','annotation_provenance')
+        'paper_question_bindings','annotation_provenance','free_practice_attempts')
 
 FILTERS={
     'knowledge_catalog_releases':'id IN (SELECT release_id FROM knowledge_catalog_state)',

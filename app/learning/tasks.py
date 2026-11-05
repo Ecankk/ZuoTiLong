@@ -214,6 +214,9 @@ def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract
     if kind in ('analyze_paper','review_question') and contract_version=='2.0':
         from app.learning.paper_knowledge import capture
         result['paper_knowledge']=capture(conn,data,paper,result['question_review']['question']['number'] if kind=='review_question' else None)
+    if kind=='analyze_paper':
+        from app.learning.analysis_materials import capture
+        result['analysis_materials']=capture(conn,data,paper)
     if kind=='organize_knowledge':
         from app.knowledge.index import pending_sources,catalog
         result['knowledge_sources']=pending_sources(conn,paper_id)
@@ -394,7 +397,7 @@ def _deliver(conn, root, data, payload, lease,*,prepared=None,normalized=None):
     with atomic(conn):
         task = check_lease(conn, lease,allow_completed=True)
         inputs=task_inputs(conn,task)
-        validate_result(payload, task['kind'],inputs.get('contract_version','1.0'))
+        validate_result(payload, task['kind'],inputs.get('contract_version','1.0'),analysis_context=inputs.get('analysis_materials'))
         if payload['task_id'] != task['id'] or any(payload[k] != task[k] for k in ('kind', 'paper_id', 'input_revision')):
             raise ValueError('结果与任务范围或输入版本不一致')
         if task['kind']=='analyze_paper':
@@ -436,6 +439,11 @@ def _deliver(conn, root, data, payload, lease,*,prepared=None,normalized=None):
         elif inputs.get('contract_version')=='2.0' and task['kind'] in ('analyze_paper','review_question'):
             from app.learning.paper_knowledge import validate_input
             validate_input(conn,data,task,inputs,current,payload['result'])
+            current=inputs
+        elif task['kind']=='analyze_paper':
+            ordinary=lambda value:{k:v for k,v in value.items() if k!='analysis_materials'}
+            if digest(ordinary(current))!=digest(ordinary(inputs)):
+                raise ValueError('任务材料已变化，拒绝覆盖新内容；保留输入后重新发起任务')
             current=inputs
         elif digest(current) != task['input_revision']:
             raise ValueError('任务材料已变化，拒绝覆盖新内容；保留输入后重新发起任务')

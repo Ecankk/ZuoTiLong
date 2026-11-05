@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import hashlib
+import copy
 import json
 from pathlib import Path
 import re
@@ -151,6 +152,7 @@ def apply_report(conn, paper_id, report, root, *, question_numbers=None):
     if issues:raise ValueError('报告格式不完整，请按 report_contract 补齐：'+'；'.join(issues[:12])+('；还有其他缺失字段' if len(issues)>12 else ''))
     if report.get("source_sha256") != digest:
         raise ValueError("报告与试卷 SHA256 不一致，拒绝写入")
+    report=copy.deepcopy(report)
     questions = report.get("questions", [])
     numbers = [str(q["number"]) for q in questions]
     if len(set(numbers)) != len(numbers) or not questions:
@@ -161,7 +163,12 @@ def apply_report(conn, paper_id, report, root, *, question_numbers=None):
     if not report.get("author") or not report.get("method"):
         raise ValueError("报告必须声明作者及识别方式")
     import pymupdf as fitz
+    for item in questions:
+        old=conn.execute('SELECT regions_json FROM questions WHERE paper_id=? AND number=? ORDER BY created_at LIMIT 1',(paper_id,str(item['number']))).fetchone()
+        saved=json.loads(old[0] or '[]') if old else []
+        if saved:item['regions']=saved
     with fitz.open(str(pdf)) as document:
+        document_sizes={i+1:page.rect.get_area() for i,page in enumerate(document)}
         for q in questions:
             if not q.get("regions"):
                 if q.get('evidence_status')=='missing' and q.get('correctness')=='unknown' and report.get('completion') in ('partial','needs_material'):
@@ -174,6 +181,9 @@ def apply_report(conn, paper_id, report, root, *, question_numbers=None):
                 rect = fitz.Rect(region["bbox"])
                 if rect.is_empty or rect.x0 < 0 or rect.y0 < 0 or not document[page-1].rect.contains(rect):
                     raise ValueError(f"证据区域超界：第{page}页区域{region['bbox']}；须使用PDF点坐标，页面范围{list(document[page-1].rect)}，不是渲染图片像素")
+    for item in questions:
+        if any(fitz.Rect(r['bbox']).get_area()>=document_sizes[r['page']]*.95 for r in item['regions']):
+            if '位置待确认' not in item['observation']:item['observation']+='；位置待确认（目前只有整页区域）'
     # A content digest makes repeated submission idempotent.
     rid = "agent-" + hashlib.sha256(dump(report).encode()).hexdigest()[:20]
     if conn.execute("SELECT id FROM agent_reports WHERE id=? AND paper_id=?", (rid, paper_id)).fetchone():

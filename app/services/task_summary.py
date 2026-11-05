@@ -28,15 +28,24 @@ class TaskSummary:
 
     def _records(self):
         with self.rt.database.session() as conn:
-            jobs = rows(conn, '''SELECT j.id,j.kind,j.paper_id,j.attempt_id,j.status,j.task_id,j.error,
+            jobs = rows(conn, '''SELECT j.rowid publication_order,j.id,j.kind,j.paper_id,j.attempt_id,j.status,j.task_id,j.error,
                 j.recovery_required,j.created_at,j.updated_at,p.title paper_title,t.status task_status FROM workflow_jobs j
                 LEFT JOIN papers p ON p.id=j.paper_id LEFT JOIN learning_tasks t ON t.id=j.task_id''')
             from app.learning.workflows import can_cancel
             for job in jobs:job['can_cancel']=can_cancel(conn,job)
             # Older direct tasks have no workflow row but still own a remote turn.
-            direct = rows(conn, '''SELECT t.id,t.kind,t.paper_id,t.attempt_id,t.status,t.error,t.created_at,t.updated_at,
+            direct = rows(conn, '''SELECT t.rowid publication_order,t.id,t.kind,t.paper_id,t.attempt_id,t.status,t.error,t.created_at,t.updated_at,
                 p.title paper_title FROM learning_tasks t LEFT JOIN papers p ON p.id=t.paper_id
                 WHERE NOT EXISTS(SELECT 1 FROM workflow_jobs j WHERE j.task_id=t.id)''')
+        # Old failed attempts remain in storage, but a later successful phase
+        # resolves their attention indicator. Grading attempts are scoped separately.
+        completed={}
+        for job in jobs+direct:
+            if job['status']=='completed':completed.setdefault((job['paper_id'],job['kind'],job['attempt_id']),[]).append(job)
+        jobs=[job for job in jobs if not (job['status'] in ('failed','interrupted','blocked') and any(
+            (done['created_at']>job['created_at'] or done['created_at']==job['created_at'] and done['publication_order']>job['publication_order']) and done['id']!=job['id'] for done in completed.get((job['paper_id'],job['kind'],job['attempt_id']),[])))]
+        direct=[job for job in direct if not (job['status'] in ('failed','interrupted','blocked') and any(
+            (done['created_at']>job['created_at'] or done['created_at']==job['created_at'] and done['publication_order']>job['publication_order']) and done['id']!=job['id'] for done in completed.get((job['paper_id'],job['kind'],job['attempt_id']),[])))]
         for task in direct:
             task.update(task_id=task['id'], task_status=task['status'], recovery_required=0, direct=True)
         return jobs+direct

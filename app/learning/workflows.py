@@ -275,11 +275,21 @@ def retry_job(conn, root, data, job_id):
                                knowledge_request=json.loads(job['knowledge_json']) if job['knowledge_json'] else None)), stamp(), job_id))
 
 
+def can_cancel(conn,job):
+    if not job:return False
+    if not job['task_id']:return job['status'] in ('queued','blocked','failed')
+    if job['status'] not in ('failed','interrupted'):return False
+    task=conn.execute('SELECT status,result_id FROM learning_tasks WHERE id=?',(job['task_id'],)).fetchone()
+    if not task or task['status'] not in ('failed','interrupted','abandoned') or task['result_id']:return False
+    if conn.execute('SELECT 1 FROM learning_results WHERE task_id=?',(job['task_id'],)).fetchone():return False
+    return not conn.execute("SELECT 1 FROM learning_tasks WHERE status IN ('running','repairing','result_saved') LIMIT 1").fetchone()
+
 def cancel_job(conn, job_id):
-    job = conn.execute('SELECT * FROM workflow_jobs WHERE id=?', (job_id,)).fetchone()
-    if not job or job['task_id'] or job['status'] not in ('queued', 'blocked','failed'):
-        raise ValueError('该阶段已交给Agent，请先在任务栏停止并核对原轮次')
-    mark(conn, job_id, 'abandoned', '用户取消等待；原卷、作答和已保存结果保留')
+    from app.learning.tasks import atomic
+    with atomic(conn):
+        job=conn.execute('SELECT * FROM workflow_jobs WHERE id=?',(job_id,)).fetchone()
+        if not can_cancel(conn,job):raise ValueError('只能取消未交付且已终止的阶段；正在执行或已有结果须先核对原任务')
+        mark(conn,job_id,'abandoned','用户取消；原卷、作答、任务历史和已保存结果保留')
 
 
 def continue_job(conn,root,data,job,task):

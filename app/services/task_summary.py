@@ -31,6 +31,8 @@ class TaskSummary:
             jobs = rows(conn, '''SELECT j.id,j.kind,j.paper_id,j.attempt_id,j.status,j.task_id,j.error,
                 j.recovery_required,j.created_at,j.updated_at,p.title paper_title,t.status task_status FROM workflow_jobs j
                 LEFT JOIN papers p ON p.id=j.paper_id LEFT JOIN learning_tasks t ON t.id=j.task_id''')
+            from app.learning.workflows import can_cancel
+            for job in jobs:job['can_cancel']=can_cancel(conn,job)
             # Older direct tasks have no workflow row but still own a remote turn.
             direct = rows(conn, '''SELECT t.id,t.kind,t.paper_id,t.attempt_id,t.status,t.error,t.created_at,t.updated_at,
                 p.title paper_title FROM learning_tasks t LEFT JOIN papers p ON p.id=t.paper_id
@@ -57,7 +59,7 @@ class TaskSummary:
             if not locked and self.rt.bridge is not None and not job.get('direct'):
                 if job['recovery_required'] or value in ('blocked', 'failed'):
                     actions.append('retry')
-                if not job['task_id'] and raw in ('queued', 'blocked','failed'):actions.append('cancel')
+                if job.get('can_cancel'):actions.append('cancel')
             elif owned and state.get('connected') and state.get('status') in ('failed', 'interrupted') and not state.get('external_control'):
                 actions.append('retry')
             label = LABELS.get(job['kind'], '处理学习任务')

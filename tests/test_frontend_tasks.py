@@ -158,7 +158,7 @@ class FrontendTasksTests(unittest.TestCase):
         original=bridge._active().copy();bridge.interrupt();wait_for(lambda:not bridge.finishing)
         with TestClient(app,base_url='http://127.0.0.1') as http:
             item=next(i for i in http.get('/api/tasks').json()['items'] if i['status']=='failed')
-            self.assertEqual(item['allowed_actions'],['retry'])
+            self.assertEqual(item['allowed_actions'],['retry','cancel'])
             result=http.post('/api/tasks/'+item['id']+'/action',json={'action':'retry'})
             self.assertEqual(result.status_code,200,result.text)
             wait_for(lambda:bridge._active() and bridge._active()['task_id']!=original['task_id'])

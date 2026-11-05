@@ -30,7 +30,8 @@ def library(config, *, write=False):
 
 
 def _tables(conn):
-    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    from app.storage.boundaries import schema_rows
+    return {r['name'] for r in schema_rows(conn)}
 
 
 def _state(conn):
@@ -39,17 +40,19 @@ def _state(conn):
             for name in ('bank_questions', 'bank_resources', 'bank_identity', 'bank_source_records') if name in tables}
 
 
-def preview(conn, batch, corrections, applied, excluded, collection):
+def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids=None, baselines=None):
     from app.bank.collections import require
     require(conn,collection)
     state = _state(conn)
     current = {r['bank_id']: r for r in state.get('bank_source_records', [])}
+    for bid,baseline in (baselines or {}).items():
+        if bid not in current:current[bid]=dict(bank_id=bid,record_json=records.canonical(baseline),record_sha256=records.digest([baseline,[]]))
     questions = {r['id']: r for r in state.get('bank_questions', [])}
     identities = {r['bank_id']: (str(r['year']), r['math_type'], r['number']) for r in state.get('bank_identity', [])}
     excluded_ids = {r['source_uid'] for r in excluded}
     report = dict(source_id=batch[0]['source_id'], revision=batch[0]['revision'], added=[], updated=[], unchanged=[],
                   missing_fields=[], identity_conflicts=[], duplicate_candidates=[], excluded=excluded,
-                  overrides_applied=applied, needs_annotation=[],collection_id=collection,collection_conflicts=[])
+                  overrides_applied=applied, errata_applied=[],invalidated_annotations=[],needs_annotation=[],collection_id=collection,collection_conflicts=[])
     content_groups = {}
     for row in current.values():
         old = json.loads(row['record_json'])
@@ -59,8 +62,9 @@ def preview(conn, batch, corrections, applied, excluded, collection):
             report['duplicate_candidates'].append(dict(bank_ids=[records.bank_id(record)],
                 source_uid=record['source_uid'], reason='excluded_pending_candidate'))
             continue
-        bid = records.bank_id(record)
+        bid = (bank_ids or {}).get((record['source_id'],record['source_uid']), records.bank_id(record))
         old = current.get(bid)
+        report['errata_applied'].extend(dict(bank_id=bid,**e,original_fragment=e['find'],new_fragment=e['replace']) for e in record.get('errata',[]))
         if bid in questions:
             stored=questions[bid].get('collection_id')
             if stored is None:
@@ -73,6 +77,10 @@ def preview(conn, batch, corrections, applied, excluded, collection):
         sha = records.digest([record, changes])
         category = 'added' if not old else 'unchanged' if old['record_sha256'] == sha else 'updated'
         report[category].append(bid)
+        if category=='updated' and old and any(json.loads(old['record_json'])[r]!=record[r] for r in ('stem','options','answer','analysis')):
+            if any(table in _tables(conn) and conn.execute('SELECT 1 FROM '+table+' WHERE bank_id=?',(bid,)).fetchone() for table in ('question_annotation_links','imported_question_annotations')):report['invalidated_annotations'].append(bid)
+            if 'question_annotations' in _tables(conn):
+                report['invalidated_annotations'].extend(r[0] for r in conn.execute('SELECT l.bank_id FROM question_annotation_links l JOIN question_annotations a ON a.id=l.annotation_id WHERE a.bank_id=?',(bid,)))
         if category in ('added', 'updated'):
             report['needs_annotation'].append(bid)
         missing = [key for key in ('question_type', 'max_score') if record[key] is None]
@@ -95,6 +103,7 @@ def preview(conn, batch, corrections, applied, excluded, collection):
     for ids in content_groups.values():
         if len(ids) > 1 and any(b in report['added'] + report['updated'] + report['unchanged'] for b in ids):
             report['duplicate_candidates'].append(dict(bank_ids=sorted(ids), reason='identical_stem_and_options'))
+    report['invalidated_annotations']=sorted(set(report['invalidated_annotations']))
     report['plan_sha256'] = records.digest(dict(batch=batch, corrections=corrections, state=state, report=report))
     return report
 
@@ -147,28 +156,30 @@ def _copy_assets(record, asset_root, library_root):
     return manifest
 
 
-def _apply(conn, config, batch, report, asset_root):
-    from app.storage.boundaries import LIBRARY_TABLES
-    from app.storage.split import template, copy_schema
-    with closing(template()) as schema:
-        copy_schema(schema, conn, LIBRARY_TABLES)
-    from app.storage.library_identity import initialize
-    initialize(conn)
-    from app.bank.collections import initialize as collections
-    collections(conn)
-    from app.bank.applicability import initialize as applicability
-    applicability(conn)
-    from app.storage.navigation_index import initialize as navigation
-    navigation(conn)
+def _apply(conn, config, batch, report, asset_root, *, bank_ids=None, initialize_schema=True):
+    if initialize_schema:
+        from app.storage.boundaries import LIBRARY_TABLES
+        from app.storage.split import template, copy_schema
+        with closing(template()) as schema:
+            copy_schema(schema, conn, LIBRARY_TABLES)
+        from app.storage.library_identity import initialize
+        initialize(conn)
+        from app.bank.collections import initialize as collections
+        collections(conn)
+        from app.bank.applicability import initialize as applicability
+        applicability(conn)
+        from app.storage.navigation_index import initialize as navigation
+        navigation(conn)
     excluded = {r['source_uid'] for r in report['excluded']}
     for record in batch:
-        bid = records.bank_id(record)
+        bid = (bank_ids or {}).get((record['source_id'],record['source_uid']), records.bank_id(record))
         if record['source_uid'] in excluded or bid in report['unchanged']:
             continue
         manifest = _copy_assets(record, asset_root, config.library_dir)
         metadata = {k: record[k] for k in ('schema', 'source_id', 'revision', 'source_uid', *records.METADATA)}
         metadata.update(locator=record['locator'], original_source=record['original']['source_text'], resources=manifest)
         if 'book' in record:metadata['book']=record['book']
+        if 'errata' in record:metadata['errata']=record['errata']
         changes = [v for v in report['overrides_applied'] if v['source_uid'] == record['source_uid']]
         sha = records.digest([record, changes])
         conn.execute('''INSERT INTO bank_questions(id,source,source_ref,stem,answer,explanation,tags_json,created_at)
@@ -196,9 +207,9 @@ def _apply(conn, config, batch, report, asset_root):
                      (bid, sha, records.canonical(record), records.canonical(changes), now_iso()))
 
 
-def import_source(config, source_id, input_path, *, collection, asset_root=None, overrides=None, confirm=None):
+def import_source(config, source_id, input_path, *, collection, asset_root=None, overrides=None, errata=None, confirm=None):
     asset_root = Path(asset_root or Path(input_path).parent)
-    batch, corrections, applied, excluded = records.load(input_path, source_id, asset_root, overrides)
+    batch, corrections, applied, excluded = records.load(input_path, source_id, asset_root, overrides,errata)
     with library(config) as conn:
         conn.execute('BEGIN')
         report = preview(conn, batch, corrections, applied, excluded,collection)

@@ -33,6 +33,7 @@ RECORD_SCHEMA = obj({'schema': {'const': SCHEMA}, 'source_id': {'type': 'string'
 # Optional additive provenance for books; absent is equivalent to unknown.
 RECORD_SCHEMA['properties']['book']=obj({k:{'type':['string','null']} for k in ('title','edition','part','chapter','number','locator')})
 RECORD_SCHEMA['properties']['math_types']={'type':'array','uniqueItems':True,'items':{'type':'integer','enum':[1,2,3]}}
+RECORD_SCHEMA['properties']['errata']={'type':'array','items':obj({'match':obj({'source_uid':TEXT}),'role':{'type':'string','pattern':'^(stem|answer|analysis|option:.+)$'},'find':{'type':'string','minLength':1},'replace':{'type':'string'},'reason':TEXT,'evidence':TEXT})}
 OVERRIDE_FIELDS = {**METADATA, 'exclude': {'type': 'boolean'}}
 OVERRIDE_SCHEMA = obj({'schema': {'const': OVERRIDES_SCHEMA}, 'source_id': RECORD_SCHEMA['properties']['source_id'],
     'revision': TEXT, 'entries': {'type': 'array', 'items': obj({
@@ -93,7 +94,7 @@ def validate(record, asset_root):
         raise ValueError('Duplicate option labels: ' + record['source_uid'])
 
 
-def load(path, source_id, asset_root, overrides=None):
+def load(path, source_id, asset_root, overrides=None, errata=None):
     records = [json.loads(line) for line in Path(path).read_text(encoding='utf8').splitlines() if line.strip()]
     if not records:
         raise ValueError('Source file is empty')
@@ -133,6 +134,11 @@ def load(path, source_id, asset_root, overrides=None):
                 excluded.append(dict(source_uid=record['source_uid'], bank_id=bank_id(record),
                                      reason='metadata override: exclude'))
             validate(record, asset_root)
+    if errata:
+        from app.bank.errata import apply
+        records,document=apply(records,errata)
+        corrections={'overrides':corrections,'errata':document}
+        for record in records:validate(record,asset_root)
     return sorted(records, key=lambda r: r['source_uid']), corrections, applied, excluded
 
 

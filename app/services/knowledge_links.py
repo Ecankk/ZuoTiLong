@@ -49,6 +49,10 @@ class KnowledgeLinksService:
         if annotation:state=annotation['analysis']['status']
         elif conn.execute('SELECT 1 FROM question_annotation_links WHERE bank_id=?',(bid,)).fetchone():state='outdated'
         elif conn.execute('SELECT 1 FROM imported_question_annotations WHERE bank_id=?',(bid,)).fetchone():state='outdated'
+        if state=='unannotated':
+            packed=conn.execute('SELECT metadata_json FROM bank_resources WHERE bank_id=?',(bid,)).fetchone()
+            imported_status=json.loads(packed[0]).get('annotation_status') if packed else None
+            if imported_status in ('needs_review','needs_catalog'):state=imported_status
         meta=conn.execute('SELECT * FROM bank_identity WHERE bank_id=?',(bid,)).fetchone()
         meta=dict(meta) if meta else {}
         from app.bank.applicability import math_types

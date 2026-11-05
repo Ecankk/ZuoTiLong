@@ -106,13 +106,13 @@ def _local_proof(conn, annotation, actual):
     return evidence_digest(proof)
 
 
-def export_package(conn, data,collection=None):
+def export_package(conn, data,collection=None,*,read_view=None):
     from app.bank.collections import require
     if collection is not None:require(conn,collection)
     entries = {}
     for row in conn.execute("SELECT id,collection_id FROM bank_questions WHERE source!='本地示例题库' AND (? IS NULL OR collection_id=?) ORDER BY id",(collection,collection)):
         try:
-            value = annotations.current(conn, data, row[0])
+            value = annotations.current(conn, data, row[0],read_view=read_view)
             if not value or value['analysis']['status'] != 'ready':
                 continue
             if value.get('cache_provenance'):
@@ -121,7 +121,7 @@ def export_package(conn, data,collection=None):
                     item=dict(item,collection_id=row['collection_id']);item['sha256']=_sha(item)
                     entries[item['sha256']] = item
                 continue
-            actual = annotations.materials(conn, data, row[0])
+            actual = read_view.materials(row[0]) if read_view is not None else annotations.materials(conn, data, row[0])
             evidence = _local_proof(conn, value, actual)
         except ValueError:
             # Unfinished/unproven source records remain local. Never replace

@@ -32,9 +32,16 @@ def main():
     p=sub.add_parser('import-source',help='校验并预演标准题源；仅 --confirm 摘要匹配后写通用库')
     p.add_argument('--source',required=True);p.add_argument('--input',type=Path,required=True)
     p.add_argument('--collection',required=True,help='目标题集ID；已有题目不可改变归属')
-    p.add_argument('--overrides',type=Path);p.add_argument('--asset-root',type=Path)
+    p.add_argument('--overrides',type=Path);p.add_argument('--errata',type=Path);p.add_argument('--asset-root',type=Path)
     choice=p.add_mutually_exclusive_group();choice.add_argument('--dry-run',action='store_true');choice.add_argument('--confirm')
     p.add_argument('--report',type=Path,help='另存不含正文的 JSON 报告')
+    p=sub.add_parser('apply-errata');p.add_argument('--input',type=Path,required=True);p.add_argument('--collection',required=True)
+    choice=p.add_mutually_exclusive_group();choice.add_argument('--dry-run',action='store_true');choice.add_argument('--confirm')
+    p.add_argument('--report',type=Path)
+    p=sub.add_parser('export-collection');p.add_argument('--collection',required=True);p.add_argument('--output',type=Path,required=True)
+    p=sub.add_parser('import-collection');p.add_argument('--input',type=Path,required=True)
+    choice=p.add_mutually_exclusive_group();choice.add_argument('--dry-run',action='store_true');choice.add_argument('--confirm')
+    p.add_argument('--report',type=Path)
     sub.add_parser("pending")
     p=sub.add_parser("catalog",help="浏览题库目录和原图路径，由 Agent 自行阅读选择")
     p.add_argument("--topic",action="append",default=[],help="可重复，任一分类包含关键词即可；不是匹配规则")
@@ -53,6 +60,19 @@ def main():
             task_conn.row_factory=sqlite3.Row;task_conn.execute('PRAGMA foreign_keys=ON')
             result=deliver(task_conn,ROOT,config.data,payload,ticket)
         print(json.dumps(result,ensure_ascii=False));return
+    if args.command=='apply-errata':
+        from app.bank.errata import apply_existing
+        value=apply_existing(config,args.input,args.collection,args.confirm);text=json.dumps(value,ensure_ascii=False,indent=2)
+        if args.report:args.report.write_text(text,encoding='utf8')
+        print(text);return
+    if args.command=='export-collection':
+        from app.bank.collection_packs import export_collection
+        print(json.dumps(export_collection(config,args.collection,args.output),ensure_ascii=False));return
+    if args.command=='import-collection':
+        from app.bank.collection_packs import import_collection
+        value=import_collection(config,args.input,args.confirm);text=json.dumps(value,ensure_ascii=False,indent=2)
+        if args.report:args.report.write_text(text,encoding='utf8')
+        print(text);return
     if args.command in ('prepare','import-bank','import-source','apply','assess'):
         session=config.data/'agent-session.db'
         if session.is_file():
@@ -66,7 +86,7 @@ def main():
     if args.command=='import-source':
         from app.bank.source_import import import_source
         result=import_source(config,args.source,args.input,collection=args.collection,asset_root=args.asset_root,
-                             overrides=args.overrides,confirm=args.confirm)
+                             overrides=args.overrides,errata=args.errata,confirm=args.confirm)
         output=json.dumps(result,ensure_ascii=False,indent=2)
         if args.report:args.report.write_text(output,encoding='utf8')
         print(output);return

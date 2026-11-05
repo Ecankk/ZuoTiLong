@@ -26,11 +26,11 @@ score 仅返回已核定值，未核定为 null；analysis_status 沿用保存�
 | GET /api/papers | archived:'0'/'1'/'all'='0'；分页参数 | Page<Paper>；日期、创建时间、ID 倒序 |
 | GET /api/papers/{paper_id} | 无 | `{paper:Paper,analysis:AnalysisState,weak_topics:TopicRef[],practice_counts:PracticeCounts,summary_status:'missing'|'available',actions:string[]}` |
 | GET /api/papers/{paper_id}/questions | 无 | `{items:QuestionSummary[],total:integer}`；数字题号优先升序，其余按保存题号/ID；整卷无分页 |
-| GET /api/questions/{question_id} | 无 | `{question:QuestionSummary & {stem:string,regions:Region[]},diagnosis:Diagnosis|null,topics:TopicRef[],evidence_urls:string[],practice_counts:PracticeCounts,previous_id:string|null,next_id:string|null,capabilities:{step_comparison:false}}` |
+| GET /api/questions/{question_id} | 无 | `{question:QuestionSummary & {stem:string,regions:Region[]},diagnosis:Diagnosis|null,topics:TopicRef[],evidence_urls:string[],evidence_regions:EvidenceRegion[],practice_counts:PracticeCounts,previous_id:string|null,next_id:string|null,capabilities:{step_comparison:false}}` |
 | GET /api/papers/{paper_id}/summary | 无 | `{status:'missing'|'available',result_id:string|null,created_at:string|null,summary:object|null}`；summary 为已保存 summarize_paper.result（overview、key_findings、improvements、next_actions、limitations、source_refs），不生成新总结 |
 
 `AnalysisState={report_id:string|null,completion:string|null,review_status:string|null,summary:string,limitations:string[]}`。`TopicRef={topic_id:string,name:string}`。
-Region 为现有 `{page:integer,bbox:number[4],role:string}`（PDF 点坐标）；evidence_urls 使用现有 `/api/questions/{id}/evidence?region=N`。
+Region 为现有 `{page:integer,bbox:number[4],role:string}`（PDF 点坐标）；evidence_urls 使用现有 `/api/questions/{id}/evidence?region=N`。`EvidenceRegion={region_index,page,bbox,image_url,image_width,image_height,image_origin:[x,y],scale:2}`，宽高与整数原点来自与 /evidence 相同的实际渲染图（含像素取整）；图内点击距顶部 d 个 CSS 像素、图片内容显示高度 H 时，PDF y=(image_origin[1]+d*image_height/H)/scale，不要用 bbox 高度猜比例。原 PDF 缺失时为空数组。
 Diagnosis 为现有 present_diagnosis 的逐题对象：stem、observation、correctness、answer_evidence（student_work/student_state/marking/marking_note）、correct_parts、first_error、solution_guide、reference_answer/reference_reasoning、hypotheses、cause_summary、knowledge、fingerprint、regions 等已保存字段；旧报告缺字段保持兼容，不伪造步骤。
 TopicRef 只来自有效知识映射；weak_topics 是已关联且 state=需要关注 的考点，不根据字符串造 ID。
 
@@ -59,10 +59,12 @@ actions 取 submit/supplement/reveal_question/reveal_analysis 的实际允许子
 
 | 方法/路径 | 参数 | 响应 |
 | --- | --- | --- |
-| GET /api/bank/{bank_id}/practice | 无 | `{bank_id,question_type,collection_id,source:{math_type,year,number,question_type,max_score,book?},question:{question_text?,question_image?},reference:{answer_text?,analysis_text?,answer_image?,analysis_image?}|null,actions:('submit'|'reveal_analysis')[],latest_attempt:FreeAttempt|null,attempt_count:integer}`；reference 仅在已判定或明确 reveal 后返回；question_text 已含选项文字，无单独 options |
+| GET /api/bank/{bank_id}/practice | 无 | `{bank_id,question_type,collection_id,source:{math_type,year,number,question_type,max_score,book?},question:{question_text?,question_image?},reference:{answer_text?,analysis_text?,answer_image?,analysis_image?}|null,actions:('submit'|'reveal_analysis')[],latest_attempt:FreeAttempt|null,attempt_count:integer}`；reference 仅在已判定或明确 reveal 后返回；question_text 已含选项文字，无单独 options；只有题图的导航占位文字与“参考解析见原图”分别返回 question_text/analysis_text=null，有图就只显示图。无作答历史的 GET 只读当前材料投影，不冻结、不写文件，首次 POST 作答才冻结快照 |
 | POST /api/bank/{bank_id}/practice/attempts | `{request_id:UUID,response?:string,choice?:string,image_ids?:string[],image_roles?:object,answer_exposed?:boolean,elapsed_seconds?:number}` | FreeAttempt；同 request_id 同 body 复用，不同 body 409 |
 | GET /api/bank/{bank_id}/practice/attempts | offset、limit=20 | `{items:FreeAttempt[],total,offset,limit}`，倒序 |
 | GET /api/bank/{bank_id}/practice/attempts/{attempt_id}/materials/{role} | role=question/answer/analysis | 该次固定快照图片；参考需该次已判定或当前已 reveal |
+
+reference 另含 `errata?:[{role,reason,evidence}]`（随该次快照捕获）。
 
 `FreeAttempt={id,bank_id,source:'free_practice',question_type,collection_id,request_id,response,choice,image_ids,image_roles,answer_exposed,elapsed_seconds,created_at,assessment:object|null,job:{id,status}|null,materials:{question:{...},reference:{...}|null}}`；assessment 结构同练习 Attempt。
 
@@ -82,7 +84,7 @@ actions 取 submit/supplement/reveal_question/reveal_analysis 的实际允许子
 | GET /api/bank/collections | 无 | `[{id:string,name:string,kind:'exam'|'book'|'other'|'example',total:integer,ready:integer,math_types:[{math_type:1|2|3,total:integer,ready:integer}]}]`，按排序返回；total为来源题记录数，ready为当前有效就绪数；math_types按适用数学类别稀疏分组（只列有题的类别，多类别题在各类别都计） |
 | GET /api/bank | math_type:''/'1'/'2'/'3'=''，year:string=''，topic_id:string?，collection:string?（未知题集400；指定即分页响应），q:string?（题面文字，只搜题干含选项、不搜解析；与其他筛选组合并触发分页；不返回预留或当前遮挡题），分页参数 | Page<BankCard>，math_type按题目适用数学类别过滤（对所有题集生效）；真题按年份降序、math_type、题号、bank ID 稳定排序，教辅题集按book的篇、章、原题号/定位（数值）排序；考点筛选包含其子树，通过已核关联投影，不按导航标签猜关联 |
 
-BankCard 是原 public_bank(view=library)（id、math_type、year、number、can_view、reserved、reason、analysis_allowed、stem、tags、question_image、analysis_image）加 `{collection_id:string,math_types:number[],question_type:string|null,max_score:number|null,question_text?:string,analysis_text?:string,book?:{title,edition,part,chapter,number,locator}}`（book各字段string|null，仅教辅题；math_type仍只表示考试身份，适用类别看math_types；无题图资源时不返回question_image/analysis_image）；analysis_text 仅在 analysis_allowed 时返回，真正展开解析仍走 POST /api/bank/{id}/reveal 记录曝光。题库浏览保持 library 策略；练习遮挡按 practice access，不混用入口。
+BankCard 是原 public_bank(view=library)（id、math_type、year、number、can_view、reserved、reason、analysis_allowed、stem、tags、question_image、analysis_image）加 `{collection_id:string,math_types:number[],question_type:string|null,max_score:number|null,question_text?:string,analysis_text?:string,book?:{title,edition,part,chapter,number,locator}}`（book各字段string|null，仅教辅题；math_type仍只表示考试身份，适用类别看math_types；无题图资源时不返回question_image/analysis_image）；analysis_text 仅在 analysis_allowed 时返回，真正展开解析仍走 POST /api/bank/{id}/reveal 记录曝光。BankCard 另有 `errata:[{role,reason,evidence}]`（无勘误为空），在参考解析处显示“本题已按勘误修正”；role 为 answer/analysis 的依据可能含答案，展开前同样走 reveal 记曝光，不当作普通题干说明展示。题库浏览保持 library 策略；练习遮挡按 practice access，不混用入口。
 考点树用 GET /api/knowledge/catalog/tree 一次取全：`{release_id:string|null,total:integer,items:[{id,parent_id,name,kind,aliases:string[],child_count:integer}]}`（child_count为直接子节点数，不含定义与个人表现）；关联题复用现有 GET /api/knowledge/catalog、/api/knowledge/links、/api/knowledge/links/summary；/api/knowledge/links与/api/bank/search新增可选collection过滤（筛选先于同题去重），题卡与existing_exercises带collection_id（已完成原题对不上库题时为null），/api/bank/{id}/topics与批量/api/bank/topics题卡同样带collection_id。本批不新增画像图表。应用托管 dist 时，dist 中真实存在的文件按静态返回，其余非 /api 路径回退 index.html（考点 ID 含点也可直接打开/刷新）；/api 下未知路径保持 404。
 
 ## 任务摘要与动作
@@ -107,7 +109,7 @@ Task = {
 }
 ```
 
-分页只影响 items，active/counts 始终是全队列摘要，不受 status 筛选影响。排队/运行优先，其次需处理项，最后历史；同级创建时间倒序并以 ID 排序。status 参数枚举不合法返回 400。
+同卷同 kind（批改另按 attempt_id）之后已有 completed 任务时，更早的 failed/interrupted/blocked 不再计入待处理（历史仍在，非取消或删除）。分页只影响 items，active/counts 始终是全队列摘要，不受 status 筛选影响。排队/运行优先，其次需处理项，最后历史；同级创建时间倒序并以 ID 排序。status 参数枚举不合法返回 400。
 kind 沿用 workflow kind。进度只到试卷（如“正在分析《2023 数学一》”），不猜题号/模型完成比例；不输出会话 ID、聊天、工具日志、输入或执行令牌。error 是已保存业务错误；安装登录问题在 availability 中表达。
 
 POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。运行中的任务不提供动作；failed/blocked且尚未建立执行任务的可cancel；已建立执行任务的failed/interrupted阶段，在该任务已终止、无保存结果且本工作区无其他执行中任务时也可cancel（标为已取消，原卷、作答、任务历史和已存结果保留）。failed 任务在无其他执行时可 retry：保留旧执行记录，新建请求、任务和会话重新执行；已有保存回执的任务不会重跑。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。
@@ -180,6 +182,16 @@ AttemptBody=`{response?:string,image_ids?:string[],image_roles?:{[image_id]:'own
 ### 未分析切分纠正方案
 
 POST `/api/papers/{id}/questions/correct`，body=`{confirmed:true,questions:[{number:string,question_ids:string[]}],delete_question_ids?:string[]}`。请求完整分配本卷全部现有题目，每个ID恰好出现一次：一个ID一组即重新编号，多ID一组即合并，误切题须显式列入删除列表。每组保留首个ID、按页/坐标合并去重regions，并保存纠正前快照；不合成新的学生作答，不产生学习任务。返回200 `{paper_id,question_ids:string[],deleted_question_ids:string[],status:'corrected'}`。无卷404，未确认/重复编号/遗漏或跨卷ID400；归档、已有诊断/练习历史、有排队或运行任务409。本版只处理整卷尚未进入诊断/练习历史的切分，已诊断题一律保留。再次analyze保留纠正结果；原PDF变化则400，不能沿用旧纠正。前端需先结束/取消上传自动排入的分析任务再纠正。
+
+拆分（B20）：questions[] 的组可带 `split:{page:integer,y:number,lower_number:string}`，该组只能有一个旧ID；number 为上半题号，lower_number 为下半题号，均不得与其他组重复。page 从 1 起，y 为该页 PDF 点坐标（自顶向下，用 evidence_regions 换算），须严格穿过该题某个 region 且上下都留有非空区域；跨页时较早页归上半。上半保留旧ID，下半分配新ID，响应 question_ids 按组依次列上、下。可与其他组的重编号/合并/删除同次提交，但同次不能把拆出的半题再并入别组（先拆分提交再合并）。题干按本地 OCR 定位行归属上下，无定位行时下半为“待补充题干”。400 另含 split 组非单 ID、page/y 非法或不穿过题区、拆不出上下两部分。
+
+### 导入题集包（B21）
+
+格式见[题源接口](bank-source-interface.md#题集包)。设置页先预演再确认：
+
+- POST `/api/library/collection-packs/preview`，multipart 字段 file（zip）。只暂存到系统 TEMP，不写库。返回 `{package_sha256,plan_sha256,package_version,created_at,sources,trust_notice,collection,counts:{total,ready,needs_review,needs_catalog,unannotated},added:bank_id[],updated:bank_id[],unchanged:bank_id[],catalog:{status:'current'|'upgrade'|'keep_current'|'conflict',current_release_id,required_release_id},collection_conflicts:[],annotation_summary,applied:false}`。ready 题数看 counts.ready；annotation_summary.entries 是索引条目数，不等于题数。
+- POST `/api/library/collection-packs/confirm` `{package_sha256,plan_sha256,confirmed:true}`：重新核对包和库，自动备份通用库后单事务写入，返回同结构加 `applied:true,backup:{path,...}`。不改个人工作区数据；无变化也可安全确认。真题包首次确认约 2.5 分钟，前端按长请求处理；期间读接口照常，其他写入 409。
+- 错误 `{error}`：400 格式/路径/散列/schema/勘误不合法，404 暂存包已失效（重新预演），409 预演过期、题集或目录定义冲突、维护中，413 超限（压缩包 1GiB、解压 2GiB/30000 文件）。确认表示接受该包的题集、目录和共享标注来源；散列不证明发布者或数学正确性。
 
 ### 数据状态轻量检查
 

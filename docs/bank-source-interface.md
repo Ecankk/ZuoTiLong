@@ -93,6 +93,32 @@ python scripts/agent_tasks.py import-source --source S02 --collection zhenti --i
 
 bank_id 由 source_id 和 source_uid 的 SHA256 稳定生成，不含 revision；同来源重导入不新增身份。库内保存当前标准记录和不可变来源版本历史。相同记录完全不更新既有题目、资源或标注；材料更新保留旧版本和资源，旧标注自然按既有材料依赖失效，旧练习继续读已固定快照。来源字段更新不清空人工 fingerprint、notes、bank_views、bank_exposures 或作答；新导入不能证明数学结论正确。待标注列表用于交接，不自动启动学习任务。
 
+### 勘误
+
+转写错误用勘误文件 `mathlens.bank-errata/v1` 修正，只记录改动：`{schema,source_id,revision,entries:[{match:{source_uid},role:'stem'|'answer'|'analysis'|'option:<label>',find,replace,reason,evidence}]}`。find 必须在当前标准文本中恰好出现一次，多条按顺序应用；reason、evidence 非空（写明核对依据）。
+
+- 已有标准输入的来源：`import-source ... --errata <勘误JSON>`，同一套预演/确认并计入 plan_sha256；之后每次重导都要带上完整勘误文件。预演增加 `errata_applied`（原/新片段、理由、依据）和 `invalidated_annotations`（材料变动影响的题及共用原标注的关联题，需重标）。
+- 旧 S01 没有标准输入：`agent_tasks.py apply-errata --collection zhenti --input <勘误JSON> --dry-run|--confirm <plan_sha256>`，source_id=S01、revision=legacy-db-export/v1、source_uid=原 bank_id，确认前自动备份。
+- 写入生成新材料版本，original 与历史保留，bank_id 不变；同一条勘误重放为未变。bank-record/v1 增加可选 errata 历史条目，不升格式。题卡、自由练习参考和 read_bank 带 `errata:[{role,reason,evidence}]`；旧固定材料不标新勘误。
+
+### 题集包
+
+按题集分发用 `mathlens.collection-pack/v1`（zip，仅数据）：manifest.json、records.jsonl、annotations.json（question-index/v2，无 ready 可省）、catalog.json（knowledge-package/v1）、errata.json 和 `assets/<sha256>.<ext>`。
+
+- manifest：`{schema,collection:{id,name,kind,sort_order},version,created_at,sources:[{source_id,revision,input_sha256}],catalog:{release_id,document_sha256,package_sha256},counts:{total,ready,needs_review,needs_catalog,unannotated},files:{path:sha256}}`。
+- records.jsonl 每行 `{bank_id,record:bank-record/v1,identity:{math_type,year,number,sha256},annotation_status,errata:[...]}`，保留 bank_id 与 original。
+- 目录始终随包附带：目标已兼容时保留当前；只做新增扩展时升级；已有定义冲突或互不覆盖的扩展报 conflict，不覆盖、不降级。
+- ready 标注作为明确接受的共享索引导入，不伪造本机任务回执；needs_review/needs_catalog 随记录保留待核状态，不进选题池。
+- 同 bank_id 只能留在原题集；材料不变时保留资源与本机标注，材料变化时新增来源版本，旧练习继续用固定快照。重复导入不追加。
+
+```text
+python scripts/agent_tasks.py export-collection --collection <id> --output <zip>
+python scripts/agent_tasks.py import-collection --input <zip> --dry-run [--report <json>]
+python scripts/agent_tasks.py import-collection --input <zip> --confirm <plan_sha256> [--report <json>]
+```
+
+应用内导入走设置页（API 见[前端接口](frontend-api.md#导入题集包b21)）。维护流程见本机 plans/COLLECTION-PACKS.md。
+
 ### 考试身份、重复与冲突
 
 考试身份是 `(exam_year,math_type,number)`，独立于来源 URL、来源 ID 和题图有无。原卷先使用已保存的固定参考绑定；否则以年份/类别/题号检索所有来源，顺序固定为 source_id、source_uid、bank_id 升序（旧 S01 按 S01 计），不按导入先后变更优先级。题型/分值存在明确冲突时不任意选择，相关显示值返回 null；候选仍全部提供，须后续核对。缺失值可由该身份其他无冲突的已知来源补充，不猜值。排序只选出处导航，不证明数学同题或参考一致。

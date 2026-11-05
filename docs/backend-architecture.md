@@ -124,6 +124,10 @@ ZuoTiLong/
 
 原卷参考由paper_question_bindings关联；练习由practice_question_bindings和practice_attempt_materials关联固定材料。app/storage/practice_materials.py保存材料，app/agent/practice_materials.py按当前任务读取。题库更新不替换已布置题，已有真实作答和在途任务按原身份/版本处理。题面文字搜索（GET /api/bank?q）沿题干文本扫描，先应用题集/类别/考点筛选，再按与单题access一致的同题、身份、预留、遮挡策略批量过滤，不建持久FTS。questions.id只是内部主键、不编码题号；切题、重新识别和报告补建题号时用app/storage/question_ids.py的available_question_id避开已占用ID。
 
+原卷切分纠正与拆分只用本地数据：拆分按切线划分region，题干按该PDF散列对应的pipeline缓存中带bbox的OCR行归属上下，不重跑OCR，与版本记录、重匹配同一事务。analyze_paper交付保留已有本地regions，Agent区域只填补无区域题；误被覆盖的旧数据由scripts/restore_segmentation_regions.py从同一缓存重算（预演/确认码，确认前SQLite backup API自动备份learning.db，写record_versions）。工具结果统一由tool_response生成多模态返回；最后一次拒绝原因持久化到task/job error，非校验异常记堆栈并停止任务。任务摘要中，同卷同kind之后已有completed任务的旧失败只从待处理投影隐藏。自由练习无历史时GET读当前材料投影，首次提交才冻结。
+
+题集包与勘误（app/bank/collection_packs.py、errata.py，CLI export-collection/import-collection/apply-errata、import-source --errata）：导出当前标准记录、按SHA去重的资源、勘误、完整所需目录包和v2共享标注索引，不含个人数据或本机任务回执。导入用内存主库ATTACH通用库单事务写入，不连接个人learning.db；确认前自动题库备份，借用维护写围栏暂停其他写入但不长持bridge.lock。勘误生成新材料版本并保留original与历史，依赖旧材料的标注自然失效；固定练习材料不受影响。
+
 共享目录和标注分别通过app/knowledge/packages.py、app/bank/annotation_packages.py处理；外部索引有独立出处，不伪造本机任务、阅读凭据或学生表现。停用影响后续准入，原练习仍沿固定材料。
 
 具体版本、工具参数和维护操作只见[Agent协议](agent-workflow.md)与对应schema。

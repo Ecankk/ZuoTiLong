@@ -16,6 +16,22 @@ class Resource:
 
 class ResourceService:
     def __init__(self,config,database):self.config,self.database=config,database
+
+    def evidence_metadata(self,question_id):
+        import pymupdf
+        with self.database.session() as conn:
+            row=conn.execute('SELECT q.regions_json,p.source_path FROM questions q JOIN papers p ON p.id=q.paper_id WHERE q.id=?',(question_id,)).fetchone()
+        if not row or not row['source_path']:return []
+        pdf=paper_path(self.config.data,row['source_path'],self.config.root)
+        if not pdf.is_file():return []
+        result=[]
+        with pymupdf.open(pdf) as doc:
+            for i,region in enumerate(json_load(row['regions_json'],[])):
+                pix=doc[region['page']-1].get_pixmap(matrix=pymupdf.Matrix(2,2),clip=pymupdf.Rect(region['bbox']),alpha=False)
+                result.append(dict(region_index=i,page=region['page'],bbox=region['bbox'],
+                    image_url=f'/api/questions/{question_id}/evidence?region={i}',image_width=pix.width,image_height=pix.height,
+                    image_origin=[pix.x,pix.y],scale=2))
+        return result
     def answer(self,image_id):
         try:
             with self.database.session() as conn:record=image_records(conn,[image_id])[0]

@@ -62,11 +62,11 @@ QUESTION = obj({'number': {'type': 'integer', 'minimum': 1, 'maximum': 100},
                 'solution_guide': {'anyOf':[{'type':'null'},SOLUTION_GUIDE]},
                 'cause_summary': string()},optional=('answer_evidence','solution_guide','cause_summary'))
 REPORT = obj({'author': string(nonempty=True, limit=100), 'method': string(nonempty=True),
-              'source_sha256': SHA, 'expected_count': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+              'source_sha256': {**SHA,'description':'可省略，由后端按捕获原卷摘要填写；主动提供时必须完全一致。'}, 'expected_count': {'type': 'integer', 'minimum': 1, 'maximum': 100},
               'summary': string(nonempty=True), 'score_status': {'enum': ['unknown', 'estimated']},
               'priorities': array(obj({'label': string(nonempty=True), 'evidence': string(), 'action': string()})),
               'limitations': TEXTS, 'questions': array(QUESTION, minimum=1, maximum=100),
-              'review': REVIEW},optional=('review',))
+              'review': REVIEW},optional=('review','source_sha256'))
 GOAL = obj({'id': ID, 'label': string(nonempty=True),
             'question_numbers': array({'type': 'integer', 'minimum': 1, 'maximum': 100}, minimum=1, unique=True),
             'topic_ids': IDS, 'stage': STAGE, 'evidence': string(nonempty=True),

@@ -32,6 +32,20 @@
 
 ## 交付和表达
 
+read_paper/read_bank返回文字和独立图片内容，图片必须在首次读取时直接展示，不把返回整体text()/JSON.stringify()打印。若通过exec调用，当前Code Mode把多模态内容变成“JSON文字行 + data:image独立行”的字符串，首次调用就按下面方式输出；不用正则抠图片、不重复读取：
+
+```javascript
+const r = await tools.mathlens({action:"read_paper",payload:{paper_id:"当前卷ID",pages:[1]}});
+for (const part of String(r).split("\n")) {
+  if (part.startsWith("data:image/")) image(part);
+  else if (part.trim()) text(part);
+}
+```
+
+read_bank用同一输出方式，仅替换action和payload。直接工具调用的inputImage由宿主展示，不转成文字。后端内部错误不是结果校验错误：收到“后端保存出错（内部错误）”时不要重复交付；任务会失败并保留具体原因。普通校验拒绝按所列原因修改。
+
+analyze_paper的report.source_sha256可省略，由后端按捕获原卷填写；不要抄写哈希。若主动提供则必须完全一致。
+
 材料包标明 materials_complete 时，方法、材料和实际阅读回执已经齐全，无需调用 context 或为凑回执重复读工具。直接 deliver_result；校验失败按具体错误修正后重交。只有实际新发现的材料缺口才补读。不例行 preflight，不另写一份聊天报告。
 
 取得成功保存回执即完成本任务；后端负责后续工作。未知或材料不足如实按 schema 保存，不猜补，不追问学生确认你的判断。已保存的证据不能改写成虚构的作答或成绩；隐藏参考不提前向学生泄露。

@@ -268,7 +268,9 @@ class PaperService:
             groups=body['questions'];deleted=body.get('delete_question_ids',[])
             ids=[i for g in groups for i in g['question_ids']]+deleted
             numbers=[g['number'].strip() for g in groups]
-            if len(ids)!=len(set(ids)) or set(ids)!=set(old) or len(numbers)!=len(set(numbers)) or not all(numbers):
+            all_numbers=numbers+[g['split']['lower_number'].strip() for g in groups if g.get('split')]
+            if any(g.get('split') and len(g['question_ids'])!=1 for g in groups):raise ValueError('拆分组必须仅包含一道原题')
+            if len(ids)!=len(set(ids)) or set(ids)!=set(old) or len(all_numbers)!=len(set(all_numbers)) or not all(all_numbers):
                 raise ValueError('全部现有题目必须且只能分配一次；题号不得重复或为空')
             # A paper with history must not be rewritten underneath reports,
             # attempts, bindings or an in-flight analysis input.
@@ -286,21 +288,33 @@ class PaperService:
                 for table in ('reviews','learning_events')):
                 raise ServiceError('已有评价或学习证据的题不能纠正',409)
             conn.execute('INSERT INTO record_versions VALUES(?,?,?,?,?,?)',('version-'+uuid.uuid4().hex,'question_segmentation',paper_id,
-                json.dumps(dict(questions=list(old.values()),source_sha256=hashlib.sha256(original.read_bytes()).hexdigest()),ensure_ascii=False),'用户确认重编号/合并/删除错切题',now_iso()))
+                json.dumps(dict(questions=list(old.values()),source_sha256=hashlib.sha256(original.read_bytes()).hexdigest()),ensure_ascii=False),'用户确认重编号/拆分/合并/删除错切题',now_iso()))
             removed=set(deleted);kept=[]
             for group,number in zip(groups,numbers):
                 rows_=[old[i] for i in group['question_ids']];qid=rows_[0]['id'];kept.append(qid)
                 removed.update(r['id'] for r in rows_[1:])
                 regions=[]
+                cut=group.get('split');split_data=None
+                if cut:
+                    from app.documents.split_question import split
+                    split_data=split(rows_[0],cut,self.config.data,hashlib.sha256(original.read_bytes()).hexdigest())
                 for row in rows_:
                     for region in json.loads(row['regions_json'] or '[]'):
                         if region not in regions:regions.append(region)
                 regions.sort(key=lambda r:(r['page'],r['bbox'][1],r['bbox'][0]))
                 text='\n'.join(r['stem'] or '' for r in rows_)
+                if split_data:regions,lower,texts=split_data;text=texts[0]
                 conn.execute('''UPDATE questions SET number=?,stem=?,source_text=?,regions_json=?,page_start=?,page_end=?,bbox_json=?,
                     match_bank_id=NULL,match_score=0 WHERE id=?''',(number,text,text,json.dumps(regions,ensure_ascii=False),
                     regions[0]['page'] if regions else None,regions[-1]['page'] if regions else None,
                     json.dumps(regions[0]['bbox']) if regions else None,qid))
+                if split_data:
+                    from app.storage.question_ids import available_question_id
+                    new_id=available_question_id(conn,f"{paper_id}-q-{cut['lower_number'].strip()}")
+                    conn.execute('''INSERT INTO questions(id,paper_id,number,subject,stem,source_text,correctness,review_status,
+                        regions_json,page_start,page_end,bbox_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                        (new_id,paper_id,cut['lower_number'].strip(),rows_[0]['subject'],texts[1],texts[1],'unknown','待诊断',json.dumps(lower,ensure_ascii=False),lower[0]['page'],lower[-1]['page'],json.dumps(lower[0]['bbox']),now_iso()))
+                    kept.append(new_id)
             for qid in removed:conn.execute('DELETE FROM questions WHERE id=?',(qid,))
             self._rematch_saved(conn,paper)
             conn.execute('UPDATE papers SET updated_at=? WHERE id=?',(now_iso(),paper_id))

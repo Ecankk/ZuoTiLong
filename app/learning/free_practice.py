@@ -1,5 +1,6 @@
 """Private, repeatable bank attempts with immutable materials and no paper fiction."""
 import json,re,uuid,unicodedata,math
+from pathlib import Path
 from app.learning.tasks import digest,encode
 from app.learning.loop import stamp
 from app.errors import ServiceError
@@ -28,6 +29,14 @@ def record(conn,aid):
     if not row:raise ServiceError('自由练习作答不存在',404)
     return dict(row)
 
+def display_text(role,item):
+    text=item['text']
+    if item['image_file'] and not text.strip():return None
+    # Legacy image navigation labels are not a transcription of the question.
+    if item['image_file'] and (role=='question' and re.match(r'^\d{4}\s+数学[一二三]\s+第\s*\d+\s*题\s*[·•]',text)
+                               or role=='analysis' and text.strip() in ('参考解析见原图','参考解析见原图。')):return None
+    return text
+
 def capture(conn,data,aid):
     row=record(conn,aid);snapshot=json.loads(row['snapshot_json']);body=json.loads(row['body_json'])
     from app.storage.practice_materials import load
@@ -43,7 +52,7 @@ def public(conn,row):
     snapshot=json.loads(row['snapshot_json']);question={};reference={}
     for role,item in snapshot['material_manifest']['resources'].items():
         target=question if role=='question' else reference
-        if item['text']:target[role+'_text']=item['text']
+        if item['text'] or item['image_file']:target[role+'_text']=display_text(role,item)
         if item['image_file']:target[role+'_image']=f'/api/bank/{row["bank_id"]}/practice/attempts/{row["id"]}/materials/{role}'
     job=conn.execute('SELECT id,status FROM workflow_jobs WHERE attempt_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
     return {**body,'id':row['id'],'bank_id':row['bank_id'],'source':'free_practice',
@@ -90,7 +99,7 @@ class FreePracticeService:
             if not values and not conn.execute('SELECT 1 FROM bank_questions WHERE id=?',(bid,)).fetchone():raise ServiceError('题库题目不存在',404)
             return dict(items=[public(conn,r) for r in values[offset:offset+limit]],total=len(values),offset=offset,limit=limit)
 
-    def _snapshot(self,conn,bid):
+    def _snapshot(self,conn,bid,*,freeze_materials=True):
         from app.bank.access import require_access
         from app.bank.access import access
         if not conn.execute('SELECT 1 FROM bank_questions WHERE id=?',(bid,)).fetchone():raise ServiceError('题库题目不存在',404)
@@ -99,7 +108,9 @@ class FreePracticeService:
         from app.bank.annotations import materials,current
         actual=materials(conn,self.config.data,bid)
         from app.storage.practice_materials import freeze
-        binding=freeze(conn,self.config.data,dict(bank_id=bid,material_revision=digest(actual),content_revision=actual['question']['sha256']))
+        binding=dict(bank_id=bid,material_revision=digest(actual),content_revision=actual['question']['sha256'])
+        if freeze_materials:binding=freeze(conn,self.config.data,binding)
+        else:binding['material_manifest']={'resources':{r:{'text':v['text'],'image_file':Path(v['path']).name if v['path'] else None} for r,v in actual.items()}}
         from app.bank.exam_identity import metadata
         typ=metadata(conn,bid)['question_type']
         annotation=current(conn,self.config.data,bid)
@@ -116,7 +127,7 @@ class FreePracticeService:
         with self.database.session() as conn:
             latest=conn.execute('SELECT * FROM free_practice_attempts WHERE bank_id=? ORDER BY rowid DESC LIMIT 1',(bid,)).fetchone()
             if latest:snapshot=json.loads(latest['snapshot_json'])
-            else:snapshot,state=self._snapshot(conn,bid)
+            else:snapshot,state=self._snapshot(conn,bid,freeze_materials=False)
             from app.bank.access import access
             try:state=access(conn,bid)
             except ValueError:state={'can_view':False,'reserved':False,'analysis_allowed':False}
@@ -125,7 +136,7 @@ class FreePracticeService:
             resources=snapshot['material_manifest']['resources'];question={};refs={}
             for role,item in resources.items():
                 target=question if role=='question' else refs
-                if item['text']:target[role+'_text']=item['text']
+                if item['text'] or item['image_file']:target[role+'_text']=display_text(role,item)
                 if item['image_file'] and latest:target[role+'_image']=f'/api/bank/{bid}/practice/attempts/{latest["id"]}/materials/{role}'
                 elif item['image_file']:target[role+'_image']=f'/api/bank/{bid}/{role}'
             total=conn.execute('SELECT count(*) FROM free_practice_attempts WHERE bank_id=?',(bid,)).fetchone()[0]

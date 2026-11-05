@@ -140,14 +140,15 @@ def _import_group(conn,group,data_root,math_type,label):
 
 
 def apply_report(conn, paper_id, report, root, *, question_numbers=None):
-    issues=report_issues(report)
-    if issues:raise ValueError('报告格式不完整，请按 report_contract 补齐：'+'；'.join(issues[:12])+('；还有其他缺失字段' if len(issues)>12 else ''))
     paper = conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone()
     if not paper:
         raise ValueError("试卷不存在")
     if paper['archived_at']:raise ValueError('请先恢复已归档试卷')
     pdf = paper_path(connection_data(conn),paper["source_path"],root)
     digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    if 'source_sha256' not in report:report={**report,'source_sha256':digest}
+    issues=report_issues(report)
+    if issues:raise ValueError('报告格式不完整，请按 report_contract 补齐：'+'；'.join(issues[:12])+('；还有其他缺失字段' if len(issues)>12 else ''))
     if report.get("source_sha256") != digest:
         raise ValueError("报告与试卷 SHA256 不一致，拒绝写入")
     questions = report.get("questions", [])

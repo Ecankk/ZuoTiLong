@@ -172,6 +172,7 @@ class FrontendReads:
             cards = [c for c in self._cards(conn, paper['id']) if c['question_id'] == question_id]
         return dict(question=value, diagnosis=present_diagnosis(json.loads(row[0])) if row else None,
                     topics=self._topics(question_id), evidence_urls=[f'/api/questions/{question_id}/evidence?region={i}' for i in range(len(regions))],
+                    evidence_regions=self.rt.resources.evidence_metadata(question_id),
                     practice_counts=practice_counts(cards), previous_id=ids[pos-1] if pos else None,
                     next_id=ids[pos+1] if pos+1 < len(ids) else None, capabilities={'step_comparison': False})
 

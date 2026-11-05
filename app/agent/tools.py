@@ -20,7 +20,7 @@ SCHEMA={'type':'object','properties':{'action':{'type':'string','enum':list(ACTI
               'then':{'properties':{'payload':{'type':'object','required':['result'],'properties':{'result':{'type':'object'}},'additionalProperties':False}}}},
              {'if':{'properties':{'action':{'const':'read_skill'}}},
               'then':{'properties':{'payload':{'type':'object','required':['name'],'properties':{'name':{'enum':list(SKILLS)+['mathlens-'+n for n in SKILLS]}},'additionalProperties':False}}}}]}
-DESCRIPTION='做题龙单任务工具。方法、材料和回执已在初始包提供；材料齐全时直接deliver_result，校验失败按错误修正后再交，不例行preflight或context。deliver_result与preflight均传payload={result:完整任务封装}，与apply_report/assess一致。preflight仅供必要时调试，不保存。read_skill补读参数为{name:合法技能名}，技能名见材料包role_method。1.10选题仅补读候选题干。面向学生数学式用$...$或$$...$$包裹，隐藏材料仅内部阅读。'
+DESCRIPTION='图片读取首次调用就展示图片；exec模式返回含独立data:image行的字符串，按行将图片行传image()、其他行传text()，不要text(r)打印整体。做题龙单任务工具。方法、材料和回执已在初始包提供；材料齐全时直接deliver_result，校验失败按错误修正后再交，不例行preflight或context。deliver_result与preflight均传payload={result:完整任务封装}，与apply_report/assess一致。preflight仅供必要时调试，不保存。read_skill补读参数为{name:合法技能名}，技能名见材料包role_method。1.10选题仅补读候选题干。面向学生数学式用$...$或$$...$$包裹，隐藏材料仅内部阅读。'
 
 
 def connection(data):

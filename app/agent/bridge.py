@@ -1,6 +1,6 @@
 """Serial, disposable Codex executions. Durable state belongs to local tasks."""
 from contextlib import closing
-import copy,hashlib,json,tempfile,threading,time,uuid
+import copy,hashlib,json,tempfile,threading,time,uuid,logging
 from pathlib import Path
 from app.agent.transport import CodexProcess
 from app.agent.errors import BridgeConflict,AgentUnavailable
@@ -267,6 +267,9 @@ class CodexBridge:
 
     def _stop(self,turn,error=None):
         from app.learning.tasks import receipt
+        rejected=turn.get('last_rejection')
+        error=((rejected+'；执行结束：'+error[:300] if error and rejected and error!=rejected else rejected or error)
+               or '执行结束但未交付有效结果')[:2000]
         with closing(self._learning_connection()) as conn,conn:
             saved=receipt(conn,turn['task_id'])
             if not saved:conn.execute("UPDATE learning_tasks SET status='failed',run_token=?,error=?,updated_at=? WHERE id=?",(uuid.uuid4().hex,error or '执行结束但未交付有效结果',stamp(),turn['task_id']))
@@ -291,7 +294,7 @@ class CodexBridge:
             if tid and tid!=turn['codex_turn_id']:return
             method=message.get('method')
             if method=='item/tool/call' and 'id' in message:
-                transport=self.transport
+                transport=self.transport;internal_error=False
                 try:
                     if params.get('tool')!='mathlens':raise ValueError('只允许mathlens学习工具')
                     from app.agent.tools import execute
@@ -300,13 +303,25 @@ class CodexBridge:
                     self.lock.release()
                     try:content=execute(self.root,self.data,args['action'],args.get('payload',{}),lease=lease)
                     finally:self.lock.acquire()
-                    result={'success':True,'contentItems':[{'type':'inputText','text':v['text']} if v['type']=='text' else {'type':'inputImage','imageUrl':f"data:{v['mimeType']};base64,{v['data']}"} for v in content]}
-                except Exception as exc:result={'success':False,'contentItems':[{'type':'inputText','text':str(exc)}]}
+                    from app.agent.tool_response import response
+                    result=response(content)
+                except Exception as exc:
+                    internal_error=not isinstance(exc,(ValueError,BridgeConflict))
+                    if internal_error:
+                        logging.getLogger(__name__).exception('MathLens backend tool failed task=%s',turn['task_id'])
+                        reason=f'后端保存出错（内部错误：{type(exc).__name__}: {str(exc)[:500]}），请勿重复提交，结束任务并说明'
+                    else:reason=str(exc)
+                    turn['last_rejection']=reason[:2000]
+                    with closing(self._learning_connection()) as rejected,rejected:
+                        rejected.execute('UPDATE learning_tasks SET error=? WHERE id=?',(turn['last_rejection'],turn['task_id']))
+                    result={'success':False,'contentItems':[{'type':'inputText','text':reason}]}
+
                 if self._active() is not turn or self.transport is not transport:return
                 self.transport.send({'id':message['id'],'result':result})
                 from app.learning.tasks import receipt
                 with closing(self._learning_connection()) as conn:saved=receipt(conn,turn['task_id'])
                 if saved:self._stop(turn)
+                elif internal_error:self._stop(turn,turn['last_rejection'])
             elif method=='turn/completed':self._stop(turn,(params.get('turn',{}).get('error') or {}).get('message'))
             elif method=='model/rerouted':self._stop(turn,'服务变更了所选模型；任务停止，请检查可用模型设置')
             elif 'id' in message:self.transport.send({'id':message['id'],'error':{'code':-32601,'message':'请用本任务材料直接判断并交付，不请求外部交互'}})

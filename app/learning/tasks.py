@@ -397,6 +397,12 @@ def _deliver(conn, root, data, payload, lease,*,prepared=None,normalized=None):
         validate_result(payload, task['kind'],inputs.get('contract_version','1.0'))
         if payload['task_id'] != task['id'] or any(payload[k] != task[k] for k in ('kind', 'paper_id', 'input_revision')):
             raise ValueError('结果与任务范围或输入版本不一致')
+        if task['kind']=='analyze_paper':
+            report=payload['result']['report']
+            if 'source_sha256' in report and report['source_sha256']!=inputs['source_sha256']:
+                raise ValueError('报告与任务原卷SHA256不一致，拒绝写入')
+            if 'source_sha256' not in report:
+                payload=copy.deepcopy(payload);payload['result']['report']['source_sha256']=inputs['source_sha256']
         sha = digest(payload)
         previous = receipt(conn, task['id'])
         if previous:

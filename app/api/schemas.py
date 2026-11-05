@@ -14,9 +14,14 @@ class RequestModel(BaseModel):
         except (ValueError,TypeError,AttributeError):raise ValueError('request_id 必须是 UUID') from None
 
 class PreparePractice(RequestModel):request_id:str
+class QuestionSplit(RequestModel):
+    page:StrictInt=Field(ge=1)
+    y:StrictFloat|StrictInt
+    lower_number:str=Field(min_length=1,max_length=20)
 class CorrectQuestion(RequestModel):
     number:str=Field(min_length=1,max_length=20)
     question_ids:list[str]=Field(min_length=1)
+    split:QuestionSplit|None=None
 class CorrectQuestions(RequestModel):
     confirmed:StrictBool
     questions:list[CorrectQuestion]=Field(min_length=1)

@@ -89,7 +89,7 @@ Task = {
 分页只影响 items，active/counts 始终是全队列摘要，不受 status 筛选影响。排队/运行优先，其次需处理项，最后历史；同级创建时间倒序并以 ID 排序。status 参数枚举不合法返回 400。
 kind 沿用 workflow kind。进度只到试卷（如“正在分析《2023 数学一》”），不猜题号/模型完成比例；不输出会话 ID、聊天、工具日志、输入或执行令牌。error 是已保存业务错误；安装登录问题在 availability 中表达。
 
-POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。运行中的任务不提供动作；failed/blocked且尚未建立执行任务的可cancel（标为已取消，原卷、作答和已存结果保留）。failed 任务在无其他执行时可 retry：保留旧执行记录，新建请求、任务和会话重新执行；已有保存回执的任务不会重跑。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。
+POST `/api/tasks/{job_id}/action` body `{action:'retry'|'cancel'}` 返回该任务操作后的 `GET /api/tasks` 默认第一页摘要。仅 allowed_actions 中的动作可执行，否则 409；不存在 404。运行中的任务不提供动作；failed/blocked且尚未建立执行任务的可cancel；已建立执行任务的failed/interrupted阶段，在该任务已终止、无保存结果且本工作区无其他执行中任务时也可cancel（标为已取消，原卷、作答、任务历史和已存结果保留）。failed 任务在无其他执行时可 retry：保留旧执行记录，新建请求、任务和会话重新执行；已有保存回执的任务不会重跑。恢复备份的 recovery_required 保持显式 retry，不能自动重放旧执行。
 
 每个任务新开一次 Codex 会话，结束即关闭；应用重启或断线时，已保存回执的任务直接完成，无回执的任务标为 failed（error 为“执行已中断；重试将在新会话重新执行”）。后台在有排队任务时自动检查命令和账户，首次有工作时立即检查，失败后约30秒重新检查，无需用户点击连接。未检查时 availability 为 checking；未安装/未登录不消费排队任务，保存数据始终可读。所选模型/强度不可用时任务在执行前标为 failed，error 给出可读提示。
 

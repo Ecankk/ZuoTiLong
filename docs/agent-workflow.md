@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | analyze_paper | 2.0 | 完整题号与原图依据、逐题分析及review；核对为同题的通用参考记录在顶层references，无匹配可为空 |
 | review_question | 2.0 | 指定题的复核；程序合并父报告，不重写其他题 |
-| prepare_practice | 1.10 | selections（bank_id、goal_ids、selection_reason、prompt）和每个目标的limitations（材料包result_template已列全部目标ID，无缺口填空字符串）；目标、标注、固定参考与保留练习由后端填写 |
+| prepare_practice | 1.10 | selections（bank_id、goal_ids、selection_reason、prompt）和每个目标的limitations（材料包result_template已列全部目标ID，无缺口填空字符串；每个候选附allowed_goal_ids，只能挂到其中的目标；交付被拒时一次列出全部违规的题目/目标及合法候选）；目标、标注、固定参考与保留练习由后端填写 |
 | grade_attempt | 新绑定作答1.9 | 本次步骤、首错或未知、解法、可能原因、考点与必要补拍；使用所选固定材料 |
 | organize_knowledge | 1.8 | mappings、summary、limitations；兼容字段new_nodes必须为空 |
 | summarize_paper | 1.6 | 保存证据的归纳；引用来自allowed_source_refs，改善须有前后依据 |

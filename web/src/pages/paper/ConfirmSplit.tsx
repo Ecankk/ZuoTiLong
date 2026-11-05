@@ -71,8 +71,9 @@ export function ConfirmSplitCard({ data }: { data: PaperResponse }) {
   const { data: tasks } = useTasks()
   const [confirm, setConfirm] = useState(false)
   const [viewing, setViewing] = useState<QuestionSummary | null>(null)
+  // 这个弹窗本身就是确认步骤；后端首次分析也要求 confirmed:true
   const analyze = useAction(
-    () => endpoints.analyzePaper(paper.id, false),
+    () => endpoints.analyzePaper(paper.id, true),
     [['papers'], ['questions'], ['tasks']],
   )
   const questions = [...(list?.items ?? [])].sort(byNumber)

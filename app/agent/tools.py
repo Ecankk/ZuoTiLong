@@ -38,6 +38,28 @@ def image_content(path,data):
 
 
 def execute(root,data,action,payload,*,lease=None):
+    content=_execute(root,data,action,payload,lease=lease)
+    if action=='read_bank' and content and content[0]['type']=='text':
+        result=json.loads(content[0]['text'])
+        with closing(connection(data)) as conn:
+            from app.bank.errata import markers
+            result['errata']=markers(conn,payload['bank_id'])
+            if lease:
+                task=conn.execute('SELECT input_json FROM learning_tasks WHERE id=?',(lease['task_id'],)).fetchone()
+                inputs=json.loads(task[0])
+                if 'free_practice' in inputs:result['errata']=inputs['free_practice']['snapshot'].get('errata',[])
+            binding=result.get('material_binding')
+            if binding:
+                from app.bank.annotations import materials
+                from app.learning.tasks import digest
+                try:unchanged=digest(materials(conn,data,payload['bank_id']))==binding['material_revision']
+                except ValueError:unchanged=False
+                if not unchanged:result['errata']=[]
+        content[0]={'type':'text','text':json.dumps(result,ensure_ascii=False)}
+    return content
+
+
+def _execute(root,data,action,payload,*,lease=None):
     if action not in ACTIONS or not isinstance(payload,dict):raise ValueError('学习操作不合法')
     if action in ('deliver_result','preflight') and (set(payload)!={'result'} or not isinstance(payload['result'],dict)):
         raise ValueError(action+'的payload必须为{result:完整任务封装}，封装包含schema_version、task_id、kind、paper_id、input_revision、author、result')

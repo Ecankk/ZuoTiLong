@@ -54,6 +54,7 @@ def public(conn,row):
         target=question if role=='question' else reference
         if item['text'] or item['image_file']:target[role+'_text']=display_text(role,item)
         if item['image_file']:target[role+'_image']=f'/api/bank/{row["bank_id"]}/practice/attempts/{row["id"]}/materials/{role}'
+    reference['errata']=snapshot.get('errata',[])
     job=conn.execute('SELECT id,status FROM workflow_jobs WHERE attempt_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
     return {**body,'id':row['id'],'bank_id':row['bank_id'],'source':'free_practice',
         'question_type':snapshot['question_type'],'collection_id':snapshot['collection_id'],
@@ -120,6 +121,8 @@ class FreePracticeService:
         from app.knowledge.index import catalog
         binding.update(question_type=typ,collection_id=conn.execute('SELECT collection_id FROM bank_questions WHERE id=?',(bid,)).fetchone()[0],
             annotation=analysis,topic_ids=topics,definitions=[n for n in catalog(conn) if n['id'] in topics])
+        from app.bank.errata import markers
+        binding['errata']=markers(conn,bid)
         binding['source']={**{k:state[k] for k in ('math_type','year','number')},**metadata(conn,bid)}
         return binding,state
 
@@ -139,6 +142,7 @@ class FreePracticeService:
                 if item['text'] or item['image_file']:target[role+'_text']=display_text(role,item)
                 if item['image_file'] and latest:target[role+'_image']=f'/api/bank/{bid}/practice/attempts/{latest["id"]}/materials/{role}'
                 elif item['image_file']:target[role+'_image']=f'/api/bank/{bid}/{role}'
+            refs['errata']=snapshot.get('errata',[])
             total=conn.execute('SELECT count(*) FROM free_practice_attempts WHERE bank_id=?',(bid,)).fetchone()[0]
             return dict(bank_id=bid,question_type=snapshot['question_type'],collection_id=snapshot['collection_id'],question=question,
                 source=snapshot['source'],

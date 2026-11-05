@@ -27,7 +27,7 @@ class LocalBoundary:
             return await JSONResponse({},headers={'Access-Control-Allow-Origin':origin,'Vary':'Origin',
                 'Access-Control-Allow-Methods':'GET, HEAD, POST, OPTIONS',
                 'Access-Control-Allow-Headers':'Content-Type, If-None-Match','Access-Control-Max-Age':'600'})(scope,receive,send)
-        limit=80*1024*1024 if path=='/api/papers/import' else 33*1024*1024 if path=='/api/answer-images' else 16*1024*1024 if path in ('/api/knowledge/packages/preview','/api/knowledge/packages/import','/api/knowledge/question-index/preview','/api/knowledge/question-index/import') else 100000 if path.startswith('/api/agent/') else 1024*1024
+        limit=1024**3+1024**2 if path=='/api/library/collection-packs/preview' else 80*1024*1024 if path=='/api/papers/import' else 33*1024*1024 if path=='/api/answer-images' else 16*1024*1024 if path in ('/api/knowledge/packages/preview','/api/knowledge/packages/import','/api/knowledge/question-index/preview','/api/knowledge/question-index/import') else 100000 if path.startswith('/api/agent/') else 1024*1024
         try:length=int(headers.get(b'content-length',b'0'))
         except ValueError:return await JSONResponse({'error':'无效的请求长度'},status_code=400)(scope,receive,send)
         if length>limit:return await JSONResponse({'error':'请求或上传文件过大'},status_code=400)(scope,receive,send)

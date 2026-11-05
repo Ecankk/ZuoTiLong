@@ -185,7 +185,8 @@ def apply_report(conn, paper_id, report, root, *, question_numbers=None):
             continue
         number = str(item["number"])
         q = conn.execute("SELECT id FROM questions WHERE paper_id=? AND number=? ORDER BY created_at LIMIT 1", (paper_id, number)).fetchone()
-        qid = q[0] if q else f"{paper_id}-q-{int(number):02d}"
+        from app.storage.question_ids import available_question_id
+        qid = q[0] if q else available_question_id(conn, f"{paper_id}-q-{int(number):02d}")
         regions = item["regions"]
         if not q:
             conn.execute("INSERT INTO questions(id,paper_id,number,created_at) VALUES(?,?,?,?)", (qid, paper_id, number, stamp()))

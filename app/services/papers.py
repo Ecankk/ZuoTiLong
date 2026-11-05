@@ -116,7 +116,8 @@ class PaperService:
             old = next((row for row in existing if str(row.get("number")) == str(item["number"])), None)
             if old is None and index < len(existing) and "待补充题干" in (existing[index].get("stem") or ""):
                 old = existing[index]
-            qid = old["id"] if old else f"{paper_id}-q-{index + 1:02d}"
+            from app.storage.question_ids import available_question_id
+            qid = old["id"] if old else available_question_id(conn, f"{paper_id}-q-{index + 1:02d}")
             values = (
                 item["number"],
                 item["stem"],

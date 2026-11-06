@@ -143,9 +143,10 @@ export type PracticeStatus = 'pending' | 'grading' | 'graded' | 'needs_supplemen
 
 export type Access = {
   id: string
-  math_type: MathType
-  year: string
-  number: number
+  /** 题集题（如教辅）没有真题身份：这三项可能缺失、为空或为 0 */
+  math_type?: MathType | 0 | null
+  year?: string | null
+  number?: number | null
   reserved: boolean
   can_view: boolean
   confirmed: boolean

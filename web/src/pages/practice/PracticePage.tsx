@@ -93,8 +93,10 @@ function GroupCard({
                   </span>
                   <span className={styles.itemText}>
                     {grouping === 'topic'
-                      ? `第 ${index + 1} 道 · ${sourceName(item.access)}`
-                      : `${item.topics[0]?.name ?? '练习'} · ${sourceName(item.access)}`}
+                      ? [`第 ${index + 1} 道`, sourceName(item.access)].filter(Boolean).join(' · ')
+                      : [item.topics[0]?.name ?? '练习', sourceName(item.access)]
+                          .filter(Boolean)
+                          .join(' · ')}
                   </span>
                   <span
                     className={cx(

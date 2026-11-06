@@ -3,7 +3,7 @@ import type { PracticeResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Card } from '../../components/ui/Card'
 import { cx } from '../../lib/cx'
-import { mathTypeName, sourceName } from '../../lib/labels'
+import { mathTypeName, practiceSource } from '../../lib/labels'
 import { AttemptForm } from './AttemptForm'
 import { RevealButton } from './RevealButton'
 import styles from './PracticeCard.module.css'
@@ -30,12 +30,13 @@ export function QuestionContent({
 }
 
 function MaskedQuestion({ detail }: { detail: PracticeResponse }) {
-  const mathType = mathTypeName(detail.practice.access.math_type)
+  const type = detail.practice.access.math_type
+  const mathType = type ? mathTypeName(type) : ''
   const canReveal = detail.actions.includes('reveal_question')
   return (
     <div className={styles.masked}>
       <EyeOff size={22} aria-hidden />
-      <strong>{mathType}真题，默认遮挡</strong>
+      <strong>{mathType ? `${mathType}真题，默认遮挡` : '这道题默认遮挡'}</strong>
       <p>
         {canReveal
           ? `你在备考${mathType}，同类别真题可能留作整卷自测。查看后会记为“看过题目”。`
@@ -69,9 +70,7 @@ export function AnswerCard({
           <p className={styles.eyebrow}>
             {topicName} · 第 {position.index} / {position.total} 道
           </p>
-          <h2>
-            {sourceName(practice.access)} · 第 {practice.access.number} 题
-          </h2>
+          <h2>{practiceSource(practice.access) || '题库题目'}</h2>
           {detail.selection_reason && (
             <p className={styles.why}>
               <b>为什么练这道：</b>

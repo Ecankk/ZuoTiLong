@@ -29,8 +29,13 @@ export function assessmentCorrectness(assessment: {
 /** 试卷标题统一加书名号：《2023 数学一》 */
 export const paperName = (title: string) => `《${title}》`
 
-/** 题库来源：“2021 数学一” */
-export const sourceName = (access: Access) => `${access.year} ${mathTypeName(access.math_type)}`
+/** 题库来源：“2021 数学一”；题集题没有年份或类别时返回空字符串 */
+export const sourceName = (access: Access) =>
+  access.year && access.math_type ? `${access.year} ${mathTypeName(access.math_type)}` : ''
+
+/** 练习题出处：“2021 数学一 · 第 3 题”；缺的部分不显示，全缺时为空字符串 */
+export const practiceSource = (access: Access) =>
+  [sourceName(access), access.number ? `第 ${access.number} 题` : ''].filter(Boolean).join(' · ')
 
 /** "2026-10-28" → "10月28日" */
 export function monthDay(date: string) {

@@ -8,7 +8,7 @@ import { Card } from '../../components/ui/Card'
 import { Chip, CorrectnessChip } from '../../components/ui/Chip'
 import { Fold } from '../../components/ui/Fold'
 import { cx } from '../../lib/cx'
-import { assessmentCorrectness, sourceName } from '../../lib/labels'
+import { assessmentCorrectness, practiceSource } from '../../lib/labels'
 import { QuestionContent } from './AnswerCard'
 import { AttemptForm } from './AttemptForm'
 import { RevealButton } from './RevealButton'
@@ -128,8 +128,8 @@ export function GradedCard({
         <div>
           <div className={styles.gradedHead}>
             <Chip>
-              第 {position.index} 道 · {sourceName(practice.access)} · 第 {practice.access.number}{' '}
-              题
+              第 {position.index} 道
+              {practiceSource(practice.access) && ` · ${practiceSource(practice.access)}`}
             </Chip>
             <CorrectnessChip value={correctness} />
             <span className={styles.when}>{submittedTime(attempt.created_at)}</span>

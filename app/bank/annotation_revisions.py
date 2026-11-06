@@ -8,6 +8,11 @@ from app.knowledge import catalog
 
 EDITABLE_FIELDS = ('reference_reasoning', 'answer_check.note', 'limitations',
                    'bindings', 'methods', 'checkpoints', 'fingerprint')
+RESOLVE_REVIEW_INSTRUCTIONS = ('resolve_review 按题分别交付：已解决的题按 allowed_fields 修订为 ready；'
+    '仍未解决的题从 revision_base.analysis 完整复制并保持 needs_review，仅可补充 answer_check.note 和 limitations，'
+    'limitations 必须非空，其他字段（包括 answer_check.status、bindings、reference_reasoning）完全不变。'
+    '两类题均须在本批完整结果中返回，照常读取材料/定义并使用写入票据；不能改为 needs_catalog。'
+    '仍待核题保存新的说明版本，原标注与历史保留。此规则取代技能正文中未解决时仅保留原标注的旧说明。')
 
 
 def normalize(value, bank_ids):
@@ -51,7 +56,9 @@ def frozen_base(previous, source, request):
                  material_revision=source['material_revision'])
     result = {'annotation_id': previous['id'], 'source_bank_id': previous['source_bank_id'],
               'allowed_fields': request['allowed_fields'], 'analysis': value}
-    if request.get('resolve_review'): result['resolve_review'] = True
+    if request.get('resolve_review'):
+        result['resolve_review'] = True
+        result['resolution_policy'] = RESOLVE_REVIEW_INSTRUCTIONS
     return result
 
 
@@ -75,13 +82,16 @@ def validate(source, incoming):
         return
     baseline, fields = saved['analysis'], set(saved['allowed_fields'])
     if saved.get('resolve_review'):
-        if baseline['status'] != 'needs_review' or incoming['status'] != 'ready':
-            raise ValueError('待核修订只授权 needs_review → ready；未解决问题时请保留原标注')
-        fields.add('status')
+        if baseline['status'] != 'needs_review' or incoming['status'] not in ('ready','needs_review'):
+            raise ValueError('待核修订只授权解决后 ready 或保留 needs_review；仍待核时仅可补充 answer_check.note 和非空 limitations')
+        if incoming['status']=='needs_review':
+            if not incoming['limitations']:raise ValueError('仍待核题须保持 needs_review 并填写非空 limitations，复制 revision_base.analysis 的其他字段')
+            fields={'answer_check.note','limitations'}
+        else:fields.add('status')
     # A newly discovered uncertainty must be able to remove this question from
     # the ready pool. It cannot be turned into an unauthorized promotion.
     downgrade = incoming['status'] in ('needs_review', 'needs_catalog')
-    if downgrade:
+    if downgrade and not saved.get('resolve_review'):
         if not incoming['limitations']:
             raise ValueError('窄修订发现实质问题时须明确具体限制，不能无依据降为待核')
         if incoming['status'] == 'needs_catalog' and not incoming['unmatched_topics']:

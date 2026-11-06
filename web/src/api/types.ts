@@ -288,6 +288,7 @@ export type FreeReference = {
   answer_image?: string | null
   analysis_text?: string | null
   analysis_image?: string | null
+  errata?: Erratum[]
 }
 
 export type FreeAttempt = {
@@ -435,6 +436,38 @@ export type BankCard = {
   /** 所属题集；教辅题另有书内定位（真题没有） */
   collection_id: string
   book?: BookLocator
+  /** 勘误记录（无勘误为空）；答案/解析类依据要在答案可见后才能展开 */
+  errata?: Erratum[]
+}
+
+export type Erratum = { role: string; reason: string; evidence: string }
+
+/** 导入题集包：预演与确认返回同一结构，确认后 applied=true 并带备份信息 */
+export type CollectionPackReport = {
+  package_sha256: string
+  plan_sha256: string
+  package_version?: string
+  created_at?: string
+  sources?: { source_id: string; revision: string }[]
+  trust_notice?: string
+  collection: { id: string; name: string; kind: string }
+  counts: {
+    total: number
+    ready: number
+    needs_review: number
+    needs_catalog: number
+    unannotated: number
+  }
+  added: string[]
+  updated: string[]
+  unchanged: string[]
+  catalog: { status: 'current' | 'upgrade' | 'keep_current' | 'conflict' }
+  collection_conflicts: (
+    | { collection_id: string; existing_kind: string; requested_kind: string }
+    | { bank_id: string; existing: string; requested: string }
+  )[]
+  applied: boolean
+  backup?: { path: string; files?: number }
 }
 
 /** 教辅题的书内定位，各字段都可能为空 */

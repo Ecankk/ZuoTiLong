@@ -339,3 +339,23 @@
 .topicResults .textSearch strong {
   color: var(--color-primary);
 }
+
+.errata {
+  margin-top: var(--space-3);
+}
+
+.errata ul {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--text-regular);
+  font-size: var(--font-size-sm);
+  line-height: 1.8;
+}
+
+.errataEvidence {
+  color: var(--text-muted);
+}
+
+.errataHidden {
+  color: var(--text-muted);
+}

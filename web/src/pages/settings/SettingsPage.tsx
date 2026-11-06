@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
+import { CollectionImportCard } from './CollectionImportCard'
 import { DataCard } from './DataCard'
 import { ModelCard } from './ModelCard'
 import { ConventionCard, FreePracticeCard, MaskCard } from './PreferenceCards'
@@ -59,6 +60,7 @@ export function SettingsPage() {
         <MaskCard />
         <FreePracticeCard />
         <ConventionCard />
+        <CollectionImportCard />
         <DataCard />
         <Card padded className={styles.section} aria-label="关于">
           <h2>关于做题龙</h2>

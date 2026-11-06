@@ -7,6 +7,7 @@ import { Chip, CorrectnessChip } from '../../components/ui/Chip'
 import { Fold } from '../../components/ui/Fold'
 import { assessmentCorrectness } from '../../lib/labels'
 import { QuestionContent } from '../practice/AnswerCard'
+import { ErrataNote } from './Errata'
 import styles from './FreePracticePage.module.css'
 
 const pageSize = 10
@@ -45,6 +46,7 @@ export function ReferenceBlock({
   if (!parts.some(([, text, image]) => text || image)) return null
   return (
     <Fold title="参考答案与解析" defaultOpen={open}>
+      <ErrataNote errata={reference.errata} answerVisible />
       {parts.map(([label, text, image]) =>
         text || image ? (
           <div key={label} className={styles.reference}>

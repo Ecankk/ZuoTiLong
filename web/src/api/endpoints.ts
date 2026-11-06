@@ -9,6 +9,7 @@ import type {
   AttemptBody,
   BankCard,
   BankCollection,
+  CollectionPackReport,
   FreeAttempt,
   FreeAttemptBody,
   FreePractice,
@@ -180,6 +181,21 @@ export const endpoints = {
   /** 确认查看题目或解析，会记录曝光 */
   reveal: (bankId: string, role: 'question' | 'analysis') =>
     postJson(`/api/bank/${enc(bankId)}/reveal`, { role, confirmed: true }),
+  previewCollectionPack: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<CollectionPackReport>('/api/library/collection-packs/preview', {
+      method: 'POST',
+      body: form,
+    })
+  },
+  /** 长请求（真题包约 2.5 分钟），不设超时 */
+  confirmCollectionPack: (report: Pick<CollectionPackReport, 'package_sha256' | 'plan_sha256'>) =>
+    postJson<CollectionPackReport>('/api/library/collection-packs/confirm', {
+      package_sha256: report.package_sha256,
+      plan_sha256: report.plan_sha256,
+      confirmed: true,
+    }),
   uploadImages: (files: File[]) => {
     const form = new FormData()
     for (const file of files) form.append('files', file)

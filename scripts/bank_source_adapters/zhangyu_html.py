@@ -1,4 +1,4 @@
-"""S03 pinned strengthening chapters, converted without import or corrections."""
+"""S03 pinned book parts, converted without import or corrections."""
 import hashlib,json
 from pathlib import Path
 from app.bank.source_records import SCHEMA,resource,digest
@@ -6,6 +6,7 @@ from scripts.extra_bank_adapters.zhangyu_html import adapt_zhangyu,KNOWN_REVISIO
 
 REVISION=KNOWN_REVISION
 TYPES={'选择':'choice','填空':'fill','解答':'proof'}
+PARTS={'strengthening':(range(32,68),683),'comprehensive':(range(68,72),88),'basic':(range(1,32),536)}
 
 def convert(item):
     source=item['source'];identity=item['identity'];content=item['content']
@@ -21,14 +22,18 @@ def convert(item):
         stem=resource(content['stem']),answer=resource(content['answer'] or ''),analysis=resource(content['explanation']),
         options=[dict(label=o['key'],content=resource(o['value'])) for o in content['options']],
         original=dict(source_text=book['title']+' / '+book['part']+' / '+book['chapter']+' / '+book['locator'],
-            record=item,sha256=digest(item)),book=book,tags=[identity['subject'],identity['chapter_title'],'强化篇'])
+            record=item,sha256=digest(item)),book=book,tags=[identity['subject'],identity['chapter_title'],identity['part']])
 
-def adapt(root,*,year=None,math_type=None):
-    if year is not None or math_type is not None:raise ValueError('S03 adapter only accepts strengthening chapters 32–67; these are not exam identities')
+def adapt(root,*,year=None,math_type=None,parts=None):
+    if year is not None or math_type is not None:raise ValueError('S03 book chapters are not exam identities')
+    parts=['strengthening'] if parts is None else parts
+    if not parts or len(set(parts))!=len(parts) or any(p not in PARTS for p in parts):raise ValueError('parts must select distinct strengthening/comprehensive/basic')
+    chapters=sorted(c for p in parts for c in PARTS[p][0])
     root=Path(root)
     expected=json.loads(Path(__file__).with_suffix('.hashes.json').read_text(encoding='utf-8'))
-    for name,sha in expected.items():
+    for name in ['index.html']+[f'chapters/chapter-{c:02d}.html' for c in chapters]:
+        sha=expected[name]
         if hashlib.sha256((root/name).read_bytes()).hexdigest()!=sha:raise ValueError('Pinned S03 file SHA256 mismatch: '+name)
-    result=[convert(item) for item in adapt_zhangyu(root,revision=REVISION)]
-    if len(result)!=683:raise ValueError('Pinned S03 strengthening subset must contain 683 records')
+    result=[convert(item) for item in adapt_zhangyu(root,revision=REVISION,chapters=tuple(chapters))]
+    if len(result)!=sum(PARTS[p][1] for p in parts):raise ValueError('Pinned S03 selected parts question count mismatch')
     return result

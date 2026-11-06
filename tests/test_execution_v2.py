@@ -277,6 +277,12 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse(any(m=='thread/start' for m,_ in b.transport.calls))
 
     def test_grade_initial_package_saves_in_one_delivery_with_answer_photo(self):
+        self._grade_initial_package('own_work')
+
+    def test_grade_initial_package_only_evaluates_marking_when_attached(self):
+        self._grade_initial_package('marking')
+
+    def _grade_initial_package(self,role):
         self.save_selection()
         from app.learning.loop import submit_probe
         from app.storage.images import save_answer_image
@@ -287,7 +293,7 @@ class ExecutionTests(unittest.TestCase):
         pid=self.conn.execute('SELECT probe_id FROM practice_question_bindings ORDER BY rowid DESC LIMIT 1').fetchone()[0]
         reveal(self.conn,prepared.BANK,'question',True)
         attempt=submit_probe(self.conn,pid,{'response':r'$2x\cos(x^2)$','image_ids':[image['id']],
-            'image_roles':{image['id']:'own_work'}})['attempt_id'];self.conn.commit()
+            'image_roles':{image['id']:role}})['attempt_id'];self.conn.commit()
         from app.learning.practice_knowledge import bind_attempt
         bind_attempt(self.conn,attempt);self.conn.commit()
         self.f.start('grade_attempt',attempt_id=attempt,contract_version='1.9')
@@ -296,9 +302,14 @@ class ExecutionTests(unittest.TestCase):
         text=json.loads(package[0]['text'])
         self.assertTrue(text['definitions']);self.assertIn('prompt',text['assignment'])
         self.assertTrue(any(i['type']=='localImage' for i in package))
-        self.assertEqual(text['attempt']['image_roles_json'],json.dumps({image['id']:'own_work'},ensure_ascii=False))
+        self.assertEqual(text['attempt']['image_roles_json'],json.dumps({image['id']:role},ensure_ascii=False))
+        requirements='\n'.join(text['requirements'])
+        self.assertIn('feedback只写1–3句结论',requirements)
+        self.assertIn('无需固定标签',requirements)
+        if role=='marking':self.assertIn('本次确实附有事后批改图片',requirements)
+        else:self.assertIn('本次未附事后批改图片',requirements)
         value=self.f.envelope({'attempt_id':attempt,'correct':True,'answer_status':'correct',
-            'feedback':r'你的作答$2x\cos(x^2)$正确。','reference_reasoning':'外层导数乘内层导数。',
+            'feedback':'结论正确。','reference_reasoning':'外层导数乘内层导数。',
             'observations':[],'first_error':None,'possible_causes':[],'topic_ids':[prepared.TOPIC],
             'next_step':'继续独立检验。','needs_material':[]})
         self.assertTrue(preflight(self.conn,self.root,self.data,value,lease)['valid'])

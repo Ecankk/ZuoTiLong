@@ -10,6 +10,7 @@ import type {
   BankCard,
   BankCollection,
   CollectionPackReport,
+  PageImage,
   FreeAttempt,
   FreeAttemptBody,
   FreePractice,
@@ -181,6 +182,21 @@ export const endpoints = {
   /** 确认查看题目或解析，会记录曝光 */
   reveal: (bankId: string, role: 'question' | 'analysis') =>
     postJson(`/api/bank/${enc(bankId)}/reveal`, { role, confirmed: true }),
+  /** 原卷整页图列表（调整切图用，接口形状待 B23 确定） */
+  paperPages: (paperId: string) =>
+    request<{ items: PageImage[] }>(`/api/papers/${enc(paperId)}/pages`),
+  /** 只改这道题显示的原卷图（B23），坐标同拆题的 y */
+  adjustRegions: (
+    paperId: string,
+    questionId: string,
+    request_id: string,
+    regions: { page: number; top: number; bottom: number }[],
+  ) =>
+    postJson(`/api/papers/${enc(paperId)}/questions/${enc(questionId)}/regions`, {
+      confirmed: true,
+      request_id,
+      regions,
+    }),
   previewCollectionPack: (file: File) => {
     const form = new FormData()
     form.append('file', file)

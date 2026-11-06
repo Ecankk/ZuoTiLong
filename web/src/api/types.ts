@@ -480,6 +480,15 @@ export type BookLocator = {
   locator: string | null
 }
 
+/** 原卷整页图（调整切图用）；坐标换算同切图，原点为 0（接口待 B23 确定） */
+export type PageImage = {
+  page: number
+  image_url: string
+  image_width: number
+  image_height: number
+  scale: number
+}
+
 export type EvidenceRegion = {
   region_index: number
   page: number

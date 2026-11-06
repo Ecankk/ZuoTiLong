@@ -1,5 +1,6 @@
 """One visible collection per question; source provenance remains independent."""
 DEFAULTS=(('zhenti','真题','exam',10),('zhangyu-1000','张宇1000题','book',20),
+          ('zhangyu-1000-tests','张宇1000题测试卷','book',25),
           ('other','其他','other',30),('example','示例','example',40))
 LEGACY=('数学一真题图片库','数学二真题图片库','数学三真题图片库')
 

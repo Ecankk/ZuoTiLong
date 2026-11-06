@@ -15,6 +15,9 @@ def convert(item):
     if content['illustrations']:raise ValueError('Pinned S03 subset unexpectedly contains images')
     book=dict(title=identity['book_title_claimed'],edition=identity['edition_label_claimed'],part=identity['part'],
         chapter=identity['chapter_title'],number=None,locator=source['source_uid'])
+    if identity['part']=='综合篇':
+        book['number']=str(source['source_question_number'])
+        book['locator']=book['chapter']+' / 第 '+book['number']+' 题'
     # chapter-local numbers are source locators, not verified printed book IDs.
     return dict(schema=SCHEMA,source_id='S03',revision=REVISION,source_uid=source['source_uid'],
         locator=dict(path=source['source_file'],pointer='#q'+str(source['source_question_number']),source_sha256=source['source_file_sha256']),
@@ -22,7 +25,7 @@ def convert(item):
         stem=resource(content['stem']),answer=resource(content['answer'] or ''),analysis=resource(content['explanation']),
         options=[dict(label=o['key'],content=resource(o['value'])) for o in content['options']],
         original=dict(source_text=book['title']+' / '+book['part']+' / '+book['chapter']+' / '+book['locator'],
-            record=item,sha256=digest(item)),book=book,tags=[identity['subject'],identity['chapter_title'],identity['part']])
+            record=item,sha256=digest(item)),book=book,tags=['测试卷',book['chapter']] if identity['part']=='综合篇' else [identity['subject'],identity['chapter_title'],identity['part']])
 
 def adapt(root,*,year=None,math_type=None,parts=None):
     if year is not None or math_type is not None:raise ValueError('S03 book chapters are not exam identities')

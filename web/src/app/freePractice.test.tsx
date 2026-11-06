@@ -257,3 +257,52 @@ it('shows the correction note next to a visible reference', async () => {
   expect(within(latest).getByText('本题已按勘误修正')).toBeInTheDocument()
   expect(within(latest).getByText(/原答案误印为 C/)).toBeInTheDocument()
 })
+
+it('lets a blank question be answered with a handwritten photo only', async () => {
+  const drafts: unknown[] = []
+  const posts: Record<string, unknown>[] = []
+  mockServer({
+    routes: (path, init) => {
+      if (path === '/api/bank/q1/practice')
+        return json(
+          practice({ question_type: '填空题', question: { question_text: '求极限 ____' } }),
+        )
+      if (path === '/api/answer-images')
+        return json({ images: [{ id: 'img-1', url: '/uploads/img-1.png' }] })
+      if (path === '/api/drafts' && init?.method === 'POST') {
+        drafts.push(JSON.parse(String(init.body)))
+        return json({ ok: true })
+      }
+      if (path === '/api/bank/q1/practice/attempts' && init?.method === 'POST') {
+        posts.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+        return json(
+          attempt({
+            question_type: '填空题',
+            assessment: null,
+            job: { id: 'j', status: 'queued' },
+          }),
+        )
+      }
+      return undefined
+    },
+  })
+  renderAt('/bank/q1/practice')
+  const card = await screen.findByRole('region', { name: '作答' })
+  expect(within(card).getByText('不好打字时可以直接上传手写照片')).toBeInTheDocument()
+  const submit = within(card).getByRole('button', { name: '提交' })
+  expect(submit).toBeDisabled()
+  const input = card.querySelector('input[type=file]') as HTMLInputElement
+  await userEvent.upload(input, new File(['x'], 'hand.png', { type: 'image/png' }))
+  expect(await within(card).findByRole('img', { name: '作答照片 1' })).toBeInTheDocument()
+  await vi.waitFor(
+    () => expect(drafts.some((d) => JSON.stringify(d).includes('img-1'))).toBe(true),
+    { timeout: 2000 },
+  )
+  await userEvent.click(submit)
+  await vi.waitFor(() => expect(posts).toHaveLength(1))
+  expect(posts[0]).toMatchObject({
+    response: '',
+    image_ids: ['img-1'],
+    image_roles: { 'img-1': 'own_work' },
+  })
+})

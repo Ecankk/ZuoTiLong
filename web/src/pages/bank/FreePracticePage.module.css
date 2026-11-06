@@ -205,3 +205,9 @@
   color: var(--text-muted);
   font-size: var(--font-size-sm);
 }
+
+.blankHint {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}

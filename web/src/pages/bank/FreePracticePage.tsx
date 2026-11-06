@@ -81,9 +81,9 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
   const content = {
     response: isChoice ? choice : text.trim(),
     ...(isChoice ? { choice } : {}),
-    image_ids: isChoice || isBlank ? [] : photos.map((photo) => photo.id),
-    image_roles:
-      isChoice || isBlank ? {} : Object.fromEntries(photos.map((photo) => [photo.id, photo.role])),
+    // 只有选择题不收照片；填空和解答都可以附手写照片
+    image_ids: isChoice ? [] : photos.map((photo) => photo.id),
+    image_roles: isChoice ? {} : Object.fromEntries(photos.map((photo) => [photo.id, photo.role])),
     answer_exposed: exposed,
   }
   const empty = isChoice ? !choice : !content.response && content.image_ids.length === 0
@@ -139,14 +139,19 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
           ))}
         </div>
       ) : isBlank ? (
-        <input
-          className={styles.blank}
-          aria-label="填空答案"
-          placeholder="填写答案，如 1/2 或 \frac{1}{2}"
-          maxLength={2000}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-        />
+        <>
+          <input
+            className={styles.blank}
+            aria-label="填空答案"
+            placeholder="填写答案，如 1/2 或 \frac{1}{2}"
+            maxLength={2000}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onPaste={onPaste}
+          />
+          <p className={styles.blankHint}>不好打字时可以直接上传手写照片</p>
+          <PhotoPicker photos={photos} setPhotos={setPhotos} add={add} uploading={uploading} />
+        </>
       ) : (
         <>
           <textarea

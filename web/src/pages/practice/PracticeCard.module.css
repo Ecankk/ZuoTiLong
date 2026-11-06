@@ -485,3 +485,22 @@ a.thumb {
     transform: rotate(360deg);
   }
 }
+
+.feedbackSection p + p {
+  margin-top: var(--space-2);
+}
+
+.problemList {
+  margin: var(--space-2) 0 0;
+  padding-left: 1.2em;
+}
+
+.problemList li + li {
+  margin-top: var(--space-1);
+}
+
+.problemList small {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}

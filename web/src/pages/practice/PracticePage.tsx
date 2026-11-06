@@ -1,14 +1,15 @@
-import { Check } from 'lucide-react'
+import { Check, ChevronRight } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import type { PracticeGrouping } from '../../api/endpoints'
 import { usePractice, usePractices } from '../../api/queries'
-import type { PracticeCard, PracticeGroup } from '../../api/types'
+import type { PracticeCard, PracticeGroup, TopicRef } from '../../api/types'
 import { Card } from '../../components/ui/Card'
 import { Chip } from '../../components/ui/Chip'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
 import { cx } from '../../lib/cx'
-import { paperName, sourceName } from '../../lib/labels'
+import { paperName, practiceSource } from '../../lib/labels'
 import { AnswerCard } from './AnswerCard'
 import { GradedCard } from './GradedCard'
 import { PendingAttemptCard } from './PendingAttemptCard'
@@ -30,81 +31,125 @@ function pickSelected(groups: PracticeGroup[], item: string | null, topic: strin
   return (scope.find((card) => card.status === 'pending') ?? scope[0] ?? cards[0])?.id
 }
 
-function GroupCard({
-  group,
+type Row = { card: PracticeCard; also: TopicRef[] }
+type Section = { group: PracticeGroup; rows: Row[] }
+
+/**
+ * 左栏分组：按考点时同一道题只出现在它第一次出现的考点下，其他考点作为标签显示在这一行；
+ * 去重后没有题的考点不单独列出。
+ */
+export function buildSections(groups: PracticeGroup[], grouping: PracticeGrouping): Section[] {
+  const seen = new Set<string>()
+  const sections: Section[] = []
+  for (const group of groups) {
+    const rows = group.items
+      .filter((card) => !seen.has(card.id))
+      .map((card) => ({
+        card,
+        also: grouping === 'topic' ? card.topics.filter((t) => t.topic_id !== group.id) : [],
+      }))
+    rows.forEach((row) => seen.add(row.card.id))
+    if (rows.length) sections.push({ group, rows })
+  }
+  return sections
+}
+
+function Progress({ cards }: { cards: PracticeCard[] }) {
+  return (
+    <span className={styles.progress} aria-hidden>
+      {cards.map((card) => (
+        <i key={card.id} className={styles[card.status]} />
+      ))}
+    </span>
+  )
+}
+
+function SectionList({
+  section,
   grouping,
   selected,
   linkFor,
 }: {
-  group: PracticeGroup
+  section: Section
   grouping: PracticeGrouping
   selected: string | undefined
   linkFor: (id: string) => string
 }) {
-  const allGraded = group.items.every((item) => item.status === 'graded')
-  const papers = [...new Set(group.items.map((item) => paperName(item.paper_title)))]
-  const subtitle =
-    grouping === 'topic'
-      ? allGraded
-        ? `已完成 · ${group.items.length} 道都批改了`
-        : `来自${papers.join('、')}`
-      : `${group.items.length} 道练习`
+  const { group, rows } = section
+  const cards = rows.map((row) => row.card)
+  const pending = cards.filter((card) => card.status === 'pending').length
+  const allGraded = cards.every((card) => card.status === 'graded')
+  const hasSelected = cards.some((card) => card.id === selected)
+  const [open, setOpen] = useState(!(allGraded && grouping === 'topic') || hasSelected)
+  const title =
+    grouping === 'paper' ? (
+      paperName(group.label)
+    ) : group.id === 'unlinked' ? (
+      group.label
+    ) : (
+      <Link className={styles.topicLink} to={`/topics/${encodeURIComponent(group.id)}`}>
+        {group.label}
+      </Link>
+    )
+  const countText = `${cards.length} 道${pending > 0 ? ` · ${pending} 待做` : allGraded ? ' · 已完成' : ''}`
   return (
-    <Card className={cx(styles.group, allGraded && grouping === 'topic' && styles.done)}>
-      <div className={styles.groupHead}>
-        <strong>
-          {grouping === 'paper' ? (
-            paperName(group.label)
-          ) : group.id === 'unlinked' ? (
-            group.label
-          ) : (
-            <Link className={styles.topicLink} to={`/topics/${encodeURIComponent(group.id)}`}>
-              {group.label}
-            </Link>
-          )}
-        </strong>
-        <small>
-          <span>{subtitle}</span>
-          <span className={styles.dots} aria-hidden>
-            {group.items.map((item) => (
-              <i key={item.id} className={styles[item.status]} />
-            ))}
-          </span>
-        </small>
+    <section className={styles.section} aria-label={group.label}>
+      <div className={styles.sectionHead}>
+        <button
+          type="button"
+          className={cx(styles.fold, open && styles.open)}
+          aria-expanded={open}
+          aria-label={open ? `收起${group.label}` : `展开${group.label}`}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronRight size={14} aria-hidden />
+        </button>
+        <strong className={styles.sectionTitle}>{title}</strong>
+        <small className={styles.sectionCount}>{countText}</small>
       </div>
-      {!(allGraded && grouping === 'topic') && (
+      <Progress cards={cards} />
+      {open && (
         <ul className={styles.items}>
-          {group.items.map((item, index) => {
-            const current = item.id === selected
+          {rows.map(({ card, also }, index) => {
+            const current = card.id === selected
+            const source = practiceSource(card.access) || '题库题目'
             return (
-              <li key={item.id}>
+              <li key={card.id}>
                 <Link
-                  to={linkFor(item.id)}
+                  to={linkFor(card.id)}
                   className={styles.item}
                   aria-current={current || undefined}
+                  data-current={current || undefined}
+                  title={`来自${paperName(card.paper_title)}`}
                 >
                   <span
                     className={cx(
                       styles.mark,
-                      current && item.status === 'pending' ? styles.current : styles[item.status],
+                      current && card.status === 'pending' ? styles.current : styles[card.status],
                     )}
                   >
-                    {item.status === 'graded' && <Check aria-hidden />}
+                    {card.status === 'graded' && <Check aria-hidden />}
                   </span>
                   <span className={styles.itemText}>
-                    {grouping === 'topic'
-                      ? [`第 ${index + 1} 道`, sourceName(item.access)].filter(Boolean).join(' · ')
-                      : [item.topics[0]?.name ?? '练习', sourceName(item.access)]
-                          .filter(Boolean)
-                          .join(' · ')}
+                    <span className={styles.itemTitle}>
+                      {grouping === 'topic'
+                        ? `第 ${index + 1} 道`
+                        : card.topics.map((t) => t.name).join('、') || '练习'}
+                    </span>
+                    <small className={styles.itemSource}>{source}</small>
+                    {also.length > 0 && (
+                      <small className={styles.also}>
+                        也属于：{also.map((t) => t.name).join('、')}
+                      </small>
+                    )}
                   </span>
                   <span
                     className={cx(
                       styles.itemState,
-                      (current || item.status === 'grading') && styles.active,
+                      (current || card.status === 'grading') && styles.active,
                     )}
                   >
-                    {current && item.status === 'pending' ? '正在做' : stateLabel[item.status]}
+                    {current && card.status === 'pending' ? '正在做' : stateLabel[card.status]}
                   </span>
                 </Link>
               </li>
@@ -112,7 +157,7 @@ function GroupCard({
           })}
         </ul>
       )}
-    </Card>
+    </section>
   )
 }
 
@@ -155,9 +200,25 @@ export function PracticePage() {
   const grouping: PracticeGrouping = params.get('view') === 'paper' ? 'paper' : 'topic'
   const includeInactive = params.get('inactive') === '1'
   const { data } = usePractices(grouping, includeInactive)
+  const listRef = useRef<HTMLElement>(null)
+  const workRef = useRef<HTMLDivElement>(null)
+  const selectedId = data
+    ? pickSelected(data.items, params.get('item'), params.get('topic'))
+    : undefined
+  // 换题后：列表里把当前题滚到可见处，右栏回到顶部
+  useEffect(() => {
+    if (!selectedId) return
+    listRef.current?.querySelector('[data-current]')?.scrollIntoView?.({ block: 'nearest' })
+    workRef.current?.scrollIntoView?.({ block: 'start' })
+  }, [selectedId])
   if (!data) return null
 
-  const selected = pickSelected(data.items, params.get('item'), params.get('topic'))
+  const selected = selectedId
+  const sections = buildSections(data.items, grouping)
+  // 待做、批改中、已批改按去重后的题数统计，和列表一致
+  const unique = sections.flatMap((section) => section.rows.map((row) => row.card))
+  const count = (status: PracticeCard['status']) =>
+    unique.filter((card) => card.status === status).length
   const group = data.items.find((g) => g.items.some((item) => item.id === selected))
   const card = group?.items.find((item) => item.id === selected)
   const otherGraded =
@@ -177,11 +238,11 @@ export function PracticePage() {
         title="练习"
         subtitle={
           <div className={styles.summary}>
-            <Chip tone="primary">{data.counts.pending} 道待做</Chip>
-            {data.counts.grading > 0 && <Chip tone="primary">{data.counts.grading} 道批改中</Chip>}
-            <Chip>已批改 {data.counts.graded} 道</Chip>
-            {includeInactive && data.counts.inactive > 0 && (
-              <Chip tone="unknown">已停用 {data.counts.inactive} 道</Chip>
+            <Chip tone="primary">{count('pending')} 道待做</Chip>
+            {count('grading') > 0 && <Chip tone="primary">{count('grading')} 道批改中</Chip>}
+            <Chip>已批改 {count('graded')} 道</Chip>
+            {includeInactive && count('inactive') > 0 && (
+              <Chip tone="unknown">已停用 {count('inactive')} 道</Chip>
             )}
           </div>
         }
@@ -224,21 +285,24 @@ export function PracticePage() {
         </Card>
       ) : (
         <div className={styles.layout}>
-          <aside
-            className={styles.groups}
-            aria-label={grouping === 'topic' ? '考点分组' : '试卷分组'}
-          >
-            {data.items.map((g) => (
-              <GroupCard
-                key={g.id}
-                group={g}
-                grouping={grouping}
-                selected={selected}
-                linkFor={linkFor}
-              />
-            ))}
-          </aside>
-          <div className={styles.work}>
+          <Card className={styles.groupsCard}>
+            <aside
+              ref={listRef}
+              className={styles.groups}
+              aria-label={grouping === 'topic' ? '考点分组' : '试卷分组'}
+            >
+              {sections.map((section) => (
+                <SectionList
+                  key={`${grouping}-${section.group.id}`}
+                  section={section}
+                  grouping={grouping}
+                  selected={selected}
+                  linkFor={linkFor}
+                />
+              ))}
+            </aside>
+          </Card>
+          <div className={styles.work} ref={workRef}>
             {card && group && <SelectedPractice card={card} group={group} />}
             {otherGraded.map((item) => (
               <OtherGraded key={item.id} card={item} group={group!} />

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>题库核对</title><link rel="stylesheet" href="vendor/katex/katex.min.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f4f7;color:#182437;font:16px/1.65 system-ui,"Microsoft YaHei",sans-serif}header{position:sticky;top:0;background:#fff;border-bottom:1px solid #dbe1e8;padding:14px max(20px,calc((100vw - 960px)/2));z-index:2}h1{font-size:22px;margin:0}header p{margin:2px 0;color:#586579}main{max-width:960px;margin:24px auto;padding:0 18px}.card{background:#fff;border:1px solid #dbe1e8;border-radius:12px;padding:26px;margin:0 0 24px}h2{font-size:20px;margin:0 0 8px}h3{font-size:16px;margin:20px 0 6px}.meta{color:#586579;font-size:14px;overflow-wrap:anywhere}.math{white-space:pre-wrap;overflow-wrap:anywhere}.math .katex-display{overflow:auto;padding:4px 0}img{display:block;max-width:100%;height:auto;margin:12px 0;border:1px solid #e1e6ed}fieldset{border:0;border-top:1px solid #dbe1e8;margin:24px 0 0;padding:20px 0 0}fieldset label{display:inline-block;margin:0 18px 8px 0}textarea{width:100%;min-height:100px;border:1px solid #9caabb;border-radius:6px;padding:10px;font:inherit}input[type=file]{display:block;max-width:100%;margin:10px 0}.save{color:#236b4e;font-size:14px}.save.error{color:#b02929}.notes{background:#fff7dc;padding:12px;border-radius:6px}code{white-space:pre-wrap}details{margin-top:12px}a{color:#205fa8}.photos img{max-height:250px;width:auto}button{font:inherit}.empty{color:#687689}
+</style></head><body>
+<header><h1>题库核对</h1><p id="progress"></p><label><input type="checkbox" id="unreviewed"> 只看未核题目</label><p id="mode"></p></header>
+<main id="cards"></main>
+<script src="vendor/katex/katex.min.js"></script><script src="vendor/math.js"></script><script src="sheet-data.js"></script>
+<script>
+'use strict';
+(async()=>{
+const serving=location.protocol==='http:', saved=serving?await (await fetch('/state')).json():SHEET.feedback;
+const feedback=new Map(saved.map(r=>[r.bank_id,r])), cards=document.getElementById('cards');
+document.getElementById('mode').textContent=serving?'修改自动保存到 feedback.json；照片仅保存在本机输出目录。':'离线预览。要保存核对意见和照片，请使用 --serve 打开本机网址。';
+function element(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
+function math(text){const n=element('div',undefined,'math');for(const part of mathParts(text)){const value=renderMathPart(part,katex);if(value.html){const s=element('span');s.innerHTML=value.html;n.append(s)}else n.append(element(part.kind==='code'||value.error?'code':'span',part.raw))}return n}
+function section(parent,title,text){parent.append(element('h3',title),math(text||'（无）'))}
+function image(parent,path){const im=element('img');im.src=path;im.loading='lazy';im.alt='题目材料';parent.append(im)}
+function refresh(){const count=[...feedback.values()].filter(r=>r.verdict).length;document.getElementById('progress').textContent=`已核 ${count}/${SHEET.cards.length}`;for(const card of cards.children)card.hidden=document.getElementById('unreviewed').checked&&!!feedback.get(card.dataset.bankId)?.verdict}
+async function request(path,body,type='application/json'){const response=await fetch(path,{method:'POST',headers:{'Content-Type':type},body});const value=await response.json();if(!response.ok)throw new Error(value.error||'保存失败');return value}
+for(const q of SHEET.cards){
+ const card=element('article',undefined,'card');card.dataset.bankId=q.bank_id;
+ card.append(element('h2',q.location),element('div',`${q.collection_name} · ${q.bank_id} · ${q.status}`,'meta'));
+ section(card,'题干',q.resources.question.text);for(const o of q.options)card.append(math(`${o.label}. ${o.text}`));for(const path of q.resources.question.images)image(card,path);
+ for(const [role,title] of [['answer','参考答案'],['analysis','参考解析']]){section(card,title,q.resources[role].text);for(const path of q.resources[role].images)image(card,path)}
+ card.append(element('h3','考点'));if(!q.topics.length)card.append(element('p','当前无有效标注','empty'));
+ const names={primary:'主考点',supporting:'辅考点',prerequisite:'前置考点'};
+ for(const t of q.topics)card.append(element('div',`${names[t.role]||t.role}：${t.name} — ${t.path}`));
+ section(card,'review_note / 核对说明',q.review_note);
+ if(q.errata.length){card.append(element('h3','已应用勘误'));for(const e of q.errata)card.append(math(`${e.role}：${e.reason}\n依据：${e.evidence}`))}
+ if(q.notes){const box=element('div',undefined,'notes');box.append(element('h3','本次核对点'));const checks=q.notes.checks??q.notes.review_points??q.notes['核对点']??[];for(const check of Array.isArray(checks)?checks:[checks])box.append(math(String(check)));for(const e of q.notes.errata??[])box.append(math(`${e.role??''} ${e.find} → ${e.replace}\n${e.reason??''}\n${e.evidence??''}`));card.append(box)}
+ const field=element('fieldset');field.disabled=!serving;field.append(element('legend','核对反馈'));
+ const old=feedback.get(q.bank_id)||{},save=element('div',old.updated_at?'已保存':'尚未核对','save'),input=element('textarea');input.placeholder='写下原书写法或意见';input.value=old.note||'';input.maxLength=20000;
+ const radios=[];for(const [value,title] of [['consistent','原书与题库一致'],['error','题库有误'],['uncertain','不确定']]){const label=element('label'),r=element('input');r.type='radio';r.name=q.bank_id;r.value=value;r.checked=old.verdict===value;radios.push(r);label.append(r,document.createTextNode(' '+title));field.append(label)}
+ const photos=element('div',undefined,'photos');for(const path of old.photos||[])image(photos,path);
+ const upload=element('input');upload.type='file';upload.accept='image/png,image/jpeg,image/webp';field.append(input,element('label','上传原书照片（可选，最大10MB）'),upload,photos,save);card.append(field);
+ const detail=element('details');detail.append(element('summary','材料版本'),element('div',q.material_sha256,'meta'));card.append(detail);cards.append(card);
+ let timer,queue=Promise.resolve();
+ function schedule(photo){clearTimeout(timer);save.textContent='保存中…';save.className='save';const payload={bank_id:q.bank_id,material_sha256:q.material_sha256,verdict:radios.find(r=>r.checked)?.value||'',note:input.value};queue=queue.catch(()=>{}).then(async()=>{let row=await request('/feedback',JSON.stringify(payload));if(photo){row=await request(`/photos?bank_id=${encodeURIComponent(q.bank_id)}&material_sha256=${q.material_sha256}`,photo,photo.type);image(photos,row.photos.at(-1))}feedback.set(q.bank_id,row);save.textContent='已保存';refresh()}).catch(error=>{save.textContent='未保存：'+error.message;save.className='save error'})}
+ for(const r of radios)r.addEventListener('change',()=>schedule());input.addEventListener('input',()=>{save.textContent='等待保存…';clearTimeout(timer);timer=setTimeout(()=>schedule(),400)});input.addEventListener('change',()=>schedule());upload.addEventListener('change',()=>{if(upload.files[0])schedule(upload.files[0]);upload.value=''})
+}
+document.getElementById('unreviewed').addEventListener('change',refresh);refresh();
+})().catch(error=>{document.getElementById('cards').textContent='读取核对页失败：'+error.message});
+</script></body></html>

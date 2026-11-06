@@ -9,6 +9,11 @@ from app.bank.access import require_access,record_view
 from app.storage.images import image_records,image_path
 from app.storage.boundaries import material_path
 
+def evidence_url(question_id,regions,index):
+    import hashlib
+    revision=hashlib.sha256(json.dumps(regions,sort_keys=True).encode()).hexdigest()[:16]
+    return f'/api/questions/{question_id}/evidence?region={index}&v={revision}'
+
 @dataclass(frozen=True)
 class Resource:
     content: bytes|Path
@@ -29,7 +34,7 @@ class ResourceService:
             for i,region in enumerate(json_load(row['regions_json'],[])):
                 pix=doc[region['page']-1].get_pixmap(matrix=pymupdf.Matrix(2,2),clip=pymupdf.Rect(region['bbox']),alpha=False)
                 result.append(dict(region_index=i,page=region['page'],bbox=region['bbox'],
-                    image_url=f'/api/questions/{question_id}/evidence?region={i}',image_width=pix.width,image_height=pix.height,
+                    image_url=evidence_url(question_id,json_load(row['regions_json'],[]),i),image_width=pix.width,image_height=pix.height,
                     image_origin=[pix.x,pix.y],scale=2))
         return result
     def answer(self,image_id):

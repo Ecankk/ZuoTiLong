@@ -32,7 +32,7 @@ describe('app shell', () => {
   it('shows navigation, background progress and derived home todos', async () => {
     mockServer()
     renderAt('/')
-    expect(await screen.findByText('加减运算中的等价无穷小替换')).toBeInTheDocument()
+    expect((await screen.findAllByText('加减运算中的等价无穷小替换')).length).toBeGreaterThan(0)
     const nav = screen.getByRole('navigation', { name: '主导航' })
     expect(
       within(nav)

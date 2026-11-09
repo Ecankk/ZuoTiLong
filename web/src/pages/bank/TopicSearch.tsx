@@ -2,6 +2,7 @@ import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useCatalog } from '../../api/queries'
 import { ancestors, buildCatalog, searchCatalog } from '../../lib/catalog'
+import { TopicName } from '../topics/TopicName'
 import styles from './BankPage.module.css'
 
 /**
@@ -69,7 +70,9 @@ export function TopicSearch({
                 setQuery('')
               }}
             >
-              <strong>{node.name}</strong>
+              <strong>
+                <TopicName name={node.name} />
+              </strong>
               <small>
                 {ancestors(index!, node.id)
                   .map((p) => p.name)

@@ -1,5 +1,5 @@
-import { Archive, ArchiveRestore } from 'lucide-react'
-import { useState } from 'react'
+import { Archive, ArchiveRestore, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Outlet, useParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import { endpoints } from '../../api/endpoints'
@@ -15,14 +15,49 @@ import { monthDay, paperName } from '../../lib/labels'
 import { PlaceholderPage } from '../Placeholder'
 import styles from './PaperOverview.module.css'
 
+const UNDO_MS = 5000
+const archiveKeys = [['papers'], ['practices'], ['questions']]
+
+/** 归档成功后在底部停留 5 秒的提示，可以撤销（调用恢复接口） */
+function UndoToast({ paperId, onClose }: { paperId: string; onClose: () => void }) {
+  const undo = useAction(() => endpoints.restorePaper(paperId), archiveKeys)
+  // 撤销进行中或失败时不自动消失，失败原因要让用户看到
+  const holding = undo.isPending || undo.isError
+  useEffect(() => {
+    if (holding) return
+    const timer = window.setTimeout(onClose, UNDO_MS)
+    return () => window.clearTimeout(timer)
+  }, [holding, onClose])
+  return (
+    <div className={styles.toast} role="status">
+      <span>{undo.isError ? `没能撤销：${friendlyError(undo.error)}` : '已归档这份试卷'}</span>
+      {!undo.isError && (
+        <button
+          type="button"
+          disabled={undo.isPending}
+          onClick={() => undo.mutate(undefined, { onSuccess: onClose })}
+        >
+          {undo.isPending ? '正在撤销…' : '撤销'}
+        </button>
+      )}
+      <button type="button" className={styles.toastClose} onClick={onClose} aria-label="关闭提示">
+        <X size={16} aria-hidden />
+      </button>
+    </div>
+  )
+}
+
 function ArchiveButton({ paperId, archived }: { paperId: string; archived: boolean }) {
   const [open, setOpen] = useState(false)
+  const [undoable, setUndoable] = useState(false)
+  const closeToast = useCallback(() => setUndoable(false), [])
   const action = useAction(
     () => (archived ? endpoints.restorePaper(paperId) : endpoints.archivePaper(paperId)),
-    [['papers'], ['practices'], ['questions']],
+    archiveKeys,
   )
   return (
     <>
+      {undoable && <UndoToast paperId={paperId} onClose={closeToast} />}
       <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
         {archived ? <ArchiveRestore size={16} aria-hidden /> : <Archive size={16} aria-hidden />}
         {archived ? '恢复试卷' : '归档'}
@@ -34,7 +69,14 @@ function ArchiveButton({ paperId, archived }: { paperId: string; archived: boole
         confirmLabel={archived ? '确认恢复' : '确认归档'}
         pending={action.isPending}
         error={action.error ? friendlyError(action.error) : null}
-        onConfirm={() => action.mutate(undefined, { onSuccess: () => setOpen(false) })}
+        onConfirm={() =>
+          action.mutate(undefined, {
+            onSuccess: () => {
+              setOpen(false)
+              setUndoable(!archived)
+            },
+          })
+        }
       >
         {archived
           ? '恢复后，这份试卷和它的练习会重新计入画像和待办。'

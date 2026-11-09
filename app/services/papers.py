@@ -287,8 +287,13 @@ class PaperService:
                 for r in supplied:
                     if not 1<=r['page']<=len(doc):raise ValueError('区域页码超出PDF范围')
                     rect=doc[r['page']-1].rect
-                    if not 0<=r['top']<r['bottom']<=rect.height:raise ValueError('区域须满足 0 ≤ top < bottom ≤ 页高')
-                    regions.append(dict(page=r['page'],bbox=[0,r['top'],rect.width,r['bottom']],role='question_and_work'))
+                    from app.services.resources import PDF_SCALE
+                    # Pixel bounds round outward; the editor derives PDF height
+                    # from the rendered image. Admit at most one pixel of drift.
+                    bottom=min(r['bottom'],rect.height)
+                    if not 0<=r['top']<bottom or r['bottom']>rect.height+1/PDF_SCALE:
+                        raise ValueError('区域须满足 0 ≤ top < bottom ≤ 页高')
+                    regions.append(dict(page=r['page'],bbox=[0,r['top'],rect.width,bottom],role='question_and_work'))
             updated=now_iso()
             response=dict(paper_id=paper_id,question_id=question_id,status='updated',regions=regions,request_id=request_id,reused=False)
             old={k:q[k] for k in ('regions_json','page_start','page_end','bbox_json')}

@@ -64,39 +64,59 @@ export function PaperSummary() {
       t.kind === 'summarize_paper' &&
       (t.status === 'running' || t.status === 'queued'),
   )
+  const pending = paper.practice_counts.pending
+  const action = !archived && !running && (
+    <div className={styles.actions}>
+      <Button
+        variant={data.summary ? 'secondary' : 'primary'}
+        disabled={summarize.isPending}
+        onClick={() => summarize.mutate(undefined)}
+      >
+        {data.summary ? '更新本卷总结' : '生成本卷总结'}
+      </Button>
+    </div>
+  )
+  const status = running && (
+    <div className={styles.status} role="status">
+      <span className={styles.spinner} aria-hidden />
+      做题龙正在整理本卷总结
+    </div>
+  )
+  const failure = summarize.error && (
+    <p className={styles.error}>{friendlyError(summarize.error)}</p>
+  )
+  // 还没有总结：一张卡片说清总结包含什么，再给生成按钮
+  if (!data.summary)
+    return (
+      <div className={styles.column} style={{ maxWidth: 'var(--read-max)' }}>
+        <Card padded className={styles.card}>
+          <h2>还没有本卷总结</h2>
+          <p>做题龙会汇总这份试卷的逐题分析和练习批改，整理成：</p>
+          <ul className={styles.list}>
+            <li>主要发现：这份卷子里反复出现的问题</li>
+            <li>已有改善：练习里已经做对、补上的地方</li>
+            <li>后续重点：接下来最值得花时间的考点</li>
+          </ul>
+          {pending > 0 && !archived && (
+            <p className={styles.muted} style={{ marginTop: 'var(--space-3)' }}>
+              本卷还有 {pending} 道练习没做，建议做完后再生成，总结会更完整。
+            </p>
+          )}
+          {status}
+          {action}
+          {failure}
+        </Card>
+      </div>
+    )
   return (
     <div className={styles.column} style={{ maxWidth: 'var(--read-max)' }}>
+      <SummaryBody summary={data.summary} />
       <Card padded className={styles.card}>
-        <h2>本卷总结</h2>
-        <p className={styles.muted}>
-          汇总这份试卷的逐题分析和练习批改：主要问题、已有改善和后续重点。可以在练习做完一部分后再更新。
-        </p>
-        {running && (
-          <div className={styles.status} role="status">
-            <span className={styles.spinner} aria-hidden />
-            做题龙正在整理本卷总结
-          </div>
-        )}
-        {!archived && !running && (
-          <div className={styles.actions}>
-            <Button
-              variant="primary"
-              disabled={summarize.isPending}
-              onClick={() => summarize.mutate(undefined)}
-            >
-              {data.status === 'available' ? '更新本卷总结' : '生成本卷总结'}
-            </Button>
-          </div>
-        )}
-        {summarize.error && <p className={styles.error}>{friendlyError(summarize.error)}</p>}
+        <p className={styles.muted}>总结会随着练习批改变化。做完一部分练习后，可以更新一次。</p>
+        {status}
+        {action}
+        {failure}
       </Card>
-      {data.summary ? (
-        <SummaryBody summary={data.summary} />
-      ) : (
-        <Card padded className={styles.card}>
-          <p className={styles.muted}>还没有本卷总结。</p>
-        </Card>
-      )}
     </div>
   )
 }

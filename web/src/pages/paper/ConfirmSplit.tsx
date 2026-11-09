@@ -118,12 +118,12 @@ export function ConfirmSplitCard({ data }: { data: PaperResponse }) {
         onConfirm={() => analyze.mutate(undefined, { onSuccess: () => setConfirm(false) })}
       >
         <p>
-          做题龙会用本机的 AI
-          服务逐题分析，整份试卷通常需要较长时间。期间可以离开这个页面，进度会显示在左下角。
+          做题龙会用本机的 Codex
+          逐题分析，整份试卷通常需要较长时间。期间可以离开这个页面，进度会显示在左下角。
         </p>
         <p className={styles.note}>
           {unavailable
-            ? 'AI 服务现在还没准备好，分析会先排队，准备好后自动开始。'
+            ? 'Codex 现在还没准备好，分析会先排队，准备好后自动开始。'
             : '开始分析后就不能再纠正题号了。'}
         </p>
       </ConfirmDialog>

@@ -192,6 +192,8 @@
   position: relative;
   z-index: 1;
   color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .paperTop {

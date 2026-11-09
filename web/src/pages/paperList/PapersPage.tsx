@@ -135,8 +135,12 @@ function PaperCard({ paper }: { paper: Paper }) {
             <b>{paper.score}</b> / {paper.total_score} 分
           </>
         ) : (
-          <Link to={`/papers/${paper.id}#score`} className={styles.scoreLink}>
-            总分待核定 · 去核定
+          <Link
+            to={`/papers/${paper.id}#score`}
+            className={styles.scoreLink}
+            title="点击去核定总分"
+          >
+            总分待核定
           </Link>
         )}
       </span>

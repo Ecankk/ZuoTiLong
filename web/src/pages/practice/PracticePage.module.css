@@ -1,8 +1,33 @@
 .summary {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
   margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* 顶部进度条：做对 / 做错 / 待批改，剩下的灰色是没做的 */
+.overviewBar {
+  display: flex;
+  overflow: hidden;
+  width: 160px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--border-default);
+}
+
+.overviewBar i.right {
+  background: var(--status-correct);
+}
+
+.overviewBar i.wrong {
+  background: var(--status-wrong);
+}
+
+.overviewBar i.waiting {
+  background: var(--color-primary);
 }
 
 .layout {
@@ -12,20 +37,117 @@
   align-items: start;
 }
 
-/* 左栏：一张卡片，内部滚动，不把页面拉长 */
+/* 左栏：一张卡片，上面是筛选，下面的列表内部滚动，不把页面拉长 */
 .groupsCard {
   position: sticky;
   top: 0;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  padding: var(--space-2) 0;
+  max-height: calc(100vh - 150px);
   overflow: hidden;
 }
 
-.groups {
-  max-height: calc(100vh - 170px);
+.filters {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-faint);
+}
+
+.search:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+}
+
+/* 筛选：一排小按钮，选中的用主色 */
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pills button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
   padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-card);
+  color: var(--text-regular);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.pills button:hover {
+  border-color: var(--border-strong);
+}
+
+.pills button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.pills button b {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.pills button[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.pills button[aria-pressed='true'] b {
+  color: var(--color-primary);
+}
+
+.groups {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-1) var(--space-2) var(--space-2);
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+.empty {
+  padding: var(--space-6) var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.empty p {
+  margin-bottom: var(--space-3);
 }
 
 .section + .section {
@@ -100,6 +222,14 @@
   background: var(--text-muted);
 }
 
+.progress i.right {
+  background: var(--status-correct);
+}
+
+.progress i.wrong {
+  background: var(--status-wrong);
+}
+
 .progress i.grading {
   background: var(--color-primary);
 }
@@ -148,6 +278,12 @@
   line-height: 1.5;
 }
 
+/* 只有一道题的组：一行就是一个考点 */
+.single .itemTitle {
+  color: var(--text-strong);
+  font-weight: var(--font-weight-medium);
+}
+
 .item[aria-current='true'] .itemTitle {
   font-weight: var(--font-weight-medium);
 }
@@ -178,6 +314,22 @@
   color: var(--color-primary);
 }
 
+.itemState.stateRight {
+  color: var(--status-correct);
+}
+
+.itemState.stateWrong {
+  color: var(--status-wrong);
+}
+
+.originTag {
+  margin-left: var(--space-1);
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--color-primary-faint);
+  color: var(--color-primary);
+}
+
 .mark {
   display: grid;
   flex: none;
@@ -199,6 +351,16 @@
   border-color: var(--text-muted);
   background: var(--text-muted);
   color: var(--text-on-primary);
+}
+
+.mark.right {
+  border-color: var(--status-correct);
+  background: var(--status-correct);
+}
+
+.mark.wrong {
+  border-color: var(--status-wrong);
+  background: var(--status-wrong);
 }
 
 .mark.grading {
@@ -265,17 +427,153 @@
   color: var(--color-primary);
 }
 
-/* 窄窗口：上下排列，列表限高 */
-@media (max-width: 960px) {
+/* 右栏底部：下一道 */
+.nextBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.nextText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nextText small {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.nextText strong {
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+/* 同一考点做过的题：一行一道 */
+.others h3 {
+  margin-bottom: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.others ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.otherRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-regular);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.otherRow:hover {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.otherText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.otherText strong {
+  font-weight: var(--font-weight-medium);
+}
+
+/* 结论只露两行，点进去看完整反馈 */
+.otherText small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.otherRow > small {
+  color: var(--text-muted);
+}
+
+/* 窄窗口的“当前题 · 切换”条，宽窗口不显示 */
+.switcher {
+  display: none;
+}
+
+.flip {
+  transform: rotate(180deg);
+}
+
+/*
+ * 窄窗口（含 960 宽）：只有一列，题目列表收成顶部一条“当前：… · 切换题目”，
+ * 点开后列表浮在详情上面，选好题自动收起。
+ */
+@media (max-width: 1080px) {
   .layout {
+    position: relative;
     grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .switcher {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .switcherText {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .switcherText small {
+    flex: none;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+  }
+
+  .switcherText strong {
+    overflow: hidden;
+    color: var(--text-strong);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .groupsCard {
-    position: static;
+    display: none;
   }
 
-  .groups {
-    max-height: 40vh;
+  .layout[data-list-open] .groupsCard {
+    position: absolute;
+    z-index: 5;
+    top: 60px;
+    right: 0;
+    left: 0;
+    display: flex;
+    max-height: 70vh;
+    box-shadow: var(--shadow-raised);
   }
 }

@@ -18,6 +18,8 @@ const card = (
   ...base,
   id,
   status,
+  // 没做的题没有作答；有作答但还没批改的算“待批改”
+  latest_attempt_id: status === 'pending' ? null : base.latest_attempt_id,
   topics: topics.map(([topic_id, name]) => ({ topic_id, name })),
 })
 const group = (id: string, label: string, items: PracticeCard[]): PracticeGroup => ({
@@ -72,12 +74,13 @@ it('renders the compact list with matching counts, wrapped sources and sectioned
     </QueryClientProvider>,
   )
   const list = await screen.findByRole('complementary', { name: '考点分组' })
-  // 三道不同的题：每道只出现一次；全部批改完的考点默认收起；待做数和列表一致
+  // 三道不同的题：每道只出现一次；只有一道题的考点压成一行，没有折叠按钮；未做数和列表一致
   expect(within(list).getAllByRole('link', { name: /第 \d 道/ })).toHaveLength(2)
   const done = within(list).getByRole('region', { name: '一阶线性微分方程' })
-  expect(within(done).getByText('1 道 · 已完成')).toBeInTheDocument()
-  expect(within(done).getByRole('button', { name: '展开一阶线性微分方程' })).toBeInTheDocument()
-  expect(screen.getByText('2 道待做')).toBeInTheDocument()
+  expect(within(done).getByRole('link', { name: /一阶线性微分方程/ })).toBeInTheDocument()
+  expect(within(done).queryByRole('button')).not.toBeInTheDocument()
+  const statusFilter = screen.getByRole('group', { name: '按状态筛选' })
+  expect(within(statusFilter).getByRole('button', { name: /未做\s*2/ })).toBeInTheDocument()
   expect(within(list).getByText('也属于：方差及其计算式')).toBeInTheDocument()
   expect(within(list).queryByRole('region', { name: '方差及其计算式' })).not.toBeInTheDocument()
   const current = within(list).getByRole('link', { current: true })

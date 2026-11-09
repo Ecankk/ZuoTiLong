@@ -33,9 +33,43 @@ export const paperName = (title: string) => `《${title}》`
 export const sourceName = (access: Access) =>
   access.year && access.math_type ? `${access.year} ${mathTypeName(access.math_type)}` : ''
 
-/** 练习题出处：“2021 数学一 · 第 3 题”；缺的部分不显示，全缺时为空字符串 */
-export const practiceSource = (access: Access) =>
-  [sourceName(access), access.number ? `第 ${access.number} 题` : ''].filter(Boolean).join(' · ')
+/**
+ * 题集题的出处字段（后端准备补充，现在可能都没有）：
+ * collection_label 如“张宇1000题”，book 如 {part:'强化篇', chapter:'第1章 函数极限与连续', number:'3'}。
+ */
+type CollectionSource = {
+  collection_label?: string | null
+  book?: { part?: string | null; chapter?: string | null; number?: string | number | null } | null
+  chapter?: string | null
+}
+
+/** “第1章 函数极限与连续” → “第1章”；不是这种写法就原样返回 */
+const shortChapter = (chapter: string) =>
+  chapter.match(/^第\s*[\d一二三四五六七八九十百]+\s*章/)?.[0] ?? chapter
+
+/** 题集题出处：“张宇1000题 · 强化篇 第1章 · 第 3 题”；没有任何来源字段时为空字符串 */
+function collectionSource(access: Access & CollectionSource) {
+  const chapter = access.book?.chapter?.trim() || access.chapter?.trim() || ''
+  const section = [access.book?.part?.trim(), chapter && shortChapter(chapter)]
+    .filter(Boolean)
+    .join(' ')
+  const raw =
+    String(access.book?.number ?? '').trim() || (access.number ? String(access.number) : '')
+  const number = raw ? (/^\d+$/.test(raw) ? `第 ${raw} 题` : raw) : ''
+  if (!access.collection_label?.trim() && !section) return ''
+  return [access.collection_label?.trim(), section, number].filter(Boolean).join(' · ')
+}
+
+/**
+ * 练习题出处：真题“2021 数学一 · 第 3 题”，题集题“张宇1000题 · 强化篇 第1章 · 第 3 题”；
+ * 缺的部分不显示，全缺时为空字符串。
+ */
+export const practiceSource = (access: Access & CollectionSource) =>
+  sourceName(access)
+    ? [sourceName(access), access.number ? `第 ${access.number} 题` : '']
+        .filter(Boolean)
+        .join(' · ')
+    : collectionSource(access) || (access.number ? `第 ${access.number} 题` : '')
 
 /** "2026-10-28" → "10月28日" */
 export function monthDay(date: string) {

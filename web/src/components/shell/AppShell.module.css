@@ -17,3 +17,17 @@
   container-type: inline-size;
   padding: var(--space-8) var(--page-pad) var(--space-12);
 }
+
+/* 连接中断时贴在内容区顶部 */
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--page-pad);
+  background: var(--status-partial-soft);
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+}

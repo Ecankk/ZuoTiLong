@@ -160,3 +160,30 @@
   color: var(--text-regular);
   line-height: 1.8;
 }
+
+.clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.more {
+  margin-top: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.more:hover {
+  text-decoration: underline;
+}
+
+.dialogText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

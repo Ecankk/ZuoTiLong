@@ -3,26 +3,32 @@ import type { PracticeResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Card } from '../../components/ui/Card'
 import { cx } from '../../lib/cx'
-import { mathTypeName, practiceSource } from '../../lib/labels'
+import { mathTypeName } from '../../lib/labels'
 import { AttemptForm } from './AttemptForm'
+import { PracticeHeading } from './PracticeHeading'
 import { RevealButton } from './RevealButton'
+import { splitQuestionText } from './selection'
 import styles from './PracticeCard.module.css'
 
-/** 练习题面：图片题显示原题图，纯文字题按公式排版。 */
+/**
+ * 练习题面：图片题显示原题图，纯文字题按公式排版。
+ * 有原题图时，“2022 数学三 第22题 · 参数估计”这样的说明文字不当题干显示（章节由标题显示）。
+ */
 export function QuestionContent({
   question,
 }: {
   question: { question_text?: string | null; question_image?: string | null } | null
 }) {
   if (!question) return null
+  const { text } = splitQuestionText(question)
   return (
     <>
       {question.question_image && (
         <img className={styles.questionImage} src={question.question_image} alt="练习原题" />
       )}
-      {question.question_text && (
+      {text && (
         <div className={cx('read', styles.question)}>
-          <MathText text={question.question_text} />
+          <MathText text={text} />
         </div>
       )}
     </>
@@ -43,7 +49,12 @@ function MaskedQuestion({ detail }: { detail: PracticeResponse }) {
           : '这道题已留作整卷自测，暂不显示。'}
       </p>
       {canReveal && (
-        <RevealButton bankId={detail.practice.bank_id} kind="question" label="查看题目">
+        <RevealButton
+          bankId={detail.practice.bank_id}
+          kind="question"
+          label="查看题目"
+          variant="primary"
+        >
           查看后会记下“看过这道题”。以后用这套真题整卷自测时，这道题的结果会单独标出。
         </RevealButton>
       )}
@@ -52,25 +63,14 @@ function MaskedQuestion({ detail }: { detail: PracticeResponse }) {
 }
 
 /** 还没作答的练习：看题、作答、提交。 */
-export function AnswerCard({
-  detail,
-  position,
-  topicName,
-}: {
-  detail: PracticeResponse
-  position: { index: number; total: number }
-  topicName: string
-}) {
+export function AnswerCard({ detail, eyebrow }: { detail: PracticeResponse; eyebrow: string }) {
   const { practice } = detail
   const canSubmit = detail.actions.includes('submit')
   return (
     <Card className={styles.card} aria-label="当前练习">
       <div className={styles.split}>
         <div>
-          <p className={styles.eyebrow}>
-            {topicName} · 第 {position.index} / {position.total} 道
-          </p>
-          <h2>{practiceSource(practice.access) || '题库题目'}</h2>
+          <PracticeHeading detail={detail} eyebrow={eyebrow} />
           {detail.selection_reason && (
             <p className={styles.why}>
               <b>为什么练这道：</b>

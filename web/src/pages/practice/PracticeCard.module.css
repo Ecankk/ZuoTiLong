@@ -22,6 +22,10 @@
 }
 
 .eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-1);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
@@ -98,7 +102,7 @@
 }
 
 .masked button {
-  margin-top: var(--space-2);
+  margin-top: var(--space-4);
 }
 
 .answer {
@@ -256,6 +260,54 @@
   font-size: var(--font-size-xs);
 }
 
+/* 卡片标题：考点 · 第几道 ｜ 出处 + 章节 ｜ 右侧状态 */
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.headingText {
+  flex: 1;
+  min-width: 0;
+}
+
+.headingText h2 {
+  color: var(--text-strong);
+  font-size: var(--font-size-h3);
+  line-height: 1.4;
+}
+
+.originChip {
+  font-size: var(--font-size-xs);
+}
+
+.chapter {
+  margin-left: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+
+.headingSide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.headingSide .when {
+  margin-left: 0;
+}
+
+/* 反馈里默认收起的几块：做对的部分、参考思路、参考解析 */
+.feedbackFolds {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
 /* 已批改 */
 .gradedHead {
   display: flex;
@@ -318,6 +370,10 @@
 
 .feedbackTop.wrong {
   background: var(--status-wrong-soft);
+}
+
+.feedbackTop.partial {
+  background: var(--status-partial-soft);
 }
 
 .feedbackTop.unknown {

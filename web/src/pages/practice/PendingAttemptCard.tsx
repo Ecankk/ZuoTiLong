@@ -7,10 +7,10 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Chip } from '../../components/ui/Chip'
 import { cx } from '../../lib/cx'
-import { practiceSource } from '../../lib/labels'
 import { QuestionContent } from './AnswerCard'
 import { AttemptForm } from './AttemptForm'
-import { ReferenceAnalysis, SubmittedAttempt } from './GradedCard'
+import { ReferenceAnalysis, SubmittedAttempt, submittedTime } from './GradedCard'
+import { PracticeHeading } from './PracticeHeading'
 import { RevealButton } from './RevealButton'
 import styles from './PracticeCard.module.css'
 
@@ -18,11 +18,11 @@ import styles from './PracticeCard.module.css'
 export function PendingAttemptCard({
   card,
   detail,
-  position,
+  eyebrow,
 }: {
   card: PracticeCard
   detail: PracticeResponse
-  position: { index: number; total: number }
+  eyebrow: string
 }) {
   const { data: tasks } = useTasks()
   const [supplementing, setSupplementing] = useState(false)
@@ -36,12 +36,10 @@ export function PendingAttemptCard({
   const unavailable = tasks?.availability.status === 'unavailable'
   return (
     <Card className={styles.card} aria-label="批改中的练习">
-      <div className={styles.gradedHead}>
-        <Chip>
-          第 {position.index} 道{practiceSource(card.access) && ` · ${practiceSource(card.access)}`}
-        </Chip>
+      <PracticeHeading detail={detail} eyebrow={eyebrow}>
         <Chip tone="primary">{grading ? '批改中' : '等待批改'}</Chip>
-      </div>
+        <span className={styles.when}>{submittedTime(attempt.created_at)}</span>
+      </PracticeHeading>
       <QuestionContent question={detail.question} />
       <SubmittedAttempt attempt={attempt} />
       {grading ? (

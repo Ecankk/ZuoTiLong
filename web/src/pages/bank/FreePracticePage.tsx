@@ -20,6 +20,8 @@ import { RevealButton } from '../practice/RevealButton'
 import { bankTitle } from './BankQuestion'
 import { FreeAttemptView, FreeHistory, ReferenceBlock } from './FreeAttempt'
 import styles from './FreePracticePage.module.css'
+import { friendlyError } from '../../lib/errors'
+import { Skeleton } from '../../components/ui/Skeleton'
 
 type Draft = { text: string; choice: string; photos: Photo[] }
 const emptyDraft: Draft = { text: '', choice: '', photos: [] }
@@ -137,7 +139,7 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
       add(files)
     }
   }
-  const error = uploadError ?? submit.error?.message
+  const error = uploadError ?? (submit.error && friendlyError(submit.error))
 
   return (
     <Card padded className={styles.card} aria-label="作答">
@@ -236,7 +238,7 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
         title="先看答案和解析？"
         confirmLabel="确认查看"
         pending={reveal.isPending}
-        error={reveal.error?.message}
+        error={reveal.error ? friendlyError(reveal.error) : undefined}
         onConfirm={() =>
           reveal.mutate(undefined, {
             onSuccess: () => {
@@ -259,7 +261,7 @@ function AnswerArea({ detail }: { detail: FreePractice }) {
     queryFn: () => endpoints.draft<Draft>(draftKey(detail.bank_id)).catch(() => null),
     staleTime: Infinity,
   })
-  if (isPending) return null
+  if (isPending) return <Skeleton rows={4} />
   return <AnswerForm key={detail.bank_id} detail={detail} initial={{ ...emptyDraft, ...data }} />
 }
 
@@ -290,9 +292,7 @@ function Blocked({
     return (
       <Card padded className={styles.card}>
         <h2>没有打开这道题</h2>
-        <p className={styles.muted}>
-          {error instanceof ApiError ? error.message : '请确认做题龙还开着，再试一次。'}
-        </p>
+        <p className={styles.muted}>{friendlyError(error)}</p>
         <div className={styles.blockedActions}>
           <ButtonLink to="/bank">回到题库</ButtonLink>
         </div>
@@ -399,11 +399,7 @@ export function FreePracticePage() {
         title="做这道题"
         subtitle={[collection?.name, title].filter(Boolean).join(' · ') || undefined}
       />
-      {isPending && (
-        <Card padded className={styles.muted}>
-          正在读取…
-        </Card>
-      )}
+      {isPending && <Skeleton variant="question" />}
       {error && !data && (
         <Blocked error={error} bankId={bankId} onRevealed={() => void refetch()} />
       )}

@@ -4,6 +4,7 @@ import { endpoints } from '../../api/endpoints'
 import { useAction } from '../../api/queries'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { friendlyError } from '../../lib/errors'
 
 /**
  * 查看被遮挡的题目或解析：先确认，确认后会记录曝光。
@@ -43,7 +44,7 @@ export function RevealButton({
         title={kind === 'question' ? '查看这道题？' : '查看参考解析？'}
         confirmLabel={kind === 'question' ? '确认查看题目' : '确认查看解析'}
         pending={reveal.isPending}
-        error={reveal.error?.message}
+        error={reveal.error ? friendlyError(reveal.error) : undefined}
         onConfirm={() =>
           reveal.mutate(undefined, {
             onSuccess: () => {

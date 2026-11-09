@@ -392,6 +392,10 @@
   container-type: inline-size;
 }
 
+.staleNotice {
+  margin-bottom: var(--space-4);
+}
+
 .notice {
   color: var(--text-regular);
 }

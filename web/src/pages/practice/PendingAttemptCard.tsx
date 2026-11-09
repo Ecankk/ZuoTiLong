@@ -13,6 +13,7 @@ import { ReferenceAnalysis, SubmittedAttempt, submittedTime } from './GradedCard
 import { PracticeHeading } from './PracticeHeading'
 import { RevealButton } from './RevealButton'
 import styles from './PracticeCard.module.css'
+import { friendlyError } from '../../lib/errors'
 
 /** 已提交、还没有批改结果的作答：批改中，或需要重新排入批改。 */
 export function PendingAttemptCard({
@@ -57,7 +58,7 @@ export function PendingAttemptCard({
           </Button>
         </div>
       )}
-      {regrade.error && <p className={styles.formError}>{regrade.error.message}</p>}
+      {regrade.error && <p className={styles.formError}>{friendlyError(regrade.error)}</p>}
       <div className={styles.gradedActions}>
         {detail.actions.includes('supplement') && !supplementing && (
           <Button size="sm" onClick={() => setSupplementing(true)}>

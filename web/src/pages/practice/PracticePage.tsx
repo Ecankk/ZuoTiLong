@@ -35,6 +35,8 @@ import {
   type Section,
 } from './selection'
 import styles from './PracticePage.module.css'
+import { ErrorState } from '../../components/ui/ErrorState'
+import { Skeleton } from '../../components/ui/Skeleton'
 
 export { buildSections }
 
@@ -286,22 +288,10 @@ function SelectedPractice({
   eyebrow: string
   next?: NextPractice
 }) {
-  const { data: detail, isPending, isError, refetch } = usePractice(card.id)
-  if (isPending)
-    return (
-      <Card padded className={styles.notice} role="status">
-        正在读取这道练习…
-      </Card>
-    )
+  const { data: detail, isPending, isError, error, refetch } = usePractice(card.id)
+  if (isPending) return <Skeleton variant="question" />
   if (isError)
-    return (
-      <Card padded className={styles.notice}>
-        <p>这道练习没有读出来，请确认做题龙还开着。</p>
-        <Button size="sm" onClick={() => void refetch()}>
-          重试
-        </Button>
-      </Card>
-    )
+    return <ErrorState error={error} title="这道练习没有读出来" onRetry={() => void refetch()} />
   if (!detail)
     return (
       <Card padded className={styles.notice}>
@@ -477,7 +467,7 @@ export function PracticePage() {
   const [query, setQuery] = useState('')
   // 窄窗口的题目列表：记下打开时选中的是哪道，换了题自然就收起
   const [openedAt, setOpenedAt] = useState<string | null>(null)
-  const { data, isError, refetch } = usePractices(grouping, includeInactive)
+  const { data, isError, error, refetch } = usePractices(grouping, includeInactive)
   const listRef = useRef<HTMLElement>(null)
   const workRef = useRef<HTMLDivElement>(null)
 
@@ -521,18 +511,14 @@ export function PracticePage() {
     return (
       <>
         <PageHeader title="练习" />
-        <Card padded className={styles.notice} role={isError ? undefined : 'status'}>
-          {isError ? (
-            <>
-              <p>练习列表没有读出来，请确认做题龙还开着。</p>
-              <Button size="sm" onClick={() => void refetch()}>
-                重试
-              </Button>
-            </>
-          ) : (
-            '正在读取练习…'
-          )}
-        </Card>
+        {isError ? (
+          <ErrorState error={error} title="练习列表没有读出来" onRetry={() => void refetch()} />
+        ) : (
+          <div className={styles.layout}>
+            <Skeleton variant="rows" rows={6} />
+            <Skeleton variant="question" />
+          </div>
+        )}
       </>
     )
 
@@ -629,6 +615,11 @@ export function PracticePage() {
           </div>
         }
       />
+      {isError && (
+        <div className={styles.staleNotice}>
+          <ErrorState error={error} title="练习列表没有更新" onRetry={() => void refetch()} />
+        </div>
+      )}
       {data.items.length === 0 ? (
         <Card padded className={styles.notice}>
           {includeInactive

@@ -7,9 +7,12 @@ import type { Correctness, Paper } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Chip, type ChipTone } from '../../components/ui/Chip'
+import { ErrorState } from '../../components/ui/ErrorState'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
+import { Skeleton } from '../../components/ui/Skeleton'
 import { cx } from '../../lib/cx'
+import { friendlyError } from '../../lib/errors'
 import { correctnessLabel, monthDay, paperName } from '../../lib/labels'
 import styles from './PapersPage.module.css'
 
@@ -91,7 +94,9 @@ function UploadCard() {
           {upload.isPending ? '正在上传…' : '上传并开始分析'}
         </Button>
       </form>
-      {upload.isError && <p className={cx(styles.message, styles.error)}>{upload.error.message}</p>}
+      {upload.isError && (
+        <p className={cx(styles.message, styles.error)}>{friendlyError(upload.error)}</p>
+      )}
     </Card>
   )
 }
@@ -161,7 +166,7 @@ function PaperCard({ paper }: { paper: Paper }) {
 
 export function PapersPage() {
   const [scope, setScope] = useState<PaperScope>('0')
-  const { data, isError, error } = usePapers(scope)
+  const { data, error, refetch } = usePapers(scope)
   return (
     <>
       <PageHeader title="试卷" />
@@ -181,11 +186,12 @@ export function PapersPage() {
           onChange={setScope}
         />
       </div>
-      {isError && (
-        <Card padded className={styles.empty}>
-          {error.message}
-        </Card>
-      )}
+      {!data &&
+        (error ? (
+          <ErrorState error={error} title="试卷列表没能读取" onRetry={() => void refetch()} />
+        ) : (
+          <Skeleton variant="rows" rows={2} />
+        ))}
       {data &&
         (data.items.length === 0 ? (
           <Card padded className={styles.empty}>

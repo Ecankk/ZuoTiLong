@@ -9,6 +9,7 @@ import { Card } from '../../components/ui/Card'
 import { Chip } from '../../components/ui/Chip'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { cx } from '../../lib/cx'
+import { friendlyError } from '../../lib/errors'
 import { correctnessLabel, mathTypeName } from '../../lib/labels'
 import { awaitingSplitConfirm, ConfirmSplitCard } from './ConfirmSplit'
 import styles from './PaperOverview.module.css'
@@ -98,7 +99,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
         <p className={styles.ok}>已开始准备练习，完成后会出现在“练习”里。</p>
       )}
       {(prepare.error || (!confirm && analyze.error)) && (
-        <p className={styles.error}>{(prepare.error ?? analyze.error)?.message}</p>
+        <p className={styles.error}>{friendlyError(prepare.error ?? analyze.error)}</p>
       )}
       <ConfirmDialog
         open={confirm}
@@ -106,7 +107,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
         title="重新分析这份试卷？"
         confirmLabel="确认重新分析"
         pending={analyze.isPending}
-        error={analyze.error?.message}
+        error={analyze.error ? friendlyError(analyze.error) : null}
         onConfirm={() => analyze.mutate(true, { onSuccess: () => setConfirm(false) })}
       >
         做题龙会按现在的原卷重新逐题分析，生成新的结果。旧的分析和你的作答都会保留。
@@ -189,7 +190,7 @@ function ScoreCard({ data }: { data: PaperResponse }) {
         </Button>
       </form>
       {save.isSuccess && <p className={styles.ok}>已保存</p>}
-      {save.error && <p className={styles.error}>{save.error.message}</p>}
+      {save.error && <p className={styles.error}>{friendlyError(save.error)}</p>}
     </Card>
   )
 }
@@ -233,7 +234,7 @@ function NumberCard({ data }: { data: PaperResponse }) {
           建立题号
         </Button>
       </form>
-      {confirm.error && <p className={styles.error}>{confirm.error.message}</p>}
+      {confirm.error && <p className={styles.error}>{friendlyError(confirm.error)}</p>}
     </Card>
   )
 }

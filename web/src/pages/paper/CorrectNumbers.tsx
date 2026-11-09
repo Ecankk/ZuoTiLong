@@ -6,6 +6,7 @@ import { useAction, usePaperQuestions, useTasks } from '../../api/queries'
 import type { QuestionSummary } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { cx } from '../../lib/cx'
+import { friendlyError } from '../../lib/errors'
 import { SplitDialog, type Split } from './SplitQuestion'
 import styles from './CorrectNumbers.module.css'
 
@@ -58,12 +59,15 @@ export function buildCorrection(rows: Row[]) {
   return { groups, deleted, problem }
 }
 
-function friendlyError(error: Error) {
+/** 句末补一个句号，后面还要接说明 */
+const sentence = (text: string) => text.replace(/[。.]?$/, '。')
+
+function saveError(error: Error) {
   if (error instanceof ApiError && error.status === 409)
     return '这份试卷已经开始分析、有练习记录或还有任务在进行，不能再纠正题号了。'
   if (error instanceof ApiError && error.status === 400)
-    return `没能保存：${error.message}。如果是拆分位置的问题，请把线放在两道题之间、确保上下都有内容。`
-  return error.message
+    return `没能保存：${sentence(friendlyError(error))}如果是拆分位置的问题，请把线放在两道题之间、确保上下都有内容。`
+  return friendlyError(error)
 }
 
 function Editor({
@@ -113,7 +117,7 @@ function Editor({
           {deleted.length > 0 && `，删除 ${deleted.length} 个误切的题`}。
         </p>
         <p className={styles.text}>做题龙会保存原来的切分，纠正后按新的题号分析。</p>
-        {correct.error && <p className={styles.error}>{friendlyError(correct.error)}</p>}
+        {correct.error && <p className={styles.error}>{saveError(correct.error)}</p>}
         <div className={styles.actions}>
           <Button disabled={correct.isPending} onClick={() => setConfirming(false)}>
             返回修改

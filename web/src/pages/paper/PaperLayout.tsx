@@ -10,6 +10,7 @@ import { ErrorState } from '../../components/ui/ErrorState'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { SegmentedLinks } from '../../components/ui/Segmented'
 import { Skeleton } from '../../components/ui/Skeleton'
+import { friendlyError } from '../../lib/errors'
 import { monthDay, paperName } from '../../lib/labels'
 import { PlaceholderPage } from '../Placeholder'
 import styles from './PaperOverview.module.css'
@@ -32,7 +33,7 @@ function ArchiveButton({ paperId, archived }: { paperId: string; archived: boole
         title={archived ? '恢复这份试卷？' : '归档这份试卷？'}
         confirmLabel={archived ? '确认恢复' : '确认归档'}
         pending={action.isPending}
-        error={action.error?.message}
+        error={action.error ? friendlyError(action.error) : null}
         onConfirm={() => action.mutate(undefined, { onSuccess: () => setOpen(false) })}
       >
         {archived

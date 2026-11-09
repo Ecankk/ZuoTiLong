@@ -5,6 +5,9 @@ import type { PaperSummaryResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { ErrorState } from '../../components/ui/ErrorState'
+import { Skeleton } from '../../components/ui/Skeleton'
+import { friendlyError } from '../../lib/errors'
 import styles from './PaperOverview.module.css'
 
 type Item = string | { text: string }
@@ -48,10 +51,12 @@ function SummaryBody({ summary }: { summary: NonNullable<PaperSummaryResponse['s
 export function PaperSummary() {
   const { paperId = '' } = useParams()
   const { data: paper } = usePaper(paperId)
-  const { data } = usePaperSummary(paperId)
+  const { data, error, refetch } = usePaperSummary(paperId)
   const { data: tasks } = useTasks()
   const summarize = useAction(() => endpoints.summarizePaper(paperId), [['papers'], ['tasks']])
-  if (!data || !paper) return null
+  if (!data && error)
+    return <ErrorState error={error} title="本卷总结没能读取" onRetry={() => void refetch()} />
+  if (!data || !paper) return <Skeleton />
   const archived = Boolean(paper.paper.archived_at)
   const running = tasks?.items.some(
     (t) =>
@@ -83,7 +88,7 @@ export function PaperSummary() {
             </Button>
           </div>
         )}
-        {summarize.error && <p className={styles.error}>{summarize.error.message}</p>}
+        {summarize.error && <p className={styles.error}>{friendlyError(summarize.error)}</p>}
       </Card>
       {data.summary ? (
         <SummaryBody summary={data.summary} />

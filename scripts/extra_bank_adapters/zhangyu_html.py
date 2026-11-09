@@ -26,6 +26,10 @@ YEAR_RE = re.compile(r"(?<!\d)(20\d{2})(?!\d)")
 
 
 def _chapter_subject(chapter: int) -> str:
+    if 1 <= chapter <= 19:return "高等数学"
+    if 20 <= chapter <= 25:return "线性代数"
+    if 26 <= chapter <= 31:return "概率论与数理统计"
+    if 68 <= chapter <= 71:return "综合"
     if 32 <= chapter <= 49:
         return "高等数学"
     if 50 <= chapter <= 58:
@@ -33,6 +37,13 @@ def _chapter_subject(chapter: int) -> str:
     if 59 <= chapter <= 67:
         return "概率论与数理统计"
     raise ValueError(f"chapter-{chapter:02d} is outside the reviewed 2026 strengthening range 32-67")
+
+
+def chapter_part(chapter: int) -> str:
+    if 1 <= chapter <= 31:return "基础篇"
+    if 32 <= chapter <= 67:return "强化篇"
+    if 68 <= chapter <= 71:return "综合篇"
+    raise ValueError(f"chapter-{chapter:02d} is outside the pinned book")
 
 
 def _article_record(
@@ -88,7 +99,7 @@ def _article_record(
     answer = node_text(answer_node) or None
     if not stem:
         raise ValueError(f"{source_file}: q{number} has an empty stem")
-    if not explanation:
+    if not explanation and chapter_part(chapter)=="强化篇":
         raise ValueError(f"{source_file}: q{number} has no explanation block")
 
     relative_file = source_file.as_posix()
@@ -115,7 +126,7 @@ def _article_record(
             "edition_label_claimed": edition_claim,
             "edition_verified_against_print": False,
             "math_types_applicable": [math_type],
-            "part": "强化篇",
+            "part": chapter_part(chapter),
             "book_group": None,
             "requested_b_group_mapping": "unverified_for_this_book_title_and_printing",
             "book_question_number": None,
@@ -156,7 +167,7 @@ def adapt_zhangyu(
     chapters: range | tuple[int, ...] = range(32, 68),
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Create staging records from the source's explicit 强化篇 HTML pages."""
+    """Create staging records from explicitly labelled pinned book chapters."""
     revision = require_revision(revision)
     source_root = Path(source_root)
     root_index = source_root / "index.html"
@@ -177,13 +188,13 @@ def adapt_zhangyu(
         if not chapter_file.is_file():
             raise FileNotFoundError(f"missing reviewed strengthening chapter: {chapter_file}")
         source = chapter_file.read_text(encoding="utf-8")
-        if not re.search(r"<div\b[^>]*class=[\"'][^\"']*\btop-title\b[^\"']*[\"'][^>]*>.*?强化篇", source, re.IGNORECASE | re.DOTALL):
-            raise ValueError(f"{chapter_file}: page is not explicitly marked 强化篇")
+        part=chapter_part(chapter)
         chapter_hash = sha256_file(chapter_file)
         document = parse_html_fragment(source)
         title_node = first_descendant(document, tag="div", class_name="top-title")
         header = node_text(title_node)
-        chapter_title = re.sub(r"^强化篇\s*[·・]\s*", "", header)
+        if not re.match('^'+part+r'\s*[·・]',header):raise ValueError(f"{chapter_file}: page is not explicitly marked {part}")
+        chapter_title = re.sub('^'+part+r"\s*[·・]\s*", "", header)
         chapter_title = re.sub(r"[（(]\s*\d+\s*题[）)]\s*$", "", chapter_title).strip()
         count_match = re.search(r"[（(](\d+)题[）)]", header)
         expected_count = int(count_match.group(1)) if count_match else None

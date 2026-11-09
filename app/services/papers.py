@@ -253,6 +253,52 @@ class PaperService:
             conn.execute("UPDATE papers SET import_status='analyzed',updated_at=? WHERE id=?",(created,paper_id))
             return {'paper_id':paper_id,'created_questions':len(numbers),'status':'analyzed'}
 
+    def update_regions(self,paper_id,question_id,body):
+        """Change current display geometry without rewriting historical evidence."""
+        import pymupdf
+        from app.errors import ServiceError
+        if body.get('confirmed') is not True:raise ValueError('请明确确认调整切图区域')
+        request_id=str(uuid.UUID(body['request_id']))
+        supplied=body['regions']
+        if not 1<=len(supplied)<=4:raise ValueError('区域须为1–4段')
+        for r in supplied:
+            if (type(r['page']) is not int or any(type(r[k]) not in (int,float) or not math.isfinite(r[k]) for k in ('top','bottom'))):
+                raise ValueError('区域页码和坐标不合法')
+        supplied=sorted(supplied,key=lambda r:(r['page'],r['top'],r['bottom']))
+        intent=dict(paper_id=paper_id,question_id=question_id,regions=supplied)
+        version_id='question-regions-'+request_id
+        with self.database.session(write=True) as conn:
+            receipt=conn.execute('SELECT payload FROM record_versions WHERE id=?',(version_id,)).fetchone()
+            if receipt:
+                saved=json.loads(receipt[0])
+                if saved['request']!=intent:raise ServiceError('request_id 已用于不同的区域调整',409)
+                return dict(saved['response'],reused=True)
+            paper=conn.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()
+            q=conn.execute('SELECT * FROM questions WHERE id=? AND paper_id=?',(question_id,paper_id)).fetchone()
+            if not paper or not q:raise ServiceError('试卷或题目不存在',404)
+            if paper['archived_at']:raise ServiceError('请先恢复已归档试卷',409)
+            if conn.execute("SELECT 1 FROM workflow_jobs WHERE paper_id=? AND status IN ('queued','dispatching','running')",(paper_id,)).fetchone() or conn.execute("SELECT 1 FROM learning_tasks WHERE paper_id=? AND status IN ('queued','running','repairing','result_saved')",(paper_id,)).fetchone():
+                raise ServiceError('请先结束或取消当前试卷任务',409)
+            if not paper['source_path']:raise ValueError('试卷缺少原PDF')
+            original=paper_path(self.config.data,paper['source_path'],self.config.root)
+            if not original.is_file():raise ValueError('原PDF文件缺失，请先恢复原卷')
+            regions=[]
+            with pymupdf.open(original) as doc:
+                for r in supplied:
+                    if not 1<=r['page']<=len(doc):raise ValueError('区域页码超出PDF范围')
+                    rect=doc[r['page']-1].rect
+                    if not 0<=r['top']<r['bottom']<=rect.height:raise ValueError('区域须满足 0 ≤ top < bottom ≤ 页高')
+                    regions.append(dict(page=r['page'],bbox=[0,r['top'],rect.width,r['bottom']],role='question_and_work'))
+            updated=now_iso()
+            response=dict(paper_id=paper_id,question_id=question_id,status='updated',regions=regions,request_id=request_id,reused=False)
+            old={k:q[k] for k in ('regions_json','page_start','page_end','bbox_json')}
+            payload=dict(request=intent,old=old,source_sha256=hashlib.sha256(original.read_bytes()).hexdigest(),response=response)
+            conn.execute('INSERT INTO record_versions VALUES(?,?,?,?,?,?)',(version_id,'question_regions',question_id,json.dumps(payload,ensure_ascii=False),'用户确认调整题图区域；历史诊断保持不变',updated))
+            conn.execute('UPDATE questions SET regions_json=?,page_start=?,page_end=?,bbox_json=? WHERE id=?',
+                (json.dumps(regions,ensure_ascii=False),regions[0]['page'],regions[-1]['page'],json.dumps(regions[0]['bbox']),question_id))
+            conn.execute('UPDATE papers SET updated_at=? WHERE id=?',(updated,paper_id))
+            return response
+
     def correct_questions(self,paper_id,body):
         from app.errors import ServiceError
         if body.get('confirmed') is not True:raise ValueError('请明确确认题号纠正')

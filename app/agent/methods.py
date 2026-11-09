@@ -16,6 +16,10 @@ def body(root,name):
     return (root/'.agents/skills'/('mathlens-'+name)/'SKILL.md').read_text(encoding='utf-8')
 
 def for_kind(root,kind):
-    return {'kind':kind,'skill_names':['mathlens-'+n for n in ROLE_SKILLS[kind]],
+    result={'kind':kind,'skill_names':['mathlens-'+n for n in ROLE_SKILLS[kind]],
         'skills':[{'name':'mathlens-'+n,'instructions':body(root,n)} for n in ROLE_SKILLS[kind]],
         'execution_override':'方法正文中的context、read_skill及材料阅读步骤，已由本包实际提供的材料与后端回执完成；不要为凑回执重复读取。标明材料齐全时直接deliver_result({result:完整封装})，仅校验报错或实际缺少材料时补读/修正，不例行preflight。'}
+    if kind=='annotate_questions':
+        from app.bank.annotation_revisions import RESOLVE_REVIEW_INSTRUCTIONS
+        result['revision_contract']=RESOLVE_REVIEW_INSTRUCTIONS
+    return result

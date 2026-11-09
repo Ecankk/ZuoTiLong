@@ -9,4 +9,4 @@ def validate_student_text(value):
     elif isinstance(value,list):
         for child in value:validate_student_text(child)
     elif isinstance(value,str) and INTERNAL_ROLES.search(value):
-        raise ValueError('面向学生的批改文字请使用“你的作答”“事后批改”“参考解析”，不要使用内部附件角色名')
+        raise ValueError('面向学生的文字不得包含内部附件角色名，请使用自然中文表达；反馈无需固定标签')

@@ -34,6 +34,10 @@ class F5BackendTests(unittest.TestCase):
         for text in ('你的附件是 own_work','请补 external_solution','附件 marking 不算独立步骤'):
             with self.assertRaises(ValueError):validate_student_text({'observations':[{'evidence':text}]})
         validate_student_text({'feedback':'请补拍你的作答，参考解析不能作为独立作答。'})
+        validate_student_text({'feedback':'结论正确。','observations':[],'first_error':None})
+        with self.assertRaisesRegex(ValueError,'内部附件角色名') as error:
+            validate_student_text({'feedback':'marking is missing'})
+        self.assertNotIn('请使用“你的作答”',str(error.exception))
 
     def test_internal_role_rejection_does_not_save_feedback(self):
         from app.learning.loop import submit_probe,assess_attempt

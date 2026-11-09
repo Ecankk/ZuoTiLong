@@ -5,7 +5,7 @@ from starlette.concurrency import run_in_threadpool
 from app.api.dependencies import runtime
 from app.api.schemas import Confirmation,Score,PaperDraft,Numbers,QuestionReview
 from app.api.responses import resource_response
-from app.api.schemas import PreparePractice,CorrectQuestions
+from app.api.schemas import PreparePractice,CorrectQuestions,QuestionRegions
 router=APIRouter(prefix='/api',tags=['papers'])
 @router.post('/papers/{paper_id}/prepare-practice',status_code=201)
 def prepare_practice(paper_id:str,body:PreparePractice,rt=Depends(runtime)):
@@ -21,6 +21,9 @@ def prepare_practice(paper_id:str,body:PreparePractice,rt=Depends(runtime)):
 @router.post('/papers/{paper_id}/questions/correct')
 def correct_questions(paper_id:str,body:CorrectQuestions,rt=Depends(runtime)):
     return rt.mutate(rt.papers.correct_questions,paper_id,body.model_dump())
+@router.post('/papers/{paper_id}/questions/{question_id}/regions')
+def question_regions(paper_id:str,question_id:str,body:QuestionRegions,rt=Depends(runtime)):
+    return rt.mutate(rt.papers.update_regions,paper_id,question_id,body.model_dump())
 @router.get('/papers')
 def papers(request:Request,archived:str='0',offset:int|None=Query(None,ge=0),limit:int|None=Query(None,ge=1,le=100),rt=Depends(runtime)):
     if offset is None and limit is None:return rt.workspace.papers(archived)
@@ -47,6 +50,9 @@ def confirm(paper_id:str,body:Numbers,rt=Depends(runtime)):return rt.mutate(rt.p
 @router.post('/papers/{paper_id}/resummarize',status_code=201)
 def summarize(paper_id:str,body:Confirmation,rt=Depends(runtime)):return rt.mutate(rt.agent.summarize,paper_id,body.confirmed)
 @router.get('/questions/{question_id}/evidence')
-def evidence(question_id:str,region:int=0,rt=Depends(runtime)):return resource_response(rt.resources.evidence(question_id,region))
+def evidence(question_id:str,region:int=0,rt=Depends(runtime)):
+    response=resource_response(rt.resources.evidence(question_id,region))
+    response.headers['Cache-Control']='no-store'
+    return response
 @router.post('/questions/{question_id}/review',status_code=201)
 def review(question_id:str,body:QuestionReview,rt=Depends(runtime)):return rt.mutate(rt.practice.review_question,question_id,body.model_dump())

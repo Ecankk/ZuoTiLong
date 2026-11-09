@@ -26,6 +26,14 @@ class CorrectQuestions(RequestModel):
     confirmed:StrictBool
     questions:list[CorrectQuestion]=Field(min_length=1)
     delete_question_ids:list[str]=Field(default_factory=list)
+class QuestionRegion(RequestModel):
+    page:StrictInt
+    top:StrictFloat|StrictInt
+    bottom:StrictFloat|StrictInt
+class QuestionRegions(RequestModel):
+    confirmed:StrictBool
+    request_id:str
+    regions:list[QuestionRegion]=Field(min_length=1,max_length=4)
 class Confirmation(RequestModel):confirmed:StrictBool=False
 class KnowledgeOrganize(RequestModel):
     source_ids:list[str]|None=None

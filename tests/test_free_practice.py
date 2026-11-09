@@ -138,6 +138,9 @@ class FreePracticeTests(unittest.TestCase):
         from app.agent.material_package import initial_inputs
         packet=initial_inputs(self.conn,server.ROOT,server.DATA,task['id'],lease)
         self.assertTrue(any(x['type']=='localImage' for x in packet))
+        requirements='\n'.join(json.loads(packet[0]['text'])['requirements'])
+        self.assertIn('feedback只写1–3句结论',requirements)
+        self.assertIn('本次未附事后批改图片',requirements)
         result=dict(attempt_id=value['id'],correct=True,answer_status='correct',feedback='正确',reference_reasoning='checked',observations=[],first_error=None,possible_causes=[],topic_ids=['math1.calculus.functions-limits'],next_step='',needs_material=[])
         envelope=dict(schema_version='1.11',kind='grade_attempt',paper_id=None,task_id=task['id'],input_revision=task['input_revision'],author='fake',result=result)
         deliver(self.conn,server.ROOT,server.DATA,envelope,lease);self.conn.commit()

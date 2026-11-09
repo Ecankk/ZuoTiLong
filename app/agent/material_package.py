@@ -145,8 +145,7 @@ def initial_inputs(conn,root,data,task_id,lease):
         attempt=next(a for a in inputs['attempts'] if a['id']==task['attempt_id'])
         probe=next(p for p in inputs['probes'] if p['id']==attempt['probe_id'])
         header['attempt']=attempt;header['assignment']=json.loads(probe['payload_json'])
-        header['requirements']+=['只批改本次回答范围，真实作答与事后批改、参考解析分别判断。独立正确不能来自参考答案。',
-            '反馈用“你的作答 / 事后批改 / 参考解析”，不要向学生显示own_work、marking、external_solution等内部字段名。',
+        header['requirements']+=['只批改本次回答范围；独立正确不能来自参考答案。',
             '所需作答与参考材料已附，正常可一次交付；仅确有需要再调用read_attempt/read_bank补看。']
         from app.storage.images import image_records,image_path
         roles=json.loads(attempt.get('image_roles_json') or '{}')
@@ -185,6 +184,17 @@ def initial_inputs(conn,root,data,task_id,lease):
     else:
         header['task']=task_package(conn,task_id)
         header['requirements'].append('当前角色方法正文已附；按本任务实际材料清单补读原始材料，不需要再读read_skill。')
+    if task['kind']=='grade_attempt':
+        if inputs['contract_version']=='1.11':
+            body=inputs['free_practice']['body'];image_ids=body['image_ids'];roles=body['image_roles']
+        else:
+            image_ids=json.loads(attempt['images_json']);roles=json.loads(attempt.get('image_roles_json') or '{}')
+        header['requirements']+=['feedback只写1–3句结论：说清对不对、关键问题在哪；不复述做对的部分、首错、参考推导或建议，这些分别放在observations、first_error、reference_reasoning、next_step等结构化字段。无需固定标签。此规则取代方法正文中反馈包含推导和改进方向的旧要求。',
+            '学生可见文字不得出现内部附件角色名。']
+        if any(roles.get(i)=='marking' for i in image_ids):
+            header['requirements'].append('本次确实附有事后批改图片，仅此时单独评价其中的批改，放在observations等对应结构化字段；不将事后批改冒充独立作答，也不在feedback重复。')
+        else:
+            header['requirements'].append('本次未附事后批改图片，学生可见反馈和结构化文字都不要提事后批改，也不要写“未见事后批改痕迹”等无关说明。')
     header['materials_complete']=task['kind'] in ('analyze_paper','grade_attempt','organize_knowledge','review_question') or task['kind']=='prepare_practice' and inputs['contract_version']=='1.10'
     if header['materials_complete']:header['requirements'].append('材料已齐、已登记下列阅读回执，无需调用context。正常直接判断后交付；仅实际新发现材料缺口时补读。')
     header['read_receipts']=[dict(r) for r in conn.execute('SELECT kind,record_id,role,sha256 FROM task_reads WHERE task_id=? AND run_token=? ORDER BY kind,record_id,role',(task['id'],task['run_token']))]

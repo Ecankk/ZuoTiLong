@@ -151,7 +151,7 @@ class AnnotationRevisionTests(unittest.TestCase):
         for status in ('needs_review','needs_catalog'):
             invalid=copy.deepcopy(value);invalid['result']['questions'][0].update(status=status,limitations=['Still unresolved.'])
             invalid['result']['questions'][0]['unmatched_topics']=['Missing atom.'] if status=='needs_catalog' else []
-            with self.assertRaisesRegex(ValueError,'只授权'):self.f.tool('apply_report',{'result':invalid})
+            with self.assertRaisesRegex(ValueError,'只授权|未授权字段'):self.f.tool('apply_report',{'result':invalid})
         self.assertIsNone(receipt(self.conn,self.f.task['id']))
         self.save(value)
         current=annotations.current(self.conn,self.data,self.ids[0])
@@ -172,6 +172,45 @@ class AnnotationRevisionTests(unittest.TestCase):
         for flag in (False,1,'true',None):
             with self.subTest(flag=flag),self.assertRaises(ValueError):
                 normalize_scope('annotate_questions',{'bank_ids':self.ids,'revision':dict(good,resolve_review=flag)})
+
+    def test_resolution_batch_can_keep_one_unresolved_with_only_note_changes(self):
+        # Turn the second synthetic alias into independent, locally reviewed
+        # question knowledge so both entries must be delivered in one batch.
+        self.conn.execute('DELETE FROM bank_links');self.conn.commit()
+        self.f.start('annotate_questions',{'bank_ids':[self.ids[1]]})
+        self.f.read_annotation_material();self.save(self.f.envelope(self.f.annotation_result()))
+        self.start();self.read();value=self.payload()
+        for item in value['result']['questions']:
+            item.update(status='needs_review',limitations=['Reference step remains unresolved.'])
+            item['answer_check']={'status':'conflict','note':'Need original book evidence.'}
+        self.save(value)
+        previous={bid:annotations.current(self.conn,self.data,bid) for bid in self.ids}
+        scope=self.scope(['reference_reasoning','answer_check.note','answer_check.status','limitations'])
+        scope['revision']['resolve_review']=True
+        self.f.start('annotate_questions',scope);self.inputs=json.loads(self.f.task['input_json'])
+        self.read();value=self.payload();ready,pending=value['result']['questions']
+        ready.update(status='ready',limitations=[]);ready['answer_check']={'status':'consistent','note':'Checked independent derivation.'}
+        pending['answer_check']['note']='Still need a legible photo of the original step.'
+        pending['limitations']=['Cannot resolve the conflicting symbol from available source.']
+        for field in ('reference_reasoning','answer_check.status','unmatched_topics','status'):
+            invalid=copy.deepcopy(value);bad=invalid['result']['questions'][1]
+            if field=='answer_check.status':bad['answer_check']['status']='consistent'
+            elif field=='unmatched_topics':bad[field]=['New gap']
+            elif field=='status':bad[field]='needs_catalog'
+            else:bad[field]+='changed'
+            with self.subTest(field=field),self.assertRaises(ValueError):self.f.tool('apply_report',{'result':invalid})
+        invalid=copy.deepcopy(value);invalid['result']['questions'][1]['limitations']=[]
+        with self.assertRaisesRegex(ValueError,'非空'):self.f.tool('apply_report',{'result':invalid})
+        self.assertIsNone(receipt(self.conn,self.f.task['id']))
+        self.save(value)
+        states={annotations.current(self.conn,self.data,bid)['analysis']['status'] for bid in self.ids}
+        self.assertEqual(states,{'ready','needs_review'})
+        for bid in self.ids:
+            current=annotations.current(self.conn,self.data,bid)
+            self.assertNotEqual(current['id'],previous[bid]['id'])
+            historical=json.loads(self.conn.execute('SELECT payload_json FROM question_annotations WHERE id=?',(previous[bid]['id'],)).fetchone()[0])
+            self.assertEqual(historical,previous[bid]['analysis'])
+        self.assertTrue(receipt(self.conn,self.f.task['id']))
 
     def test_each_requested_alias_base_is_checked_before_alias_deduplication(self):
         scope = self.scope(); scope['revision']['expected_annotations'][self.ids[1]] = 'annotation-stale'

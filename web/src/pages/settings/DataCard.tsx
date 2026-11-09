@@ -49,10 +49,10 @@ export function DataCard() {
           <dl className={styles.facts}>
             <dt>最近备份</dt>
             <dd>{when(data.last_backup_at)}</dd>
-            {backups && (
+            {count > 0 && (
               <>
                 <dt>已有备份</dt>
-                <dd>{count > 0 ? `${count} 份` : '还没有'}</dd>
+                <dd>{count} 份</dd>
               </>
             )}
             {(Object.keys(dbLabel) as (keyof typeof dbLabel)[]).map((key) => (

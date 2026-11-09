@@ -47,6 +47,11 @@ h2 {
   line-height: 1.4;
 }
 
+/* 浏览器默认 small 只有父字号的 83%（约 11.7px），低于规范；次要说明不小于 --font-size-xs（13px） */
+small {
+  font-size: var(--font-size-xs);
+}
+
 h3 {
   font-size: var(--font-size-h3);
   font-weight: var(--font-weight-semibold);

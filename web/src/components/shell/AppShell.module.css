@@ -5,6 +5,8 @@
 }
 
 .main {
+  /* 让绝对定位的子元素（如公式的无障碍文本）留在滚动区内，不撑高整页 */
+  position: relative;
   min-width: 0;
   overflow: auto;
   background: var(--surface-app);

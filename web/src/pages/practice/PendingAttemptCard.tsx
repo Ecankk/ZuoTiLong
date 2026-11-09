@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Chip } from '../../components/ui/Chip'
 import { cx } from '../../lib/cx'
-import { sourceName } from '../../lib/labels'
+import { practiceSource } from '../../lib/labels'
 import { QuestionContent } from './AnswerCard'
 import { AttemptForm } from './AttemptForm'
 import { ReferenceAnalysis, SubmittedAttempt } from './GradedCard'
@@ -38,7 +38,7 @@ export function PendingAttemptCard({
     <Card className={styles.card} aria-label="批改中的练习">
       <div className={styles.gradedHead}>
         <Chip>
-          第 {position.index} 道 · {sourceName(card.access)} · 第 {card.access.number} 题
+          第 {position.index} 道{practiceSource(card.access) && ` · ${practiceSource(card.access)}`}
         </Chip>
         <Chip tone="primary">{grading ? '批改中' : '等待批改'}</Chip>
       </div>

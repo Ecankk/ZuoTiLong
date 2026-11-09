@@ -8,7 +8,7 @@ import { Card } from '../../components/ui/Card'
 import { Chip, CorrectnessChip } from '../../components/ui/Chip'
 import { Fold } from '../../components/ui/Fold'
 import { cx } from '../../lib/cx'
-import { assessmentCorrectness, sourceName } from '../../lib/labels'
+import { assessmentCorrectness, practiceSource } from '../../lib/labels'
 import { QuestionContent } from './AnswerCard'
 import { AttemptForm } from './AttemptForm'
 import { RevealButton } from './RevealButton'
@@ -68,6 +68,24 @@ export function SubmittedAttempt({ attempt }: { attempt: Attempt }) {
   )
 }
 
+/** 反馈原文按换行分段显示（不改动文字内容） */
+const paragraphs = (text: string) =>
+  text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+const hasReference = (detail: PracticeResponse) => {
+  const question = detail.question
+  return Boolean(
+    question &&
+    (question.analysis_text ||
+      question.analysis_image ||
+      question.expected ||
+      question.solution_note),
+  )
+}
+
 export function ReferenceAnalysis({ detail }: { detail: PracticeResponse }) {
   const question = detail.question
   const hasAnalysis =
@@ -117,6 +135,10 @@ export function GradedCard({
   if (!attempt || !assessment) return null
   const correctness = assessmentCorrectness(assessment)
   const valid = (assessment.observations ?? []).filter((item) => item.status === 'valid')
+  const problems = (assessment.observations ?? []).filter(
+    (item) => item.status !== 'valid' && item.step !== assessment.first_error?.step,
+  )
+  const causes = assessment.possible_causes ?? []
   const nextIndex = group.items.findIndex((item) => item.status === 'pending')
   const next = nextIndex >= 0 ? group.items[nextIndex] : undefined
   const needsMaterial = assessment.needs_material ?? []
@@ -128,8 +150,8 @@ export function GradedCard({
         <div>
           <div className={styles.gradedHead}>
             <Chip>
-              第 {position.index} 道 · {sourceName(practice.access)} · 第 {practice.access.number}{' '}
-              题
+              第 {position.index} 道
+              {practiceSource(practice.access) && ` · ${practiceSource(practice.access)}`}
             </Chip>
             <CorrectnessChip value={correctness} />
             <span className={styles.when}>{submittedTime(attempt.created_at)}</span>
@@ -181,23 +203,16 @@ export function GradedCard({
             <h3>批改反馈</h3>
           </div>
           <div className={cx('read', styles.feedbackBody)}>
-            <p className={styles.feedbackSection}>
-              <MathText text={assessment.feedback} />
-            </p>
-            {needsMaterial.length > 0 && (
-              <div className={styles.feedbackSection}>
-                <h4>请补充这些内容</h4>
-                <ul className={styles.needList}>
-                  {needsMaterial.map((item, index) => (
-                    <li key={index}>
-                      <MathText text={item} />
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <section className={styles.feedbackSection} aria-label="结论">
+              <h4>结论</h4>
+              {paragraphs(assessment.feedback).map((text, index) => (
+                <p key={index}>
+                  <MathText text={text} />
+                </p>
+              ))}
+            </section>
             {valid.length > 0 && (
-              <div className={styles.feedbackSection}>
+              <section className={styles.feedbackSection} aria-label="做对的部分">
                 <h4>做对的部分</h4>
                 <ul className={styles.okList}>
                   {valid.map((item, index) => (
@@ -209,42 +224,95 @@ export function GradedCard({
                     </li>
                   ))}
                 </ul>
-              </div>
+              </section>
             )}
-            {assessment.first_error && (
-              <div className={styles.feedbackSection}>
-                <h4>首个错误</h4>
-                <div className={styles.firstError}>
-                  <MathText text={assessment.first_error.step} />
-                  {assessment.first_error.evidence && (
-                    <small>
-                      <MathText text={assessment.first_error.evidence} />
-                    </small>
-                  )}
-                </div>
-              </div>
+            {(assessment.first_error || problems.length > 0 || causes.length > 0) && (
+              <section className={styles.feedbackSection} aria-label="问题与首错">
+                <h4>问题与首错</h4>
+                {assessment.first_error && (
+                  <div className={styles.firstError}>
+                    <b>首个错误：</b>
+                    <MathText text={assessment.first_error.step} />
+                    {assessment.first_error.evidence && (
+                      <small>
+                        <MathText text={assessment.first_error.evidence} />
+                      </small>
+                    )}
+                  </div>
+                )}
+                {problems.length > 0 && (
+                  <ul className={styles.problemList}>
+                    {problems.map((item, index) => (
+                      <li key={index}>
+                        <MathText text={item.step} />
+                        {item.evidence && (
+                          <small>
+                            <MathText text={item.evidence} />
+                          </small>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {causes.length > 0 && (
+                  <Fold title="可能的原因" hint={`${causes.length} 条`}>
+                    <ul className={styles.problemList}>
+                      {causes.map((cause) => (
+                        <li key={cause.id}>
+                          <MathText text={cause.label} />
+                          {cause.correction && (
+                            <small>
+                              改进：
+                              <MathText text={cause.correction} />
+                            </small>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </Fold>
+                )}
+              </section>
             )}
-            {assessment.next_step && (
-              <div className={styles.feedbackSection}>
-                <h4>接下来</h4>
-                <div className={styles.nextStep}>
-                  <span>
-                    <MathText text={assessment.next_step} />
-                  </span>
-                  {next && next.id !== practice.id && (
-                    <ButtonLink size="sm" variant="soft" to={`/practice?item=${next.id}`}>
-                      去做第 {nextIndex + 1} 道
-                    </ButtonLink>
-                  )}
-                </div>
-              </div>
+            {(assessment.reference_reasoning || hasReference(detail)) && (
+              <section className={styles.feedbackSection} aria-label="参考思路">
+                <h4>参考思路</h4>
+                {assessment.reference_reasoning && (
+                  <p>
+                    <MathText text={assessment.reference_reasoning} />
+                  </p>
+                )}
+                <ReferenceAnalysis detail={detail} />
+              </section>
             )}
-            {assessment.reference_reasoning && (
-              <Fold title="参考推导">
-                <MathText text={assessment.reference_reasoning} />
-              </Fold>
+            {(assessment.next_step || needsMaterial.length > 0) && (
+              <section className={styles.feedbackSection} aria-label="建议">
+                <h4>建议</h4>
+                {needsMaterial.length > 0 && (
+                  <>
+                    <p>请补充这些内容：</p>
+                    <ul className={styles.needList}>
+                      {needsMaterial.map((item, index) => (
+                        <li key={index}>
+                          <MathText text={item} />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {assessment.next_step && (
+                  <div className={styles.nextStep}>
+                    <span>
+                      <MathText text={assessment.next_step} />
+                    </span>
+                    {next && next.id !== practice.id && (
+                      <ButtonLink size="sm" variant="soft" to={`/practice?item=${next.id}`}>
+                        去做第 {nextIndex + 1} 道
+                      </ButtonLink>
+                    )}
+                  </div>
+                )}
+              </section>
             )}
-            <ReferenceAnalysis detail={detail} />
           </div>
         </div>
       </div>

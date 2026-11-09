@@ -143,9 +143,10 @@ export type PracticeStatus = 'pending' | 'grading' | 'graded' | 'needs_supplemen
 
 export type Access = {
   id: string
-  math_type: MathType
-  year: string
-  number: number
+  /** 题集题（如教辅）没有真题身份：这三项可能缺失、为空或为 0 */
+  math_type?: MathType | 0 | null
+  year?: string | null
+  number?: number | null
   reserved: boolean
   can_view: boolean
   confirmed: boolean
@@ -478,6 +479,15 @@ export type BookLocator = {
   chapter: string | null
   number: string | null
   locator: string | null
+}
+
+/** 原卷整页图（调整切图用）；坐标换算同切图，原点为 0（接口待 B23 确定） */
+export type PageImage = {
+  page: number
+  image_url: string
+  image_width: number
+  image_height: number
+  scale: number
 }
 
 export type EvidenceRegion = {

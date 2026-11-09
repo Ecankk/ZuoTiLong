@@ -2,7 +2,8 @@ import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, ZoomIn } from 'luc
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { usePaperQuestions, useQuestion, useTasks } from '../../api/queries'
-import type { QuestionResponse, QuestionSummary, StepComparison } from '../../api/types'
+import type { QuestionResponse, QuestionSummary, Region, StepComparison } from '../../api/types'
+import { AdjustRegionsButton } from './RegionEditor'
 import { MathText } from '../../components/math/MathText'
 import { ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -79,11 +80,13 @@ function SourcePanel({
   number,
   page,
   images,
+  question,
 }: {
   paperId: string
   number: string
   page: number | null
   images: string[]
+  question?: { id: string; regions: Region[] }
 }) {
   return (
     <Card className={styles.source} aria-label="原卷">
@@ -92,6 +95,14 @@ function SourcePanel({
           {page ? `原卷第 ${page} 页 · ` : ''}第 {number} 题
         </strong>
         <div className={styles.tools}>
+          {question && (
+            <AdjustRegionsButton
+              paperId={paperId}
+              questionId={question.id}
+              number={number}
+              regions={question.regions}
+            />
+          )}
           {images[0] && (
             <a
               className={styles.iconButton}
@@ -382,6 +393,7 @@ export function QuestionAnalysisPage() {
           number={number}
           page={detail?.question.regions[0]?.page ?? null}
           images={detail?.evidence_urls ?? []}
+          question={detail?.question}
         />
         <div className={styles.analysis}>
           {detail && summary?.analysis_available && detail.diagnosis ? (

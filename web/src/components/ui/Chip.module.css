@@ -43,5 +43,30 @@
 .plain {
   color: var(--text-regular);
   background: var(--surface-sunken);
+  /* 默认标签在灰底卡片上也要看得见 */
+  box-shadow: inset 0 0 0 1px var(--border-default);
   font-weight: var(--font-weight-medium);
+}
+
+.chip {
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+/* 放在链接或按钮里的标签可以点：加手型和悬停反馈，和只展示的标签区分开 */
+a .chip,
+button .chip {
+  cursor: pointer;
+}
+
+a:hover .chip.plain,
+button:hover .chip.plain {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  background: var(--surface-placeholder);
+}
+
+a:hover .chip.primary,
+button:hover .chip.primary {
+  box-shadow: inset 0 0 0 1px var(--color-primary);
 }

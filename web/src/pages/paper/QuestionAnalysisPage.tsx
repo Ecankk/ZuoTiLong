@@ -7,9 +7,11 @@ import { AdjustRegionsButton } from './RegionEditor'
 import { MathText } from '../../components/math/MathText'
 import { ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { ErrorState } from '../../components/ui/ErrorState'
 import { Chip, CorrectnessChip } from '../../components/ui/Chip'
 import { Fold } from '../../components/ui/Fold'
 import { PaperPlaceholder, type PaperLine } from '../../components/ui/PaperPlaceholder'
+import { Skeleton } from '../../components/ui/Skeleton'
 import { cx } from '../../lib/cx'
 import { QuestionStrip } from './QuestionStrip'
 import { ReviewCard } from './ReviewCard'
@@ -375,15 +377,70 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
   )
 }
 
+/** 题目页读取中：左边原卷、右边分析的骨架，避免整页空白。 */
+function LoadingLayout() {
+  return (
+    <div className={styles.layout}>
+      <Skeleton variant="question" />
+      <Skeleton rows={4} />
+    </div>
+  )
+}
+
 export function QuestionAnalysisPage() {
   const { paperId = '', number = '' } = useParams()
-  const { data: list } = usePaperQuestions(paperId)
+  const questions = usePaperQuestions(paperId)
+  const list = questions.data
   const { data: tasks } = useTasks()
   const summary = list?.items.find((question) => question.number === number)
   // 没有分析的题也读取详情，用来显示原卷切图
-  const { data: detail, isPending } = useQuestion(summary?.id)
-  if (!list) return null
+  const question = useQuestion(summary?.id)
+  const detail = question.data
+  if (!list)
+    return questions.isError ? (
+      <ErrorState
+        error={questions.error}
+        title="题目没能读取"
+        onRetry={() => void questions.refetch()}
+        back={{ to: `/papers/${paperId}`, label: '回到试卷概览' }}
+      />
+    ) : (
+      <LoadingLayout />
+    )
   const analyzing = tasks?.active?.paper_id === paperId
+  let analysis
+  if (!summary)
+    analysis = (
+      <Card padded className={styles.notice}>
+        这份试卷里没有这道题。
+      </Card>
+    )
+  else if (detail && summary.analysis_available && detail.diagnosis)
+    analysis = (
+      <>
+        <Analysis detail={detail} />
+        <ReviewCard paperId={paperId} detail={detail} />
+      </>
+    )
+  else if (question.isError && !detail)
+    analysis = (
+      <ErrorState
+        error={question.error}
+        title="这道题没能读取"
+        onRetry={() => void question.refetch()}
+      />
+    )
+  else if (question.isPending) analysis = <Skeleton rows={4} />
+  else
+    analysis = (
+      <Card padded className={styles.notice}>
+        {summary.analysis_available
+          ? '这道题的逐题分析暂时无法显示。'
+          : analyzing
+            ? '做题龙正在分析这份试卷，完成后会显示在这里。'
+            : '这道题还没有逐题分析。'}
+      </Card>
+    )
   return (
     <>
       <QuestionStrip paperId={paperId} questions={list.items} analyzing={analyzing} />
@@ -396,24 +453,7 @@ export function QuestionAnalysisPage() {
           question={detail?.question}
         />
         <div className={styles.analysis}>
-          {detail && summary?.analysis_available && detail.diagnosis ? (
-            <>
-              <Analysis detail={detail} />
-              <ReviewCard paperId={paperId} detail={detail} />
-            </>
-          ) : (
-            !isPending && (
-              <Card padded className={styles.notice}>
-                {!summary
-                  ? '这份试卷里没有这道题。'
-                  : summary.analysis_available
-                    ? '这道题的逐题分析暂时无法显示。'
-                    : analyzing
-                      ? '做题龙正在分析这份试卷，完成后会显示在这里。'
-                      : '这道题还没有逐题分析。'}
-              </Card>
-            )
-          )}
+          {analysis}
           <Pager paperId={paperId} questions={list.items} number={number} />
         </div>
       </div>

@@ -1,0 +1,214 @@
+/* 看图层：深色底，图片尽量大；文字用浅色 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(17, 21, 31, 0.95);
+}
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  color: #f2f4f8;
+  outline: none;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  padding-bottom: var(--space-3);
+}
+
+.title {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-semibold);
+}
+
+.head button,
+.pager button,
+.zoomBar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.head button:hover:not(:disabled),
+.pager button:hover:not(:disabled),
+.zoomBar button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.head button:disabled,
+.pager button:disabled,
+.zoomBar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.head button:focus-visible,
+.pager button:focus-visible,
+.zoomBar button:focus-visible {
+  outline: 2px solid #9db4ff;
+  outline-offset: 2px;
+}
+
+.modes {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.modes button {
+  border-color: transparent;
+  background: transparent;
+}
+
+.modes button[aria-pressed='true'] {
+  background: #f2f4f8;
+  color: #1c2333;
+}
+
+.modes button[aria-pressed='true']:hover {
+  background: #f2f4f8;
+}
+
+.close {
+  margin-left: auto;
+}
+
+.body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding-bottom: var(--space-2);
+}
+
+.pager span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.pager small {
+  color: rgba(242, 244, 248, 0.7);
+  font-size: var(--font-size-xs);
+}
+
+.stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  cursor: zoom-in;
+  touch-action: none;
+  user-select: none;
+}
+
+.stage.zoomed {
+  cursor: grab;
+}
+
+.stage.zoomed:active {
+  cursor: grabbing;
+}
+
+.frame {
+  position: relative;
+  flex: none;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* 整页模式里本题所在区域 */
+.box {
+  position: absolute;
+  border: 3px solid #f0a52a;
+  border-radius: 2px;
+  background: rgba(240, 165, 42, 0.1);
+  pointer-events: none;
+}
+
+.message {
+  margin: auto;
+  padding: var(--space-6);
+  color: rgba(242, 244, 248, 0.85);
+  font-size: var(--font-size-ui);
+  text-align: center;
+}
+
+.stage .message {
+  position: absolute;
+}
+
+.zoomBar {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  background: rgba(17, 21, 31, 0.78);
+  transform: translateX(-50%);
+}
+
+.zoomBar button {
+  width: 32px;
+  padding: 0;
+}
+
+.percent {
+  min-width: 72px;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.hint {
+  padding-top: var(--space-2);
+  color: rgba(242, 244, 248, 0.6);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}

@@ -1,8 +1,9 @@
-import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, ZoomIn } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, FileText, ZoomIn } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { usePaperQuestions, useQuestion, useTasks } from '../../api/queries'
 import type { QuestionResponse, QuestionSummary, Region, StepComparison } from '../../api/types'
+import { ImageViewer, type ViewerTarget } from './ImageViewer'
 import { AdjustRegionsButton } from './RegionEditor'
 import { MathText } from '../../components/math/MathText'
 import { ButtonLink } from '../../components/ui/Button'
@@ -63,8 +64,8 @@ function Steps({ steps }: { steps: Step[] }) {
   )
 }
 
-/** 原卷切图；读取失败时显示占位，不露出破图。 */
-function CropImage({ url, alt }: { url: string; alt: string }) {
+/** 原卷切图；点击打开看图层。读取失败时显示占位，不露出破图。 */
+function CropImage({ url, alt, onOpen }: { url: string; alt: string; onOpen: () => void }) {
   const [failed, setFailed] = useState(false)
   if (failed)
     return (
@@ -74,7 +75,11 @@ function CropImage({ url, alt }: { url: string; alt: string }) {
         caption="原卷切图暂时无法显示"
       />
     )
-  return <img className={styles.cropImage} src={url} alt={alt} onError={() => setFailed(true)} />
+  return (
+    <button type="button" className={styles.cropButton} onClick={onOpen} title="点击放大查看">
+      <img className={styles.cropImage} src={url} alt={alt} onError={() => setFailed(true)} />
+    </button>
+  )
 }
 
 function SourcePanel({
@@ -90,8 +95,11 @@ function SourcePanel({
   images: string[]
   question?: { id: string; regions: Region[] }
 }) {
+  const [viewer, setViewer] = useState<ViewerTarget | null>(null)
+  // 窄窗口里原卷在分析上方，可以收起
+  const [collapsed, setCollapsed] = useState(false)
   return (
-    <Card className={styles.source} aria-label="原卷">
+    <Card className={cx(styles.source, collapsed && styles.collapsed)} aria-label="原卷">
       <div className={styles.sourceHead}>
         <strong>
           {page ? `原卷第 ${page} 页 · ` : ''}第 {number} 题
@@ -106,48 +114,73 @@ function SourcePanel({
             />
           )}
           {images[0] && (
-            <a
+            <button
+              type="button"
               className={styles.iconButton}
-              href={images[0]}
-              target="_blank"
-              rel="noreferrer"
+              onClick={() => setViewer({ mode: 'crop', index: 0 })}
               title="放大"
+              aria-label="放大查看切图"
             >
               <ZoomIn size={17} aria-hidden />
-            </a>
+            </button>
           )}
-          <a
-            className={styles.iconButton}
-            href={`/api/papers/${encodeURIComponent(paperId)}/file${page ? `#page=${page}` : ''}`}
-            target="_blank"
-            rel="noreferrer"
-            title="打开整页"
+          {question && question.regions.length > 0 && (
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={() => setViewer({ mode: 'page', page: page ?? 1 })}
+              title="看整页"
+              aria-label="查看原卷整页"
+            >
+              <FileText size={16} aria-hidden />
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.collapseToggle}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed(!collapsed)}
           >
-            <ExternalLink size={16} aria-hidden />
-          </a>
+            {collapsed ? '展开原卷' : '收起原卷'}
+          </button>
         </div>
       </div>
-      {images.length > 0 ? (
-        images.map((url, index) => (
-          <CropImage key={url} url={url} alt={`第 ${number} 题原卷切图 ${index + 1}`} />
-        ))
-      ) : (
-        <PaperPlaceholder
-          className={styles.paper}
-          lines={placeholderLines}
-          caption="原卷切图暂不可用"
-        />
-      )}
-      <div className={styles.pens}>
-        <span>
-          <i className={styles.pen} style={{ background: 'var(--text-regular)' }} />
-          黑笔：考试作答
-        </span>
-        <span>
-          <i className={styles.pen} style={{ background: 'var(--status-wrong)' }} />
-          红笔：事后批改
-        </span>
+      <div className={styles.sourceBody}>
+        {images.length > 0 ? (
+          images.map((url, index) => (
+            <CropImage
+              key={url}
+              url={url}
+              alt={`第 ${number} 题原卷切图 ${index + 1}`}
+              onOpen={() => setViewer({ mode: 'crop', index })}
+            />
+          ))
+        ) : (
+          <PaperPlaceholder
+            className={styles.paper}
+            lines={placeholderLines}
+            caption="原卷切图暂不可用"
+          />
+        )}
+        <div className={styles.pens}>
+          <span>
+            <i className={styles.pen} style={{ background: 'var(--text-regular)' }} />
+            黑笔：考试作答
+          </span>
+          <span>
+            <i className={styles.pen} style={{ background: 'var(--status-wrong)' }} />
+            红笔：事后批改
+          </span>
+        </div>
       </div>
+      <ImageViewer
+        target={viewer}
+        onTargetChange={setViewer}
+        paperId={paperId}
+        number={number}
+        crops={images}
+        regions={question?.regions ?? []}
+      />
     </Card>
   )
 }

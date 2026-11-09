@@ -1,7 +1,7 @@
 import { ChevronRight, Search } from 'lucide-react'
 import { Fragment, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
-import { useBank, useBankCollections, useCatalog, useTopic } from '../../api/queries'
+import { useBank, useBankCollections, useCatalog, usePractices, useTopic } from '../../api/queries'
 import type { TopicResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { ButtonLink } from '../../components/ui/Button'
@@ -15,7 +15,8 @@ import {
   searchCatalog,
   type CatalogIndex,
 } from '../../lib/catalog'
-import { bankTitle, practiceLink } from '../bank/BankQuestion'
+import { bankTitle, hiddenCollection, practiceLink } from '../bank/BankQuestion'
+import { TopicName } from './TopicName'
 import { TopicTree } from './TopicTree'
 import styles from './TopicsPage.module.css'
 
@@ -33,7 +34,9 @@ function SearchResults({ index, query }: { index: CatalogIndex; query: string })
         return (
           <li key={node.id}>
             <Link to={`/topics/${encodeURIComponent(node.id)}`}>
-              <strong>{node.name}</strong>
+              <strong>
+                <TopicName name={node.name} />
+              </strong>
               <small>{path.map((p) => p.name).join(' / ') || kindLabel(node.kind)}</small>
             </Link>
           </li>
@@ -43,7 +46,7 @@ function SearchResults({ index, query }: { index: CatalogIndex; query: string })
   )
 }
 
-/** 按来源拆分：原卷、对口练习是表现记录数；自由练习是整题作答次数，独立和受提示分开。 */
+/** 按来源拆分：原卷、对口练习是做题记录数（和上面的做对、做错、待定是同一批）；自由练习是整题作答次数。 */
 function SourceCounts({
   counts,
 }: {
@@ -56,11 +59,11 @@ function SourceCounts({
       <dl>
         <div>
           <dt>原卷</dt>
-          <dd>{counts.exam} 条记录</dd>
+          <dd>{counts.exam} 条做题记录</dd>
         </div>
         <div>
           <dt>对口练习</dt>
-          <dd>{counts.practice} 条记录</dd>
+          <dd>{counts.practice} 条做题记录</dd>
         </div>
         <div>
           <dt>自由练习</dt>
@@ -104,7 +107,7 @@ function RelatedQuestions({
   // 按题集的显示顺序排列，只列有关联题的题集
   const groups = (collections ?? [])
     .map((c) => ({ ...c, bank: counts.find((n) => n.collection_id === c.id)?.bank ?? 0 }))
-    .filter((c) => c.bank > 0)
+    .filter((c) => c.bank > 0 && c.id !== hiddenCollection)
   const [picked, setPicked] = useState<string | null>(null)
   const current = groups.find((c) => c.id === picked) ?? groups[0]
   const { data } = useBank(
@@ -180,6 +183,7 @@ function TopicDetail({ index, topicId }: { index: CatalogIndex; topicId: string 
   const path = ancestors(index, topic.id)
   const kids = index.children.get(topic.id) ?? []
   const practiceActive = practice.total - practice.inactive
+  const recorded = performance.successes + performance.failures + performance.pending
   return (
     <div className={styles.detail}>
       <Card padded>
@@ -192,7 +196,9 @@ function TopicDetail({ index, topicId }: { index: CatalogIndex; topicId: string 
           ))}
         </nav>
         <span className={styles.kind}>{kindLabel(topic.kind)}</span>
-        <h2>{topic.name}</h2>
+        <h2>
+          <TopicName name={topic.name} />
+        </h2>
         {node?.aliases?.length ? (
           <p className={styles.muted}>也叫：{node.aliases.join('、')}</p>
         ) : null}
@@ -249,11 +255,15 @@ function TopicDetail({ index, topicId }: { index: CatalogIndex; topicId: string 
               <dt>待定</dt>
               <dd>{performance.pending}</dd>
             </div>
-            <div>
-              <dt>已做题</dt>
-              <dd>{counts.completed}</dd>
-            </div>
           </dl>
+          <p className={styles.muted}>
+            {`按这个考点用得对不对统计，共 ${recorded} 条做题记录。待定：结果还没核对。`}
+          </p>
+          {counts.completed > 0 && (
+            <p className={styles.muted}>
+              {`试卷里有 ${counts.completed} 道题涉及这个考点。题目做错不一定错在这里，所以和上面的数字可能不同。`}
+            </p>
+          )}
           {performance.source_counts && <SourceCounts counts={performance.source_counts} />}
           {practiceActive > 0 && (
             <ButtonLink size="sm" to={`/practice?topic=${encodeURIComponent(topic.id)}`}>
@@ -277,13 +287,61 @@ function TopicDetail({ index, topicId }: { index: CatalogIndex; topicId: string 
           <div className={styles.kids}>
             {kids.map((kid) => (
               <Link key={kid.id} to={`/topics/${encodeURIComponent(kid.id)}`}>
-                <Chip tone={kid.kind === 'atom' ? 'plain' : 'primary'}>{kid.name}</Chip>
+                <Chip tone={kid.kind === 'atom' ? 'plain' : 'primary'}>
+                  <TopicName name={kid.name} />
+                </Chip>
               </Link>
             ))}
           </div>
         </Card>
       )}
     </div>
+  )
+}
+
+/** 每个考点最多列出的数量 */
+const weakLimit = 10
+
+/**
+ * 没选考点时：列出有待做练习的考点（练习是按试卷里的薄弱考点准备的），给出明确的下一步。
+ */
+function TopicsHome() {
+  const { data } = usePractices('topic')
+  const groups = (data?.items ?? [])
+    .filter((group) => group.counts.pending > 0)
+    .sort((a, b) => b.counts.pending - a.counts.pending)
+  return (
+    <Card padded aria-label="我的薄弱考点" className={styles.home}>
+      <h3>我的薄弱考点</h3>
+      {groups.length > 0 ? (
+        <>
+          <p className={styles.muted}>
+            这些考点在你的试卷里出过问题，做题龙已经准备了练习。点开可以看定义、易混点和相关题目。
+          </p>
+          <ul className={styles.weak}>
+            {groups.slice(0, weakLimit).map((group) => (
+              <li key={group.id}>
+                <Link to={`/topics/${encodeURIComponent(group.id)}`}>
+                  <TopicName name={group.label} />
+                </Link>
+                <small>{group.counts.pending} 道待做</small>
+              </li>
+            ))}
+          </ul>
+          <ButtonLink size="sm" variant="primary" to="/practice">
+            {groups.length > weakLimit
+              ? `去练习（还有 ${groups.length - weakLimit} 个考点）`
+              : '去练习'}
+          </ButtonLink>
+        </>
+      ) : (
+        <p className={styles.muted}>
+          {data
+            ? '分析完试卷后，你出过错的考点会列在这里。现在可以从左侧目录浏览，或搜索考点名称。'
+            : '正在读取…'}
+        </p>
+      )}
+    </Card>
   )
 }
 
@@ -319,13 +377,7 @@ export function TopicsPage() {
           {nodes && <p className={styles.total}>共 {nodes.length} 个目录项</p>}
         </Card>
         <div>
-          {topicId && index ? (
-            <TopicDetail index={index} topicId={topicId} />
-          ) : (
-            <Card padded className={styles.muted}>
-              从左侧选择一个考点，或搜索名称。
-            </Card>
-          )}
+          {topicId && index ? <TopicDetail index={index} topicId={topicId} /> : <TopicsHome />}
         </div>
       </div>
     </>

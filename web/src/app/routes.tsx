@@ -1,41 +1,89 @@
+import type { ComponentType } from 'react'
 import type { RouteObject } from 'react-router'
 import { AppShell } from '../components/shell/AppShell'
 import { HomePage } from '../pages/home/HomePage'
-import { FirstQuestionRedirect, PaperLayout } from '../pages/paper/PaperLayout'
-import { PaperOverview } from '../pages/paper/PaperOverview'
-import { PaperSummary } from '../pages/paper/PaperSummary'
-import { QuestionAnalysisPage } from '../pages/paper/QuestionAnalysisPage'
-import { FreePracticePage } from '../pages/bank/FreePracticePage'
-import { BankPage } from '../pages/bank/BankPage'
-import { NotFoundPage, ProfilePage } from '../pages/Placeholder'
-import { TopicsPage } from '../pages/topics/TopicsPage'
-import { PapersPage } from '../pages/paperList/PapersPage'
-import { SettingsPage } from '../pages/settings/SettingsPage'
-import { PracticePage } from '../pages/practice/PracticePage'
+import { NotFoundPage } from '../pages/Placeholder'
+
+/**
+ * 首页随主包加载；其余页面按路由拆包，打开时再下载（题库、题目页、考点页等体积较大）。
+ * 写法：lazyPage(() => import('...').then((m) => m.Xxx))
+ */
+const lazyPage =
+  (load: () => Promise<ComponentType>) => async (): Promise<{ Component: ComponentType }> => ({
+    Component: await load(),
+  })
 
 export const routes: RouteObject[] = [
   {
     element: <AppShell />,
     children: [
       { index: true, element: <HomePage /> },
-      { path: 'papers', element: <PapersPage /> },
+      {
+        path: 'papers',
+        lazy: lazyPage(() => import('../pages/paperList/PapersPage').then((m) => m.PapersPage)),
+      },
       {
         path: 'papers/:paperId',
-        element: <PaperLayout />,
+        lazy: lazyPage(() => import('../pages/paper/PaperLayout').then((m) => m.PaperLayout)),
         children: [
-          { index: true, element: <PaperOverview /> },
-          { path: 'questions', element: <FirstQuestionRedirect /> },
-          { path: 'questions/:number', element: <QuestionAnalysisPage /> },
-          { path: 'summary', element: <PaperSummary /> },
+          {
+            index: true,
+            lazy: lazyPage(() =>
+              import('../pages/paper/PaperOverview').then((m) => m.PaperOverview),
+            ),
+          },
+          {
+            path: 'questions',
+            lazy: lazyPage(() =>
+              import('../pages/paper/PaperLayout').then((m) => m.FirstQuestionRedirect),
+            ),
+          },
+          {
+            path: 'questions/:number',
+            lazy: lazyPage(() =>
+              import('../pages/paper/QuestionAnalysisPage').then((m) => m.QuestionAnalysisPage),
+            ),
+          },
+          {
+            path: 'summary',
+            lazy: lazyPage(() => import('../pages/paper/PaperSummary').then((m) => m.PaperSummary)),
+          },
         ],
       },
-      { path: 'practice', element: <PracticePage /> },
-      { path: 'topics', element: <TopicsPage /> },
-      { path: 'topics/:topicId', element: <TopicsPage /> },
-      { path: 'profile', element: <ProfilePage /> },
-      { path: 'bank', element: <BankPage /> },
-      { path: 'bank/:bankId/practice', element: <FreePracticePage /> },
-      { path: 'settings', element: <SettingsPage /> },
+      {
+        path: 'practice',
+        lazy: lazyPage(() => import('../pages/practice/PracticePage').then((m) => m.PracticePage)),
+      },
+      {
+        path: 'topics',
+        lazy: lazyPage(() => import('../pages/topics/TopicsPage').then((m) => m.TopicsPage)),
+      },
+      {
+        path: 'topics/:topicId',
+        lazy: lazyPage(() => import('../pages/topics/TopicsPage').then((m) => m.TopicsPage)),
+      },
+      {
+        path: 'profile',
+        lazy: lazyPage(() => import('../pages/Placeholder').then((m) => m.ProfilePage)),
+      },
+      {
+        path: 'bank',
+        lazy: lazyPage(() => import('../pages/bank/BankPage').then((m) => m.BankPage)),
+      },
+      {
+        path: 'bank/:bankId/practice',
+        lazy: lazyPage(() =>
+          import('../pages/bank/FreePracticePage').then((m) => m.FreePracticePage),
+        ),
+      },
+      {
+        path: 'settings',
+        lazy: lazyPage(() => import('../pages/settings/SettingsPage').then((m) => m.SettingsPage)),
+      },
+      {
+        path: 'help/setup',
+        lazy: lazyPage(() => import('../pages/help/SetupHelpPage').then((m) => m.SetupHelpPage)),
+      },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

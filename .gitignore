@@ -56,3 +56,6 @@ screen.json
 # Private development notes and planning (kept inside the project, never published)
 /AGENTS.md
 docs/local/
+
+# Local review launcher (points at private data)
+/start-review.cmd

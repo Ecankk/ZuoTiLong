@@ -1,7 +1,7 @@
 import { ArrowRight, ChevronLeft, ChevronRight, FileText, ZoomIn } from 'lucide-react'
-import { useState } from 'react'
-import { Link, useParams } from 'react-router'
-import { usePaperQuestions, useQuestion, useTasks } from '../../api/queries'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
+import { usePaperQuestions, usePractices, useQuestion, useTasks } from '../../api/queries'
 import type { QuestionResponse, QuestionSummary, Region, StepComparison } from '../../api/types'
 import { ImageViewer, type ViewerTarget } from './ImageViewer'
 import { AdjustRegionsButton } from './RegionEditor'
@@ -185,30 +185,64 @@ function SourcePanel({
   )
 }
 
-function Pager({
-  paperId,
-  questions,
-  number,
-}: {
-  paperId: string
-  questions: QuestionSummary[]
-  number: string
-}) {
+type Neighbors = { previous?: QuestionSummary; next?: QuestionSummary }
+
+/** 按题号排序后的上一题 / 下一题 */
+function neighbors(questions: QuestionSummary[], number: string): Neighbors {
   const sorted = [...questions].sort((a, b) => Number(a.number) - Number(b.number))
   const index = sorted.findIndex((question) => question.number === number)
-  const previous = sorted[index - 1]
-  const next = sorted[index + 1]
+  if (index < 0) return {}
+  return { previous: sorted[index - 1], next: sorted[index + 1] }
+}
+
+/** 正在输入、按了组合键或开着对话框时，方向键留给原来的用途 */
+function ignoreArrow(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+    return true
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return true
+  return Boolean(document.querySelector('[role="dialog"]'))
+}
+
+/** ← / → 切到上一题 / 下一题 */
+function useArrowKeys(paperId: string, { previous, next }: Neighbors) {
+  const navigate = useNavigate()
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (ignoreArrow(event)) return
+      const target =
+        event.key === 'ArrowLeft' ? previous : event.key === 'ArrowRight' ? next : undefined
+      if (!target) return
+      event.preventDefault()
+      navigate(`/papers/${paperId}/questions/${target.number}`)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [navigate, paperId, previous, next])
+}
+
+function Pager({ paperId, previous, next, size }: Neighbors & { paperId: string; size?: 'sm' }) {
   return (
     <div className={styles.pager}>
       {previous ? (
-        <ButtonLink variant="ghost" to={`/papers/${paperId}/questions/${previous.number}`}>
+        <ButtonLink
+          variant="ghost"
+          size={size}
+          to={`/papers/${paperId}/questions/${previous.number}`}
+          title="上一题（←）"
+        >
           <ChevronLeft size={16} aria-hidden />第 {previous.number} 题
         </ButtonLink>
       ) : (
         <span />
       )}
       {next && (
-        <ButtonLink variant="ghost" to={`/papers/${paperId}/questions/${next.number}`}>
+        <ButtonLink
+          variant="ghost"
+          size={size}
+          to={`/papers/${paperId}/questions/${next.number}`}
+          title="下一题（→）"
+        >
           第 {next.number} 题 <ChevronRight size={16} aria-hidden />
         </ButtonLink>
       )}
@@ -274,13 +308,18 @@ function AnswerAndError({ detail }: { detail: QuestionResponse }) {
       </div>
       <div>
         <h4>首个错误</h4>
-        <div className={cx(styles.step, error && styles.error)}>
+        <div className={cx(styles.step, error && styles.firstError)}>
           {error ? (
             <>
-              <MathText text={error.step} />
-              <span className={styles.stepLabel}>
-                <MathText text={error.evidence} />
-              </span>
+              {/* 只把出错的那一句标红；判断依据用次要色、阅读字号 */}
+              <div className={styles.errorStep}>
+                <MathText text={error.step} />
+              </div>
+              {error.evidence && (
+                <p className={styles.errorNote}>
+                  <MathText text={error.evidence} />
+                </p>
+              )}
             </>
           ) : (
             '没有找到明确的错误步骤'
@@ -291,6 +330,21 @@ function AnswerAndError({ detail }: { detail: QuestionResponse }) {
   )
 }
 
+/**
+ * “练习本题相关考点”跳到由这道题出的第一道练习（优先待做），按试卷分组查看；
+ * 练习列表还没读到时退回到第一个考点。
+ */
+function usePracticeLink(detail: QuestionResponse) {
+  const { data } = usePractices('paper')
+  const cards = (data?.items ?? [])
+    .flatMap((group) => group.items)
+    .filter((card) => card.question_id === detail.question.id && card.status !== 'inactive')
+  const first = cards.find((card) => card.status === 'pending') ?? cards[0]
+  if (first) return `/practice?view=paper&item=${encodeURIComponent(first.id)}`
+  const topic = detail.topics[0]
+  return topic ? `/practice?topic=${encodeURIComponent(topic.topic_id)}` : '/practice'
+}
+
 function Analysis({ detail }: { detail: QuestionResponse }) {
   const { question, diagnosis } = detail
   const showComparison = question.correctness !== 'correct'
@@ -298,6 +352,7 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
   const causes = diagnosis?.hypotheses ?? []
   const structure = structureText(diagnosis?.fingerprint)
   const practiceCount = detail.practice_counts.total - detail.practice_counts.inactive
+  const practiceLink = usePracticeLink(detail)
   let layer = 1
   return (
     <>
@@ -390,18 +445,22 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
       {detail.topics.length > 0 && (
         <Card className={styles.topicCta}>
           <div>
-            <small>本题考点</small>
+            <small>本题考点 · 点击查看考点详情</small>
             <div className={styles.tags}>
               {detail.topics.map((topic) => (
-                <Link key={topic.topic_id} to={`/topics/${encodeURIComponent(topic.topic_id)}`}>
-                  <Chip>{topic.name}</Chip>
+                <Link
+                  key={topic.topic_id}
+                  className={styles.topicLink}
+                  to={`/topics/${encodeURIComponent(topic.topic_id)}`}
+                >
+                  <Chip tone="primary">{topic.name}</Chip>
                 </Link>
               ))}
             </div>
           </div>
           {practiceCount > 0 && (
-            <ButtonLink variant="primary" to={`/practice?topic=${detail.topics[0].topic_id}`}>
-              练习这个考点 · {practiceCount} 道 <ArrowRight size={16} aria-hidden />
+            <ButtonLink variant="primary" to={practiceLink}>
+              练习本题相关考点 · {practiceCount} 道 <ArrowRight size={16} aria-hidden />
             </ButtonLink>
           )}
         </Card>
@@ -429,6 +488,8 @@ export function QuestionAnalysisPage() {
   // 没有分析的题也读取详情，用来显示原卷切图
   const question = useQuestion(summary?.id)
   const detail = question.data
+  const around = neighbors(list?.items ?? [], number)
+  useArrowKeys(paperId, around)
   if (!list)
     return questions.isError ? (
       <ErrorState
@@ -477,6 +538,10 @@ export function QuestionAnalysisPage() {
   return (
     <>
       <QuestionStrip paperId={paperId} questions={list.items} analyzing={analyzing} />
+      <div className={styles.topNav}>
+        <span className={styles.keyHint}>可以用键盘 ← → 切换题目</span>
+        <Pager paperId={paperId} {...around} size="sm" />
+      </div>
       <div className={styles.layout}>
         <SourcePanel
           paperId={paperId}
@@ -487,7 +552,7 @@ export function QuestionAnalysisPage() {
         />
         <div className={styles.analysis}>
           {analysis}
-          <Pager paperId={paperId} questions={list.items} number={number} />
+          <Pager paperId={paperId} {...around} />
         </div>
       </div>
     </>

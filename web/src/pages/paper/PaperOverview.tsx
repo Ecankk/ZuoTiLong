@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useLocation, useParams } from 'react-router'
 import { endpoints } from '../../api/endpoints'
 import { useAction, usePaper, usePreferences, useTasks } from '../../api/queries'
 import type { Correctness, MathType, PaperResponse, Task } from '../../api/types'
@@ -190,7 +190,7 @@ function ScoreCard({ data }: { data: PaperResponse }) {
     save.mutate(undefined)
   }
   return (
-    <Card padded className={styles.card} aria-label="总分">
+    <Card padded className={styles.card} aria-label="总分" id="score">
       <h2>总分</h2>
       <p className={styles.score}>
         {paper.score !== null ? (
@@ -292,9 +292,21 @@ function NumberCard({ data }: { data: PaperResponse }) {
   )
 }
 
+/** 从试卷列表的“总分待核定”进来时，滚到总分卡并聚焦得分输入框 */
+function useScoreAnchor(ready: boolean) {
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (!ready || hash !== '#score') return
+    const card = document.getElementById('score')
+    card?.scrollIntoView?.({ block: 'center' })
+    card?.querySelector('input')?.focus({ preventScroll: true })
+  }, [ready, hash])
+}
+
 export function PaperOverview() {
   const { paperId = '' } = useParams()
   const { data } = usePaper(paperId)
+  useScoreAnchor(Boolean(data))
   const { data: tasks } = useTasks()
   if (!data) return null
   const { paper } = data

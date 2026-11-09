@@ -1,5 +1,6 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { getConnection, setConnection } from './connection'
 import { queryKeys } from './queries'
 import type { TasksResponse } from './types'
 
@@ -17,11 +18,21 @@ const eventNames: ServerEvent['event'][] = [
   'resources.changed',
 ]
 
+/** 断开多久才提示“连接中断” */
+export const LOST_AFTER_MS = 3000
+
 /**
- * 订阅命名事件。断线由 EventSource 自动重连；连接错误不打断界面，已显示的数据保留。
+ * 订阅命名事件。断线由 EventSource 自动重连；已显示的数据保留。
+ * onStatus：连上时报 'open'，出错时报 'error'（可能接着自动重连）。
  */
-export function subscribeServerEvents(url: string, onEvent: (event: ServerEvent) => void) {
+export function subscribeServerEvents(
+  url: string,
+  onEvent: (event: ServerEvent) => void,
+  onStatus?: (status: 'open' | 'error') => void,
+) {
   const source = new EventSource(url)
+  source.addEventListener('open', () => onStatus?.('open'))
+  source.addEventListener('error', () => onStatus?.('error'))
   for (const name of eventNames) {
     source.addEventListener(name, (message) => {
       onEvent({
@@ -68,8 +79,31 @@ export function useServerEvents(url: string | null) {
   useEffect(() => {
     if (!url) return
     let epoch: string | null = null
-    return subscribeServerEvents(url, (event) => {
-      epoch = applyServerEvent(client, event, epoch)
-    })
+    let timer: number | undefined
+    const stop = subscribeServerEvents(
+      url,
+      (event) => {
+        epoch = applyServerEvent(client, event, epoch)
+        window.clearTimeout(timer)
+        timer = undefined
+        setConnection('ok')
+      },
+      (status) => {
+        if (status === 'open') {
+          window.clearTimeout(timer)
+          timer = undefined
+          // 断开后重新连上：已显示的数据可能过期，全部重新读取
+          if (getConnection() === 'lost') void client.invalidateQueries()
+          setConnection('ok')
+        } else if (timer === undefined) {
+          // 只在第一次出错时开始计时；重连期间的反复出错不重新计时
+          timer = window.setTimeout(() => setConnection('lost'), LOST_AFTER_MS)
+        }
+      },
+    )
+    return () => {
+      window.clearTimeout(timer)
+      stop()
+    }
   }, [url, client])
 }

@@ -46,7 +46,7 @@ function UploadCard() {
 
   return (
     <Card className={styles.upload} aria-label="上传试卷">
-      <div>
+      <div className={styles.intro}>
         <h2>上传做过的试卷</h2>
         <p>上传整份 PDF，做题龙会先定位每道题，再逐题分析。原文件只保存在这台电脑上。</p>
         <div className={styles.pens}>

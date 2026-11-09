@@ -1,9 +1,15 @@
 .upload {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-6);
-  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+  align-items: flex-end;
   padding: var(--space-5) var(--space-6);
+}
+
+/* 说明列至少 300px；放不下表单时，表单换到下一行，不再把说明挤成竖排 */
+.intro {
+  flex: 1 1 300px;
+  min-width: 0;
 }
 
 .upload h2 {
@@ -35,9 +41,11 @@
 
 .form {
   display: flex;
+  flex: 0 1 auto;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: flex-end;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .field {
@@ -49,6 +57,7 @@
 }
 
 .field input {
+  min-width: 160px;
   height: 36px;
   padding: 0 var(--space-3);
   border: 1px solid var(--border-strong);
@@ -102,7 +111,7 @@
 }
 
 .message {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
   font-size: var(--font-size-sm);
 }
 

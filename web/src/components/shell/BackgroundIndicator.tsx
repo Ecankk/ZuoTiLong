@@ -4,20 +4,15 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { endpoints } from '../../api/endpoints'
 import { queryKeys, useTasks } from '../../api/queries'
 import type { Task, TasksResponse } from '../../api/types'
-import { setupGuideUrl } from '../../app/config'
+import { Link } from 'react-router'
+import { useConnection } from '../../api/connection'
+import { friendlyError } from '../../lib/errors'
+import { SETUP_GUIDE_PATH, setupMessage } from '../../lib/setup'
 import { Button } from '../ui/Button'
 import styles from './BackgroundIndicator.module.css'
 
-const setupMessages: Record<string, string> = {
-  not_installed:
-    '这台电脑还没有安装做题龙需要的 Codex。按教程完成一次性设置后，分析和批改会自动开始。',
-  not_logged_in: '做题龙需要的 Codex 还没有登录。按教程登录一次后，分析和批改会自动开始。',
-}
-
 function SetupGuide({ availability }: { availability: TasksResponse['availability'] }) {
-  const message =
-    setupMessages[availability.reason ?? ''] ??
-    (availability.message || '做题龙暂时不能工作，已保存的内容仍可查看。')
+  const message = setupMessage(availability)
   return (
     <div className={styles.card} role="status">
       <div className={styles.row}>
@@ -25,9 +20,9 @@ function SetupGuide({ availability }: { availability: TasksResponse['availabilit
         <p className={styles.text}>做题龙还不能开始工作</p>
       </div>
       <p className={styles.guideText}>{message}</p>
-      <a className={styles.guideLink} href={setupGuideUrl} target="_blank" rel="noreferrer">
+      <Link className={styles.guideLink} to={SETUP_GUIDE_PATH}>
         查看配置教程
-      </a>
+      </Link>
     </div>
   )
 }
@@ -78,7 +73,7 @@ function TaskButtons({ task }: { task: Task }) {
           {task.status === 'queued' ? '取消等待' : '不再处理'}
         </Button>
       )}
-      {action.error && <span className={styles.problemText}>{action.error.message}</span>}
+      {action.error && <span className={styles.problemText}>{friendlyError(action.error)}</span>}
     </>
   )
 }
@@ -102,8 +97,23 @@ function TaskList({ title, items }: { title: string; items: Task[] }) {
 }
 
 /** 侧栏底部的后台进度：空闲时不显示；点开查看排队与没有完成的项目。 */
+/** 和做题龙的连接断了：不再显示可能过期的任务状态 */
+function ConnectionLost() {
+  return (
+    <div className={styles.card} role="status">
+      <div className={styles.row}>
+        <span className={`${styles.dot} ${styles.problem}`} />
+        <p className={styles.text}>连接中断，正在重连…</p>
+      </div>
+      <p className={styles.guideText}>请确认做题龙还开着。连上后会自动刷新。</p>
+    </div>
+  )
+}
+
 export function BackgroundIndicator() {
   const { data } = useTasks()
+  const connection = useConnection()
+  if (connection === 'lost') return <ConnectionLost />
   if (!data) return null
   const { active, queued_count: waiting, failed_count: failed } = data
   const unavailable = data.availability.status === 'unavailable'
@@ -149,12 +159,8 @@ export function BackgroundIndicator() {
           {unavailable && (
             <section className={styles.section}>
               <h3>需要先准备 AI 服务</h3>
-              <span className={styles.problemText}>
-                {setupMessages[data.availability.reason ?? ''] ?? data.availability.message}
-              </span>
-              <a href={setupGuideUrl} target="_blank" rel="noreferrer">
-                查看配置教程
-              </a>
+              <span className={styles.problemText}>{setupMessage(data.availability)}</span>
+              <Link to={SETUP_GUIDE_PATH}>查看配置教程</Link>
             </section>
           )}
           <TaskList title="进行中" items={active ? [active] : []} />

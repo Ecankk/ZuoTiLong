@@ -114,7 +114,7 @@ export function HomePage() {
   const header = (
     <PageHeader
       eyebrow={`${now.getMonth() + 1}月${now.getDate()}日 · 星期${weekdays[now.getDay()]}`}
-      title={`${greeting(now)}，先从最要紧的一件开始`}
+      title={now.getHours() < 5 ? greeting(now) : `${greeting(now)}，先从最要紧的一件开始`}
     />
   )
   if (practicesQuery.error || papersQuery.error)
@@ -260,7 +260,11 @@ export function HomePage() {
                     to={`/practice?item=${items[0].id}`}
                     title={group.label}
                     hint={`来自${[...new Set(items.map((i) => paperName(i.paper_title)))].join('、')}`}
-                    after={<span className={styles.amount}>{items.length} 道待做</span>}
+                    after={
+                      items.length > 1 && (
+                        <span className={styles.amount}>{items.length} 道待做</span>
+                      )
+                    }
                   />
                 ))}
               </ul>

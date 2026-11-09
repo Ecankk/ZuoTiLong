@@ -132,7 +132,10 @@ class ApplicabilityTests(unittest.TestCase):
         from app.bank.access import text_resources
         import sqlite3
         conn=sqlite3.connect(':memory:');self.addCleanup(conn.close);conn.row_factory=sqlite3.Row
-        conn.execute('CREATE TABLE bank_resources(bank_id TEXT)');conn.execute('CREATE TABLE bank_questions(id TEXT,stem TEXT,explanation TEXT,answer TEXT)')
+        # No resource row is the case under test, not a legacy table shape.
+        conn.execute('''CREATE TABLE bank_resources(bank_id TEXT PRIMARY KEY,metadata_json TEXT NOT NULL,
+            question_path TEXT NOT NULL,analysis_path TEXT,answer_path TEXT)''')
+        conn.execute('CREATE TABLE bank_questions(id TEXT,stem TEXT,explanation TEXT,answer TEXT)')
         conn.execute("INSERT INTO bank_questions VALUES('q','Synthetic','Reference','1')")
         result=text_resources(conn,'q',dict(question_image='/bad',analysis_image='/bad'),reference=True)
         self.assertNotIn('question_image',result);self.assertNotIn('analysis_image',result);self.assertEqual(result['question_text'],'Synthetic')

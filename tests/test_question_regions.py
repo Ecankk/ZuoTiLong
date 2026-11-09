@@ -67,3 +67,47 @@ class QuestionRegionTests(unittest.TestCase):
         response=self.http.post(self.url,json=body)
         self.assertEqual(response.status_code,200,response.text)
         self.assertEqual([r['bbox'] for r in response.json()['regions']],[[0,10,400,100],[0,250,400,500],[0,20,500,300]])
+
+    def test_page_list_matches_png_and_rounded_bottom_is_accepted(self):
+        import pymupdf
+        with pymupdf.open() as doc:
+            doc.new_page(width=595.3,height=841.2);doc.new_page(width=400,height=600)
+            doc.save(self.f.f.pdf)
+        with pymupdf.open(self.f.f.pdf) as doc:heights=[p.rect.height for p in doc]
+        response=self.http.get('/api/papers/paper-test/pages')
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.headers['cache-control'],'no-store')
+        items=response.json()['items'];self.assertEqual([i['page'] for i in items],[1,2])
+        self.assertGreater(items[0]['image_height']/items[0]['scale'],heights[0])
+        for item in items:
+            self.assertEqual(item['scale'],2)
+            self.assertEqual(item['image_url'],f'/api/papers/paper-test/pages/{item["page"]}')
+            image=self.http.get(item['image_url']);self.assertEqual(image.status_code,200,image.text[:100] if image.status_code!=200 else '')
+            self.assertEqual(image.headers['content-type'],'image/png')
+            self.assertEqual(image.headers['cache-control'],'no-store')
+            with Image.open(BytesIO(image.content)) as png:
+                self.assertEqual(png.size,(item['image_width'],item['image_height']))
+        body=dict(self.body,regions=[dict(page=i['page'],top=0,bottom=i['image_height']/i['scale']) for i in items])
+        saved=self.http.post(self.url,json=body)
+        self.assertEqual(saved.status_code,200,saved.text)
+        self.assertEqual([r['bbox'][3] for r in saved.json()['regions']],heights)
+        self.assertTrue(self.http.post(self.url,json=body).json()['reused'])
+        bad=dict(body,request_id=str(uuid.uuid4()),regions=[dict(page=1,top=0,bottom=heights[0]+1)])
+        self.assertEqual(self.http.post(self.url,json=bad).status_code,400)
+
+    def test_pages_error_codes_and_archived_read_access(self):
+        self.assertEqual(self.http.get('/api/papers/missing/pages').status_code,404)
+        self.assertEqual(self.http.get('/api/papers/missing/pages/1').status_code,404)
+        for number in (0,-1,2):self.assertEqual(self.http.get(f'/api/papers/paper-test/pages/{number}').status_code,404)
+        self.conn.execute("UPDATE papers SET archived_at='now' WHERE id='paper-test'");self.conn.commit()
+        self.assertEqual(self.http.get('/api/papers/paper-test/pages').status_code,200)
+        self.assertEqual(self.http.get('/api/papers/paper-test/pages/1').status_code,200)
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM record_versions WHERE kind='question_regions'").fetchone()[0],0)
+        self.f.f.pdf.unlink()
+        for path in ('/api/papers/paper-test/pages','/api/papers/paper-test/pages/1'):
+            response=self.http.get(path);self.assertEqual(response.status_code,400);self.assertIn('原PDF文件缺失',response.text)
+        self.conn.execute("UPDATE papers SET source_path=NULL WHERE id='paper-test'");self.conn.commit()
+        self.assertEqual(self.http.get('/api/papers/paper-test/pages').status_code,400)
+        self.conn.execute("UPDATE papers SET source_path=? WHERE id='paper-test'",(str(self.f.config.data.parent/'old-paper.pdf'),));self.conn.commit()
+        for path in ('/api/papers/paper-test/pages','/api/papers/paper-test/pages/1'):
+            response=self.http.get(path);self.assertEqual(response.status_code,400);self.assertIn('原PDF文件缺失',response.text)

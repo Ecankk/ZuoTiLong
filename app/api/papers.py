@@ -37,6 +37,14 @@ async def import_paper(file:UploadFile=File(...),title:str=Form(''),exam_date:st
     return JSONResponse(result,status_code=status)
 @router.get('/papers/{paper_id}/file')
 def paper_file(paper_id:str,rt=Depends(runtime)):return resource_response(rt.resources.paper(paper_id))
+@router.get('/papers/{paper_id}/pages')
+def paper_pages(paper_id:str,rt=Depends(runtime)):
+    return JSONResponse(rt.resources.pages(paper_id),headers={'Cache-Control':'no-store'})
+@router.get('/papers/{paper_id}/pages/{page}')
+def paper_page(paper_id:str,page:int,rt=Depends(runtime)):
+    response=resource_response(rt.resources.page(paper_id,page))
+    response.headers['Cache-Control']='no-store'
+    return response
 @router.post('/papers/{paper_id}/analyze',status_code=201)
 def analyze(paper_id:str,body:Confirmation=Body(default_factory=Confirmation),rt=Depends(runtime)):return rt.mutate(rt.papers.analyze_and_queue,paper_id,body.confirmed)
 @router.post('/papers/{paper_id}/archive')

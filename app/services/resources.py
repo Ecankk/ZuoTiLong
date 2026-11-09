@@ -9,6 +9,12 @@ from app.bank.access import require_access,record_view
 from app.storage.images import image_records,image_path
 from app.storage.boundaries import material_path
 
+PDF_SCALE=2
+
+def pdf_pixmap(page,clip=None):
+    import pymupdf
+    return page.get_pixmap(matrix=pymupdf.Matrix(PDF_SCALE,PDF_SCALE),clip=clip,alpha=False)
+
 def evidence_url(question_id,regions,index):
     import hashlib
     revision=hashlib.sha256(json.dumps(regions,sort_keys=True).encode()).hexdigest()[:16]
@@ -22,6 +28,31 @@ class Resource:
 class ResourceService:
     def __init__(self,config,database):self.config,self.database=config,database
 
+    def _page_source(self,paper_id):
+        with self.database.session() as conn:row=conn.execute('SELECT source_path FROM papers WHERE id=?',(paper_id,)).fetchone()
+        if not row:raise ServiceError('试卷不存在',404)
+        if not row[0]:raise ServiceError('原PDF文件缺失',400)
+        try:path=paper_path(self.config.data,row[0],self.config.root)
+        except ValueError:raise ServiceError('原PDF文件缺失',400) from None
+        if not path.is_relative_to(self.config.papers) or not path.is_file():raise ServiceError('原PDF文件缺失',400)
+        return path
+
+    def pages(self,paper_id):
+        import pymupdf
+        items=[]
+        with pymupdf.open(self._page_source(paper_id)) as doc:
+            for index,page in enumerate(doc):
+                pix=pdf_pixmap(page)
+                items.append(dict(page=index+1,image_url=f'/api/papers/{paper_id}/pages/{index+1}',
+                    image_width=pix.width,image_height=pix.height,scale=PDF_SCALE))
+        return dict(items=items)
+
+    def page(self,paper_id,number):
+        import pymupdf
+        with pymupdf.open(self._page_source(paper_id)) as doc:
+            if not 1<=number<=len(doc):raise ServiceError('页码越界',404)
+            return Resource(pdf_pixmap(doc[number-1]).tobytes('png'),'image/png')
+
     def evidence_metadata(self,question_id):
         import pymupdf
         with self.database.session() as conn:
@@ -32,10 +63,10 @@ class ResourceService:
         result=[]
         with pymupdf.open(pdf) as doc:
             for i,region in enumerate(json_load(row['regions_json'],[])):
-                pix=doc[region['page']-1].get_pixmap(matrix=pymupdf.Matrix(2,2),clip=pymupdf.Rect(region['bbox']),alpha=False)
+                pix=pdf_pixmap(doc[region['page']-1],pymupdf.Rect(region['bbox']))
                 result.append(dict(region_index=i,page=region['page'],bbox=region['bbox'],
                     image_url=evidence_url(question_id,json_load(row['regions_json'],[]),i),image_width=pix.width,image_height=pix.height,
-                    image_origin=[pix.x,pix.y],scale=2))
+                    image_origin=[pix.x,pix.y],scale=PDF_SCALE))
         return result
     def answer(self,image_id):
         try:
@@ -102,6 +133,6 @@ class ResourceService:
             region=json_load(row['regions_json'],[])[index]
             pdf=paper_path(self.config.data,row['source_path'],self.config.root)
             if not pdf.is_relative_to(self.config.papers):raise ValueError('invalid file')
-            with pymupdf.open(pdf) as doc:raw=doc[region['page']-1].get_pixmap(matrix=pymupdf.Matrix(2,2),clip=pymupdf.Rect(region['bbox']),alpha=False).tobytes('png')
+            with pymupdf.open(pdf) as doc:raw=pdf_pixmap(doc[region['page']-1],pymupdf.Rect(region['bbox'])).tobytes('png')
             return Resource(raw,'image/png')
         except (ValueError,IndexError,KeyError,TypeError):raise ServiceError('证据区域不存在',404) from None

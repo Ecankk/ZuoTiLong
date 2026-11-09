@@ -6,8 +6,10 @@ import type { TopicResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { ErrorState } from '../../components/ui/ErrorState'
 import { Chip, type ChipTone } from '../../components/ui/Chip'
 import { PageHeader } from '../../components/ui/PageHeader'
+import { Skeleton } from '../../components/ui/Skeleton'
 import {
   ancestors,
   buildCatalog,
@@ -155,19 +157,16 @@ function RelatedQuestions({
 }
 
 function TopicDetail({ index, topicId }: { index: CatalogIndex; topicId: string }) {
-  const { data, isPending, isError, error } = useTopic(topicId)
+  const { data, isPending, isError, error, refetch } = useTopic(topicId)
   if (isPending)
     return (
-      <Card padded className={styles.muted}>
-        正在读取…
-      </Card>
+      <div className={styles.detail}>
+        <Skeleton rows={4} />
+        <Skeleton rows={3} />
+      </div>
     )
   if (isError)
-    return (
-      <Card padded className={styles.muted}>
-        {error.message}
-      </Card>
-    )
+    return <ErrorState error={error} title="没能读取这个考点" onRetry={() => void refetch()} />
   if (!data)
     return (
       <Card padded className={styles.muted}>
@@ -306,7 +305,7 @@ const weakLimit = 10
  * 没选考点时：列出有待做练习的考点（练习是按试卷里的薄弱考点准备的），给出明确的下一步。
  */
 function TopicsHome() {
-  const { data } = usePractices('topic')
+  const { data, isError } = usePractices('topic')
   const groups = (data?.items ?? [])
     .filter((group) => group.counts.pending > 0)
     .sort((a, b) => b.counts.pending - a.counts.pending)
@@ -336,9 +335,11 @@ function TopicsHome() {
         </>
       ) : (
         <p className={styles.muted}>
-          {data
-            ? '分析完试卷后，你出过错的考点会列在这里。现在可以从左侧目录浏览，或搜索考点名称。'
-            : '正在读取…'}
+          {isError
+            ? '暂时读不到你的练习，可以先从左侧目录浏览，或搜索考点名称。'
+            : data
+              ? '分析完试卷后，你出过错的考点会列在这里。现在可以从左侧目录浏览，或搜索考点名称。'
+              : '正在读取…'}
         </p>
       )}
     </Card>
@@ -347,7 +348,7 @@ function TopicsHome() {
 
 export function TopicsPage() {
   const { topicId } = useParams()
-  const { data: nodes, isPending, isError, error } = useCatalog()
+  const { data: nodes, isPending, isError, error, refetch } = useCatalog()
   const index = useMemo(() => (nodes ? buildCatalog(nodes) : null), [nodes])
   const [query, setQuery] = useState('')
   return (
@@ -366,7 +367,14 @@ export function TopicsPage() {
           </label>
           <div className={styles.treeScroll}>
             {isPending && <p className={styles.empty}>正在读取目录…</p>}
-            {isError && <p className={styles.empty}>{error.message}</p>}
+            {isError && (
+              <ErrorState
+                inline
+                error={error}
+                title="没能读取考点目录"
+                onRetry={() => void refetch()}
+              />
+            )}
             {index &&
               (query.trim() ? (
                 <SearchResults index={index} query={query} />

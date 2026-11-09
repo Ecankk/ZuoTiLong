@@ -6,9 +6,11 @@ import { useBank, useBankCollections, useBankTopics, useTopic } from '../../api/
 import type { BankCard } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { ErrorState } from '../../components/ui/ErrorState'
 import { Chip } from '../../components/ui/Chip'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
+import { Skeleton } from '../../components/ui/Skeleton'
 import {
   BankQuestionCard,
   BankQuestionDialog,
@@ -44,7 +46,11 @@ function bySection(cards: BankCard[]) {
  */
 export function BankPage() {
   const [params, setParams] = useSearchParams()
-  const { data: collections, error: collectionsError } = useBankCollections()
+  const {
+    data: collections,
+    error: collectionsError,
+    refetch: refetchCollections,
+  } = useBankCollections()
   const asked = params.get('collection')
   // 没有题的题集不显示（除非地址里正好指定了它）；示例题集是开发用的种子数据，不给用户看；默认真题
   const shown = (collections ?? []).filter(
@@ -76,7 +82,7 @@ export function BankPage() {
   }
   const page = Math.max(1, Number(params.get('page')) || 1)
   const openId = params.get('open')
-  const { data, isLoading, isError, error, isPlaceholderData } = useBank(
+  const { data, isLoading, isError, error, isPlaceholderData, refetch } = useBank(
     filter,
     (page - 1) * pageSize,
     pageSize,
@@ -190,19 +196,27 @@ export function BankPage() {
       </Card>
 
       {(isError || collectionsError) && (
-        <Card padded className={styles.notice}>
-          {(error ?? collectionsError)?.message}
-        </Card>
+        <ErrorState
+          error={error ?? collectionsError}
+          title="没能读取题库"
+          onRetry={() => {
+            if (collectionsError) void refetchCollections()
+            void refetch()
+          }}
+        />
       )}
       {collections && !collection && (
         <Card padded className={styles.notice}>
           题库里还没有题目。
         </Card>
       )}
-      {(isLoading || (!collections && !data)) && !collectionsError && (
-        <Card padded className={styles.notice}>
-          正在读取…
-        </Card>
+      {(isLoading || (!collections && !data)) && !collectionsError && !isError && (
+        <div className={styles.grid}>
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+        </div>
       )}
       {data && data.total === 0 && (
         <Card padded className={styles.notice}>

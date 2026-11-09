@@ -10,6 +10,7 @@ import { Button, ButtonLink } from '../../components/ui/Button'
 import { Chip } from '../../components/ui/Chip'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { cx } from '../../lib/cx'
+import { friendlyError } from '../../lib/errors'
 import { mathTypeName } from '../../lib/labels'
 import { RevealButton } from '../practice/RevealButton'
 import { TopicName } from '../topics/TopicName'
@@ -213,7 +214,7 @@ function Analysis({ card }: { card: BankCard }) {
         title="查看参考解析？"
         confirmLabel="确认查看解析"
         pending={reveal.isPending}
-        error={reveal.error?.message}
+        error={reveal.error ? friendlyError(reveal.error) : undefined}
         onConfirm={open}
       >
         查看后会记下“看过这道题的解析”。如果以后在练习里遇到这道题，独立作答的结果会单独统计。

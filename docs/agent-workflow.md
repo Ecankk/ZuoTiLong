@@ -27,7 +27,7 @@
 | analyze_paper | 2.0 | 完整题号与原图依据、逐题分析及review；核对为同题的通用参考记录在顶层references，无匹配可为空 |
 | review_question | 2.0 | 指定题的复核；程序合并父报告，不重写其他题 |
 | prepare_practice | 1.10 | selections（bank_id、goal_ids、selection_reason、prompt）和每个目标的limitations（材料包result_template已列全部目标ID，无缺口填空字符串；每个候选附allowed_goal_ids，只能挂到其中的目标；交付被拒时一次列出全部违规的题目/目标及合法候选）；目标、标注、固定参考与保留练习由后端填写 |
-| grade_attempt | 新绑定作答1.9；自由练习1.11 | 本次步骤、首错或未知、解法、可能原因、考点与必要补拍；使用所选固定材料。1.11用于题库自由练习：paper_id=null，结果字段同前；whole_question模式批改整题，fill_equivalence模式只判填空是否与参考数学等价并给一句说明；初始包给齐技能、图片角色、冻结题目与参考、相关定义和材料摘要回执，补读限定在捕获快照；考点只能取冻结标注的topic_ids；完成后不衔接选题/整理 |
+| grade_attempt | 新绑定作答1.9；自由练习1.11 | 本次步骤、首错或未知、解法、可能原因、考点与必要补拍；使用所选固定材料。1.11用于题库自由练习：paper_id=null，结果字段同前；whole_question模式批改整题，fill_equivalence模式只判填空是否与参考数学等价并给一句说明；初始包给齐技能、图片角色、冻结题目与参考、相关定义和材料摘要回执，补读限定在捕获快照；考点只能取冻结标注的topic_ids；完成后不衔接选题/整理。feedback只写1–3句结论（对不对、关键问题），做对部分、首错、参考推导与建议放入对应结构化字段；只有本次确实附有事后批改图片时才评价批改，否则不提 |
 | organize_knowledge | 1.8 | mappings、summary、limitations；兼容字段new_nodes必须为空 |
 | summarize_paper | 1.6 | 保存证据的归纳；引用来自allowed_source_refs，改善须有前后依据 |
 | maintain_catalog | 1.7 | 目录变更、重定向和本批来源处置；paper_id为空 |
@@ -89,7 +89,7 @@ maintain_catalog和annotate_questions是通用资料任务，不制造学生试�
 
 任务可携带冻结的review_note说明具体待核问题；它不是结论或额外权限。annotate_questions每批1～8题，状态区分ready、needs_review、needs_catalog。读取bank_ids可取得本任务的复用推导、定义变更草稿或revision_base，草稿不继承就绪。
 
-限定标注修订通过task_scope.revision固定expected_annotations和allowed_fields；未授权字段保留，有据可降级，不能强制ready。材料或基线改变时按新范围核对，不要求学生修字段。
+限定标注修订通过task_scope.revision固定expected_annotations和allowed_fields；未授权字段保留，有据可降级，不能强制ready。带`resolve_review:true`时只处理当前needs_review的题，按题分别交付：已解决的按allowed_fields改为ready；仍未解决的完整保留原标注并保持needs_review，只可补充answer_check.note与非空limitations，不能改为needs_catalog；一批中两类可并存。材料或基线改变时按新范围核对，不要求学生修字段。
 
 已归档来源通过task_context的reference_id读取：PDF用从1开始的pages，每次1～3页；文本/HTML用offset分段。只有本任务捕获且散列一致的归档原文可读，URL或候选改写不是原文；HTML外链资源不算已读。
 

@@ -85,7 +85,9 @@ python scripts/agent_tasks.py import-source --source S02 --collection zhenti --i
 python scripts/agent_tasks.py import-source --source S02 --collection zhenti --input <records.jsonl> --overrides <overrides.json> --asset-root <来源根目录> --confirm <plan_sha256>
 ```
 
-`--collection`必填，题集ID计入plan_sha256。S03强化篇的适配器为`zhangyu-html`（固定revision与37个输入文件散列见scripts/bank_source_adapters/zhangyu_html.hashes.json），导入题集zhangyu-1000。共享题目标注索引包为`mathlens.question-index/v2`，条目带受散列保护的collection_id，可按题集导出、预览和导入；v1包仍可导入。操作前备份目标库，并在该进程显式设置 `MATHLENS_DATA_DIR`（目标工作区）与 `MATHLENS_LIBRARY_DIR`（目标通用库）；开发实跑只指向 TEMP 副本。转换器默认不覆盖已有 JSONL。导入命令可用 `--report <私有路径/report.json>` 另存报告；确认须使用本次预演给出的完整摘要，库有变化即重新预演。入口只初始化/写入通用库，不迁移个人工作区。正式主库导入及待标注 ID 的交接由标注会话在备份后执行。
+`--collection`必填，题集ID计入plan_sha256。S03强化篇的适配器为`zhangyu-html`（固定revision与37个输入文件散列见scripts/bank_source_adapters/zhangyu_html.hashes.json），导入题集zhangyu-1000。`adapt_bank_source.py --parts strengthening|comprehensive|basic`（仅zhangyu-html，默认只强化篇，输出不变）可转换综合篇ch68–71（测试卷一～四共88题，`book.number`为卷内题号，locator为“测试卷X / 第 N 题”）与基础篇ch01–31；测试卷导入独立题集zhangyu-1000-tests，不与强化篇混合。共享题目标注索引包为`mathlens.question-index/v2`，条目带受散列保护的collection_id，可按题集导出、预览和导入；v1包仍可导入。操作前备份目标库，并在该进程显式设置 `MATHLENS_DATA_DIR`（目标工作区）与 `MATHLENS_LIBRARY_DIR`（目标通用库）；开发实跑只指向 TEMP 副本。转换器默认不覆盖已有 JSONL。导入命令可用 `--report <私有路径/report.json>` 另存报告；确认须使用本次预演给出的完整摘要，库有变化即重新预演。入口只初始化/写入通用库，不迁移个人工作区。正式主库导入及待标注 ID 的交接由标注会话在备份后执行。
+
+人工核对：`scripts/review_sheet.py --collection <题集> --bank-ids <ID列表或文件> [--notes 核对点.json] --output <私有目录> [--serve]` 只读导出一题一卡的离线核对页（题干、答案、解析、考点、待核说明与勘误），须显式设置`MATHLENS_LIBRARY_DIR`，输出不得位于仓库或通用库内；`--serve`在本机启动临时页面，逐题保存“原书一致/题库有误/不确定”、意见与原书照片到输出目录feedback.json。不写题库，核对结论由标注会话按勘误或受控修订入口处理。
 
 没有 --confirm 时只预演；--dry-run 不初始化工作区、不创建数据库、不复制图片、不写学习记录。所有记录、覆盖、文本/图片及原始记录散列先校验。提供 --confirm 后重读并校验；确认摘要须与当前输入、覆盖、相关库记录和身份重叠一致，否则拒绝，须重新预演，不沿用旧确认。写入只涉及通用库，已有工作区的标注、阅读笔记、作答、曝光不删除。
 

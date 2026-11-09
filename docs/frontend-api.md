@@ -185,6 +185,8 @@ POST `/api/papers/{id}/questions/correct`，body=`{confirmed:true,questions:[{nu
 
 拆分（B20）：questions[] 的组可带 `split:{page:integer,y:number,lower_number:string}`，该组只能有一个旧ID；number 为上半题号，lower_number 为下半题号，均不得与其他组重复。page 从 1 起，y 为该页 PDF 点坐标（自顶向下，用 evidence_regions 换算），须严格穿过该题某个 region 且上下都留有非空区域；跨页时较早页归上半。上半保留旧ID，下半分配新ID，响应 question_ids 按组依次列上、下。可与其他组的重编号/合并/删除同次提交，但同次不能把拆出的半题再并入别组（先拆分提交再合并）。题干按本地 OCR 定位行归属上下，无定位行时下半为“待补充题干”。400 另含 split 组非单 ID、page/y 非法或不穿过题区、拆不出上下两部分。
 
+调整切图（B23）：POST `/api/papers/{paper_id}/questions/{question_id}/regions`，body=`{confirmed:true,request_id:uuid,regions:[{page:integer,top:number,bottom:number}]}`，1–4段，page从1起，top/bottom为该页PDF点坐标且`0≤top<bottom≤页高`，每段按整页宽保存为`role:'question_and_work'`。只改当前显示用的题图区域，诊断、作答、练习历史和证据不变，已分析试卷也可用；旧区域写入record_versions（`question_regions`）。同一request_id重放返回原结果并带`reused:true`，换内容复用则409。返回200 `{paper_id,question_id,status:'updated',regions:Region[],request_id,reused}`。试卷或题目不存在404；未确认、段数/页码/坐标非法、原PDF缺失400；已归档或有排队/运行任务409。evidence_urls带区域散列参数`&v=`，/evidence响应`Cache-Control: no-store`，调整后刷新即见新图。
+
 ### 导入题集包（B21）
 
 格式见[题源接口](bank-source-interface.md#题集包)。设置页先预演再确认：

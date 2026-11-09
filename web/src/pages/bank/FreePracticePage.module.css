@@ -38,13 +38,30 @@
   justify-content: space-between;
 }
 
+/* 用时：默认收起成一个不起眼的小按钮，打开后也只用次要色小字 */
 .timer {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.timer:hover {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+.timer:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .choices {
@@ -210,4 +227,45 @@
   margin-top: var(--space-2);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+}
+
+/* 不能单独练习时的出路 */
+.blockedActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.reasons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reasons li {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.reasons svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.reasons strong {
+  color: var(--text-strong);
+  font-weight: var(--font-weight-semibold);
+}
+
+.reasons p {
+  margin: var(--space-1) 0 var(--space-3);
 }

@@ -1,9 +1,10 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
-import { usePreferences, useSavePreferences } from '../../api/queries'
+import { usePapers, usePreferences, useSavePreferences } from '../../api/queries'
 import type { MathType } from '../../api/types'
 import { cx } from '../../lib/cx'
+import { friendlyError } from '../../lib/errors'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/Segmented'
 import { AiServiceStatus } from './AiServiceStatus'
@@ -55,17 +56,19 @@ function StudyTypeStep() {
         />
         {save.isSuccess && <span className={styles.saved}>已保存</span>}
       </div>
-      {save.isError && <p className={styles.error}>{save.error.message}</p>}
+      {save.isError && <p className={styles.error}>{friendlyError(save.error)}</p>}
     </>
   )
 }
 
 const flow = ['上传做过的试卷', '逐题分析', '针对薄弱考点练习', '拍照提交作答', '批改与画像']
 
-const steps: { title: string; body: ReactNode }[] = [
+type Step = { title: string; body: (ctx: { close: () => void; hasPapers: boolean }) => ReactNode }
+
+const steps: Step[] = [
   {
     title: '做题龙能做什么',
-    body: (
+    body: () => (
       <>
         <p>把做过的试卷交给做题龙，它会找出每道题错在哪，再针对薄弱考点挑几道真题让你练。</p>
         <ol className={styles.flow}>
@@ -81,18 +84,18 @@ const steps: { title: string; body: ReactNode }[] = [
   },
   {
     title: '准备 AI 服务',
-    body: (
+    body: ({ close }) => (
       <>
         <p>做题龙使用 Codex 分析试卷和批改作答，需要一个可用的 ChatGPT 账号（如 Plus）。</p>
-        <AiServiceStatus />
+        <AiServiceStatus onGuide={close} />
         <p>也可以先跳过，之后首页和左下角会继续提醒。</p>
       </>
     ),
   },
-  { title: '选择备考类别', body: <StudyTypeStep /> },
+  { title: '选择备考类别', body: () => <StudyTypeStep /> },
   {
     title: '笔迹约定',
-    body: (
+    body: () => (
       <>
         <p>上传试卷前，请按这个约定书写，做题龙才能分清哪些是考场作答：</p>
         <div className={styles.pens}>
@@ -105,13 +108,21 @@ const steps: { title: string; body: ReactNode }[] = [
             红笔：考后的批改和订正
           </span>
         </div>
+        <p>用别的颜色的笔也可以，到“设置 → 笔迹约定”里改一下。</p>
         <p>做练习时，作答照片可以选择文件、直接拖进来，或截图后粘贴。</p>
       </>
     ),
   },
   {
     title: '开始吧',
-    body: <p>上传第一份做过的试卷 PDF。分析完成后，逐题结果和练习会出现在“试卷”和“练习”里。</p>,
+    body: ({ hasPapers }) =>
+      hasPapers ? (
+        <p>
+          你已经有分析过的试卷了。去“练习”看看为薄弱考点准备的题，或者在“试卷”里继续上传新的试卷。
+        </p>
+      ) : (
+        <p>上传第一份做过的试卷 PDF。分析完成后，逐题结果和练习会出现在“试卷”和“练习”里。</p>
+      ),
   },
 ]
 
@@ -119,6 +130,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(() => !readSeen())
   const [step, setStep] = useState(0)
   const navigate = useNavigate()
+  // 第 5 步按有没有试卷给不同的下一步；只在引导打开时读取
+  const { data: papers } = usePapers('0')
+  const hasPapers = (papers?.items.length ?? 0) > 0
   const close = () => {
     markSeen()
     setOpen(false)
@@ -147,7 +161,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
               </span>
             </div>
             <Dialog.Title>{steps[step].title}</Dialog.Title>
-            <div className={styles.body}>{steps[step].body}</div>
+            <div className={styles.body}>{steps[step].body({ close, hasPapers })}</div>
             <div className={styles.footer}>
               <Button variant="ghost" className={styles.skip} onClick={close}>
                 跳过引导
@@ -158,10 +172,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
                   variant="primary"
                   onClick={() => {
                     close()
-                    navigate('/papers')
+                    navigate(hasPapers ? '/practice' : '/papers')
                   }}
                 >
-                  去上传试卷
+                  {hasPapers ? '去看看练习' : '去上传试卷'}
                 </Button>
               ) : (
                 <Button variant="primary" onClick={() => setStep(step + 1)}>

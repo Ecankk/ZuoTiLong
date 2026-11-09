@@ -58,4 +58,4 @@ screen.json
 docs/local/
 
 # Local review launcher (points at private data)
-/start-review.cmd
+/start-review.bat

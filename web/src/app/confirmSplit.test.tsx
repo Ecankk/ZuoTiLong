@@ -30,7 +30,7 @@ it('asks to check the question numbers before analysis and starts it after confi
   expect(screen.queryByRole('region', { name: '正误分布' })).not.toBeInTheDocument()
   await userEvent.click(within(step).getByRole('button', { name: /题号没问题，开始分析/ }))
   const dialog = await screen.findByRole('dialog')
-  expect(within(dialog).getByText(/Codex/)).toBeInTheDocument()
+  expect(within(dialog).getByText(/AI 服务/)).toBeInTheDocument()
   await userEvent.click(within(dialog).getByRole('button', { name: '开始分析' }))
   const call = fetch.mock.calls.find(([url]) => String(url).includes('/analyze'))
   expect(String(call?.[0])).toBe('/api/papers/paper-fresh/analyze')

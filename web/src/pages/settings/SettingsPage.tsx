@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { Link } from 'react-router'
-import { request } from '../../api/client'
+import { endpoints } from '../../api/endpoints'
 import { usePreferences, useSavePreferences } from '../../api/queries'
 import type { MathType } from '../../api/types'
 import { AiServiceStatus } from '../../components/onboarding/AiServiceStatus'
@@ -85,7 +85,7 @@ function Advanced() {
 function About() {
   const { data } = useQuery({
     queryKey: ['health'],
-    queryFn: () => request<{ version?: string }>('/api/health'),
+    queryFn: endpoints.health,
     staleTime: Infinity,
   })
   return (

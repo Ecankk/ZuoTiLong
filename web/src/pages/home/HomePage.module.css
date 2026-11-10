@@ -253,3 +253,11 @@
 .progressNumber {
   color: var(--color-primary) !important;
 }
+
+.unread {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-wrong);
+}

@@ -274,7 +274,46 @@ export const overview: Overview = {
     },
   },
   recent_mistakes: [],
+  feedback: {
+    unread_count: 0,
+    recent_items: [
+      {
+        source: 'paper_practice',
+        attempt_id: 'attempt-var-2',
+        practice_id: 'probe-var-2',
+        paper_id: 'paper-2021',
+        bank_id: 'bank-var-2',
+        batch_id: null,
+        title: '方差及其计算式 · 第 2 道',
+        assessed_at: '2026-11-06T21:10:00+08:00',
+        correct: false,
+        feedback_revision: 'result-var-2',
+        unread: false,
+        read_at: '2026-11-06T21:30:00+08:00',
+      },
+    ],
+  },
+  review: {
+    total: 0,
+    counts: { exam_questions: 0, practice_attempts: 0, free_practice_attempts: 0 },
+    paper_issue_count: 0,
+    items: [],
+  },
   next_steps: [
+    {
+      kind: 'read_feedback',
+      available: false,
+      reason: '没有新的批改反馈',
+      count: 0,
+      target: { paper_id: null, practice_id: null },
+    },
+    {
+      kind: 'review_results',
+      available: false,
+      reason: '没有需要核对的判断',
+      count: 0,
+      target: { paper_id: null, practice_id: null },
+    },
     {
       kind: 'continue_practice',
       available: true,
@@ -320,23 +359,11 @@ export const insufficientOverview: Overview = {
       independent_correct_comparison: '最近 8 周里有一段时间没有可比较的独立作答记录。',
     },
   },
-  next_steps: [
-    {
-      ...overview.next_steps[0],
-      available: false,
-      count: 0,
-      reason: '没有未做完的练习',
-      target: { paper_id: null, practice_id: null },
-    },
-    {
-      ...overview.next_steps[1],
-      available: false,
-      count: 0,
-      reason: '没有等你核对的新试卷',
-      target: { paper_id: null, practice_id: null },
-    },
-    overview.next_steps[2],
-  ],
+  next_steps: overview.next_steps.map((step) =>
+    step.kind === 'continue_practice' || step.kind === 'analyze_paper'
+      ? { ...step, available: false, count: 0, target: { paper_id: null, practice_id: null } }
+      : step,
+  ),
 }
 
 const emptyDist = (n: number) => dist(0, 0, 0, n)
@@ -558,4 +585,48 @@ export const batchReady: ProfileBatch = {
   ],
   limitations: [{ goal_id: null, reason: '“数理统计”暂时没有合适的题，少发了 1 道。' }],
   counts: { pending: 7, grading: 0, graded: 0, needs_supplement: 0 },
+}
+
+/** 有新批改反馈：next_steps 第一项 read_feedback 可用 */
+export const feedbackOverview: Overview = {
+  ...overview,
+  totals: { ...overview.totals, unread_feedback_count: 2 },
+  feedback: {
+    unread_count: 2,
+    recent_items: [
+      {
+        source: 'paper_practice',
+        attempt_id: 'attempt-a',
+        practice_id: 'probe-a',
+        paper_id: 'paper-2021',
+        bank_id: 'bank-a',
+        batch_id: null,
+        title: '条件概率 · 第 1 道',
+        assessed_at: '2026-11-10T19:00:00+08:00',
+        correct: false,
+        feedback_revision: 'result-a-1',
+        unread: true,
+        read_at: null,
+      },
+      {
+        source: 'free_practice',
+        attempt_id: 'free-b',
+        practice_id: null,
+        paper_id: null,
+        bank_id: 'bank-b',
+        batch_id: null,
+        title: '2024 数学一 · 第 5 题（自由练习）',
+        assessed_at: '2026-11-10T18:00:00+08:00',
+        correct: true,
+        feedback_revision: 'result-b-1',
+        unread: true,
+        read_at: null,
+      },
+    ],
+  },
+  next_steps: overview.next_steps.map((step) =>
+    step.kind === 'read_feedback'
+      ? { ...step, available: true, count: 2, reason: '查看新的批改反馈' }
+      : step,
+  ),
 }

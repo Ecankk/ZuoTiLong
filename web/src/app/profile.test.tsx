@@ -9,6 +9,7 @@ import {
   batchBase,
   batchReady,
   emptyOverview,
+  feedbackOverview,
   insufficientOverview,
   overview,
   trends,
@@ -173,4 +174,31 @@ it('explains why a profile batch cannot be created', async () => {
   const main = await screen.findByRole('region', { name: '现在做什么' })
   expect(within(main).getByText(/先在设置里选择备考类别/)).toBeInTheDocument()
   expect(within(main).getByRole('button', { name: /按画像来一组/ })).toBeDisabled()
+})
+
+it('leads home with new feedback and sends a read receipt when one is opened', async () => {
+  const posts: Record<string, unknown>[] = []
+  mockServer({
+    routes: (path, init) => {
+      if (path === '/api/profile/overview') return json(feedbackOverview)
+      if (path === '/api/feedback/read' && init?.method === 'POST') {
+        posts.push(JSON.parse(String(init.body)))
+        return json({ ok: true })
+      }
+      return undefined
+    },
+  })
+  renderAt('/')
+  const main = await screen.findByRole('region', { name: '现在做什么' })
+  expect(within(main).getByRole('heading', { name: '有 2 道题批改好了' })).toBeInTheDocument()
+  const free = within(main).getByRole('link', { name: /自由练习/ })
+  expect(free).toHaveAttribute('href', '/bank/bank-b/practice')
+  await userEvent.click(within(main).getByRole('link', { name: /条件概率/ }))
+  await vi.waitFor(() => expect(posts).toHaveLength(1))
+  expect(posts[0]).toMatchObject({
+    source: 'paper_practice',
+    attempt_id: 'attempt-a',
+    feedback_revision: 'result-a-1',
+  })
+  expect(String(posts[0].request_id)).toMatch(/^[0-9a-f-]{36}$/)
 })

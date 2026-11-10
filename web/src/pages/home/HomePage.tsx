@@ -1,8 +1,16 @@
 import { ArrowRight, ChevronRight, CircleAlert, Flag, Upload } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { useOverview, usePapers, usePractices, useTasks } from '../../api/queries'
-import type { Overview, Paper, PracticeCard, PracticeGroup } from '../../api/types'
+import { endpoints, requestId } from '../../api/endpoints'
+import { useAction, useOverview, usePapers, usePractices, useTasks } from '../../api/queries'
+import type {
+  FeedbackItem,
+  Overview,
+  Paper,
+  PracticeCard,
+  PracticeGroup,
+  ReviewItem,
+} from '../../api/types'
 import { ButtonLink } from '../../components/ui/Button'
 import { ButtonRow } from '../../components/ui/ButtonRow'
 import { Card } from '../../components/ui/Card'
@@ -116,6 +124,34 @@ function overviewMain(
   papers: Paper[],
 ) {
   const step = overview.next_steps.find((s) => s.available)
+  if (step?.kind === 'read_feedback') {
+    const items = (overview.feedback?.recent_items ?? []).filter((item) => item.unread)
+    return (
+      <MainCard
+        kicker="新的批改反馈"
+        title={`有 ${step.count} 道题批改好了`}
+        extra={items.length > 0 && <FeedbackList items={items} />}
+      >
+        先看看批改反馈，弄清错在哪一步，再继续做新题。
+      </MainCard>
+    )
+  }
+  if (step?.kind === 'review_results') {
+    const first = overview.review?.items[0]
+    return (
+      <MainCard
+        kicker="需要你核对"
+        title={`${step.count} 道题的判断需要核对或补材料`}
+        actions={
+          <ButtonLink variant="primary" size="lg" to={first ? reviewLink(first) : '/practice'}>
+            去核对 <ArrowRight size={16} aria-hidden />
+          </ButtonLink>
+        }
+      >
+        {first?.reason ?? step.reason}
+      </MainCard>
+    )
+  }
   if (step?.kind === 'continue_practice') {
     const found = cards.find(({ card }) => card.id === step.target.practice_id)
     const practiceId = step.target.practice_id ?? found?.card.id
@@ -179,6 +215,62 @@ function overviewMain(
     >
       从你的薄弱考点和该复习的考点里挑题。没做过的考点不会被当成薄弱。
     </MainCard>
+  )
+}
+
+/** 批改反馈和待核对记录各自的去处 */
+const feedbackLink = (item: FeedbackItem) =>
+  item.source === 'free_practice' && item.bank_id
+    ? `/bank/${encodeURIComponent(item.bank_id)}/practice`
+    : item.practice_id
+      ? `/practice?item=${encodeURIComponent(item.practice_id)}`
+      : '/practice'
+
+function reviewLink(item: ReviewItem) {
+  if (item.source === 'free_practice' && item.bank_id)
+    return `/bank/${encodeURIComponent(item.bank_id)}/practice`
+  if (item.practice_id) return `/practice?item=${encodeURIComponent(item.practice_id)}`
+  if (item.paper_id) return `/papers/${encodeURIComponent(item.paper_id)}`
+  return '/practice'
+}
+
+/** 批改反馈列表：点开时发已读回执（不影响批改结果），未读的带圆点 */
+function FeedbackList({ items }: { items: FeedbackItem[] }) {
+  const read = useAction(
+    (item: FeedbackItem) =>
+      endpoints.markFeedbackRead({
+        request_id: requestId(),
+        source: item.source,
+        attempt_id: item.attempt_id,
+        feedback_revision: item.feedback_revision,
+      }),
+    [['profile']],
+  )
+  return (
+    <ul className={styles.rows}>
+      {items.slice(0, 3).map((item) => (
+        <li key={item.attempt_id}>
+          <Link
+            to={feedbackLink(item)}
+            className={styles.row}
+            onClick={() => item.unread && read.mutate(item)}
+          >
+            {item.unread && <span className={styles.unread} aria-label="未读" />}
+            <span className={styles.rowText}>
+              <strong>{item.title}</strong>
+            </span>
+            <Chip
+              tone={
+                item.correct === true ? 'correct' : item.correct === false ? 'wrong' : 'unknown'
+              }
+            >
+              {item.correct === true ? '做对了' : item.correct === false ? '有错' : '待核对'}
+            </Chip>
+            <ChevronRight size={16} aria-hidden />
+          </Link>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -423,24 +515,36 @@ export function HomePage() {
             )
           )}
 
-          {graded.length > 0 && (
+          {overview?.feedback && overview.feedback.recent_items.length > 0 ? (
             <Card padded className={styles.card} aria-label="最近批改">
               <div className={styles.cardHead}>
                 <h2>最近批改</h2>
-                <span className={styles.faint}>点开看批改反馈</span>
+                {overview.feedback.unread_count > 0 && (
+                  <span className={styles.faint}>{overview.feedback.unread_count} 道没看</span>
+                )}
               </div>
-              <ul className={styles.rows}>
-                {graded.slice(0, 3).map(({ card, group }) => (
-                  <Row
-                    key={card.id}
-                    to={`/practice?item=${card.id}`}
-                    title={group.label}
-                    detail={cameFrom(card)}
-                    after={<Chip>已批改</Chip>}
-                  />
-                ))}
-              </ul>
+              <FeedbackList items={overview.feedback.recent_items} />
             </Card>
+          ) : (
+            graded.length > 0 && (
+              <Card padded className={styles.card} aria-label="最近批改">
+                <div className={styles.cardHead}>
+                  <h2>最近批改</h2>
+                  <span className={styles.faint}>点开看批改反馈</span>
+                </div>
+                <ul className={styles.rows}>
+                  {graded.slice(0, 3).map(({ card, group }) => (
+                    <Row
+                      key={card.id}
+                      to={`/practice?item=${card.id}`}
+                      title={group.label}
+                      detail={cameFrom(card)}
+                      after={<Chip>已批改</Chip>}
+                    />
+                  ))}
+                </ul>
+              </Card>
+            )
           )}
         </div>
 

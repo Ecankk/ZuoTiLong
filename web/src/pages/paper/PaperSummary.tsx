@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams } from 'react-router'
 import { endpoints } from '../../api/endpoints'
 import { useAction, usePaper, usePaperSummary, useTasks } from '../../api/queries'
@@ -5,6 +6,7 @@ import type { PaperSummaryResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { ErrorState } from '../../components/ui/ErrorState'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { friendlyError } from '../../lib/errors'
@@ -54,6 +56,7 @@ export function PaperSummary() {
   const { data, error, refetch } = usePaperSummary(paperId)
   const { data: tasks } = useTasks()
   const summarize = useAction(() => endpoints.summarizePaper(paperId), [['papers'], ['tasks']])
+  const [confirm, setConfirm] = useState(false)
   if (!data && error)
     return <ErrorState error={error} title="本卷总结没能读取" onRetry={() => void refetch()} />
   if (!data || !paper) return <Skeleton />
@@ -70,7 +73,7 @@ export function PaperSummary() {
       <Button
         variant={data.summary ? 'secondary' : 'primary'}
         disabled={summarize.isPending}
-        onClick={() => summarize.mutate(undefined)}
+        onClick={() => setConfirm(true)}
       >
         {data.summary ? '更新本卷总结' : '生成本卷总结'}
       </Button>
@@ -82,7 +85,28 @@ export function PaperSummary() {
       做题龙正在整理本卷总结
     </div>
   )
-  const failure = summarize.error && (
+  const unavailable = tasks?.availability.status === 'unavailable'
+  const dialog = (
+    <ConfirmDialog
+      open={confirm}
+      onOpenChange={setConfirm}
+      title={data.summary ? '更新本卷总结？' : '生成本卷总结？'}
+      confirmLabel={data.summary ? '确认更新' : '确认生成'}
+      pending={summarize.isPending}
+      error={summarize.error ? friendlyError(summarize.error) : null}
+      onConfirm={() => summarize.mutate(undefined, { onSuccess: () => setConfirm(false) })}
+    >
+      <div className={styles.dialogText}>
+        <p>
+          做题龙会用本机的 AI
+          服务汇总这份试卷的逐题分析和练习批改，整理出主要发现、已有改善和后续重点。通常需要几分钟，期间可以离开这个页面，进度会显示在左下角。
+        </p>
+        {pending > 0 && <p>本卷还有 {pending} 道练习没做，做完后再生成，总结会更完整。</p>}
+        {unavailable && <p>AI 服务现在还没准备好，任务会先排队，准备好后自动开始。</p>}
+      </div>
+    </ConfirmDialog>
+  )
+  const failure = !confirm && summarize.error && (
     <p className={styles.error}>{friendlyError(summarize.error)}</p>
   )
   // 还没有总结：一张卡片说清总结包含什么，再给生成按钮
@@ -106,6 +130,7 @@ export function PaperSummary() {
           {action}
           {failure}
         </Card>
+        {dialog}
       </div>
     )
   return (
@@ -117,6 +142,7 @@ export function PaperSummary() {
         {action}
         {failure}
       </Card>
+      {dialog}
     </div>
   )
 }

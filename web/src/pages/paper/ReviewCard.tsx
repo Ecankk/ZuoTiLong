@@ -4,6 +4,7 @@ import { useAction, usePaper } from '../../api/queries'
 import type { QuestionResponse } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { friendlyError } from '../../lib/errors'
 import styles from './QuestionAnalysisPage.module.css'
 
 /**
@@ -44,7 +45,7 @@ export function ReviewCard({ paperId, detail }: { paperId: string; detail: Quest
           请做题龙重新核对
         </Button>
         {review.isSuccess && <span className={styles.ok}>已提交，核对完成后结果会更新。</span>}
-        {review.error && <span className={styles.errorText}>{review.error.message}</span>}
+        {review.error && <span className={styles.errorText}>{friendlyError(review.error)}</span>}
       </div>
     </Card>
   )

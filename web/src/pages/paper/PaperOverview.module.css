@@ -160,3 +160,72 @@
   color: var(--text-regular);
   line-height: 1.8;
 }
+
+.clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.more {
+  margin-top: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.more:hover {
+  text-decoration: underline;
+}
+
+.dialogText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* 归档后的撤销提示 */
+.toast {
+  position: fixed;
+  bottom: var(--space-6);
+  left: 50%;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: calc(100vw - 32px);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--text-strong);
+  box-shadow: var(--shadow-raised);
+  color: var(--text-on-primary);
+  font-size: var(--font-size-sm);
+  transform: translateX(-50%);
+}
+
+.toast button {
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.toast button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.toast .toastClose {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  padding: 0;
+  background: transparent;
+}

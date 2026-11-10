@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useLocation, useParams } from 'react-router'
 import { endpoints } from '../../api/endpoints'
 import { useAction, usePaper, usePreferences, useTasks } from '../../api/queries'
 import type { Correctness, MathType, PaperResponse, Task } from '../../api/types'
@@ -9,6 +9,7 @@ import { Card } from '../../components/ui/Card'
 import { Chip } from '../../components/ui/Chip'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { cx } from '../../lib/cx'
+import { friendlyError } from '../../lib/errors'
 import { correctnessLabel, mathTypeName } from '../../lib/labels'
 import { awaitingSplitConfirm, ConfirmSplitCard } from './ConfirmSplit'
 import styles from './PaperOverview.module.css'
@@ -21,11 +22,37 @@ const countColor: Record<Correctness, string> = {
   unknown: 'var(--status-unknown)',
 }
 
+/** 长段落默认显示 3 行，超出时可以展开全文 */
+function ClampText({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null)
+  const [open, setOpen] = useState(false)
+  const [overflow, setOverflow] = useState(false)
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (element && !open) setOverflow(element.scrollHeight > element.clientHeight + 1)
+  }, [text, open])
+  return (
+    <>
+      <p ref={ref} className={cx(!open && styles.clamp)}>
+        <MathText text={text} />
+      </p>
+      {(overflow || open) && (
+        <button type="button" className={styles.more} onClick={() => setOpen(!open)}>
+          {open ? '收起' : '展开全文'}
+        </button>
+      )}
+    </>
+  )
+}
+
 /** 分析状态与操作：分析、重新分析（需确认）、准备练习。 */
 function AnalysisCard({ data }: { data: PaperResponse }) {
   const { paper, analysis } = data
   const { data: tasks } = useTasks()
   const [confirm, setConfirm] = useState(false)
+  const [confirmPrepare, setConfirmPrepare] = useState(false)
+  const [confirmStart, setConfirmStart] = useState(false)
+  const practice = data.practice_counts
   const hasReport = analysis.report_id !== null
   const analyze = useAction(
     (confirmed: boolean) => endpoints.analyzePaper(paper.id, confirmed),
@@ -47,7 +74,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
 
   return (
     <Card padded className={styles.card} aria-label="分析">
-      <h2>逐题分析</h2>
+      <h2>本卷概况</h2>
       {running ? (
         <div className={styles.status} role="status">
           <span className={styles.spinner} aria-hidden />
@@ -61,9 +88,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
         </div>
       ) : null}
       {analysis.summary ? (
-        <p>
-          <MathText text={analysis.summary} />
-        </p>
+        <ClampText text={analysis.summary} />
       ) : (
         !running && !queued && <p className={styles.muted}>这份试卷还没有分析结果。</p>
       )}
@@ -71,10 +96,16 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
         <div className={styles.actions}>
           {hasReport ? (
             <>
+              {/* 已有待做练习时，最显眼的是去做；再准备练习降为次要操作 */}
+              {practice.pending > 0 && (
+                <ButtonLink variant="primary" to="/practice?view=paper">
+                  去练习（{practice.pending} 道待做）
+                </ButtonLink>
+              )}
               <Button
-                variant="primary"
+                variant={practice.pending > 0 ? 'secondary' : 'primary'}
                 disabled={prepare.isPending || preparing}
-                onClick={() => prepare.mutate(undefined)}
+                onClick={() => setConfirmPrepare(true)}
               >
                 为薄弱考点准备练习
               </Button>
@@ -86,7 +117,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
               <Button
                 variant="primary"
                 disabled={analyze.isPending}
-                onClick={() => analyze.mutate(true)}
+                onClick={() => setConfirmStart(true)}
               >
                 开始分析
               </Button>
@@ -97,8 +128,8 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
       {(prepare.isSuccess || preparing) && (
         <p className={styles.ok}>已开始准备练习，完成后会出现在“练习”里。</p>
       )}
-      {(prepare.error || (!confirm && analyze.error)) && (
-        <p className={styles.error}>{(prepare.error ?? analyze.error)?.message}</p>
+      {((!confirmPrepare && prepare.error) || (!confirm && !confirmStart && analyze.error)) && (
+        <p className={styles.error}>{friendlyError(prepare.error ?? analyze.error)}</p>
       )}
       <ConfirmDialog
         open={confirm}
@@ -106,10 +137,51 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
         title="重新分析这份试卷？"
         confirmLabel="确认重新分析"
         pending={analyze.isPending}
-        error={analyze.error?.message}
+        error={analyze.error ? friendlyError(analyze.error) : null}
         onConfirm={() => analyze.mutate(true, { onSuccess: () => setConfirm(false) })}
       >
         做题龙会按现在的原卷重新逐题分析，生成新的结果。旧的分析和你的作答都会保留。
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={confirmStart}
+        onOpenChange={setConfirmStart}
+        title="开始分析这份试卷？"
+        confirmLabel="确认开始分析"
+        pending={analyze.isPending}
+        error={analyze.error ? friendlyError(analyze.error) : null}
+        onConfirm={() => analyze.mutate(true, { onSuccess: () => setConfirmStart(false) })}
+      >
+        <div className={styles.dialogText}>
+          <p>
+            做题龙会用本机的 AI
+            服务逐题分析这份试卷：看你写了什么、判断对错、找出第一个出错的地方。整份试卷通常需要较长时间，期间可以离开这个页面，进度会显示在左下角。
+          </p>
+          {unavailable && <p>AI 服务现在还没准备好，分析会先排队，准备好后自动开始。</p>}
+        </div>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={confirmPrepare}
+        onOpenChange={setConfirmPrepare}
+        title="为薄弱考点准备练习？"
+        confirmLabel="开始准备"
+        pending={prepare.isPending}
+        error={prepare.error ? friendlyError(prepare.error) : null}
+        onConfirm={() => prepare.mutate(undefined, { onSuccess: () => setConfirmPrepare(false) })}
+      >
+        <div className={styles.dialogText}>
+          <p>
+            做题龙会按本卷的薄弱考点
+            {data.weak_topics.length > 0 && `（${data.weak_topics.length} 个）`}
+            挑选少量练习题，每个重点考点一般 1～2 道，追加到“练习”里。
+          </p>
+          <p>
+            {practice.total > 0
+              ? `本卷已有的 ${practice.total} 道练习和作答记录都会保留，不会被覆盖。`
+              : '准备好后会出现在“练习”里。'}
+            {practice.pending > 0 && ` 其中还有 ${practice.pending} 道没做，也可以先去做完。`}
+          </p>
+          {unavailable && <p>AI 服务现在还没准备好，任务会先排队，准备好后自动开始。</p>}
+        </div>
       </ConfirmDialog>
     </Card>
   )
@@ -136,7 +208,7 @@ function ScoreCard({ data }: { data: PaperResponse }) {
     save.mutate(undefined)
   }
   return (
-    <Card padded className={styles.card} aria-label="总分">
+    <Card padded className={styles.card} aria-label="总分" id="score">
       <h2>总分</h2>
       <p className={styles.score}>
         {paper.score !== null ? (
@@ -189,7 +261,7 @@ function ScoreCard({ data }: { data: PaperResponse }) {
         </Button>
       </form>
       {save.isSuccess && <p className={styles.ok}>已保存</p>}
-      {save.error && <p className={styles.error}>{save.error.message}</p>}
+      {save.error && <p className={styles.error}>{friendlyError(save.error)}</p>}
     </Card>
   )
 }
@@ -233,14 +305,26 @@ function NumberCard({ data }: { data: PaperResponse }) {
           建立题号
         </Button>
       </form>
-      {confirm.error && <p className={styles.error}>{confirm.error.message}</p>}
+      {confirm.error && <p className={styles.error}>{friendlyError(confirm.error)}</p>}
     </Card>
   )
+}
+
+/** 从试卷列表的“总分待核定”进来时，滚到总分卡并聚焦得分输入框 */
+function useScoreAnchor(ready: boolean) {
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (!ready || hash !== '#score') return
+    const card = document.getElementById('score')
+    card?.scrollIntoView?.({ block: 'center' })
+    card?.querySelector('input')?.focus({ preventScroll: true })
+  }, [ready, hash])
 }
 
 export function PaperOverview() {
   const { paperId = '' } = useParams()
   const { data } = usePaper(paperId)
+  useScoreAnchor(Boolean(data))
   const { data: tasks } = useTasks()
   if (!data) return null
   const { paper } = data

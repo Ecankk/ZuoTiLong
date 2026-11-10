@@ -8,6 +8,7 @@ import { useAction } from '../../api/queries'
 import type { PageImage, Region } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { cx } from '../../lib/cx'
+import { friendlyError } from '../../lib/errors'
 import styles from './RegionEditor.module.css'
 
 export type Segment = { page: number; top: number; bottom: number }
@@ -39,8 +40,8 @@ export function regionError(error: Error) {
   if (error instanceof ApiError && error.status === 409)
     return '这份试卷有任务正在进行或已经归档，暂时不能调整切图。等任务结束（或恢复试卷）后再试。'
   if (error instanceof ApiError && error.status === 400)
-    return `没能保存：${error.message}。请确认每段的上线在下线上方，并且框住了题目内容。`
-  return error.message
+    return `没能保存：${friendlyError(error).replace(/[。.]?$/, '。')}请确认每段的上线在下线上方，并且框住了题目内容。`
+  return friendlyError(error)
 }
 
 /** 一段：整页图 + 上下两条可拖动的线 + 切出效果预览 */
@@ -226,7 +227,7 @@ function Editor({
         题；也可以直接点在图上，离得近的那条线会移过去。题目跨页时加一段。
       </p>
       {isPending && <p className={styles.text}>正在读取原卷…</p>}
-      {error && <p className={styles.error}>原卷整页图暂时读不到：{error.message}</p>}
+      {error && <p className={styles.error}>原卷整页图暂时读不到：{friendlyError(error)}</p>}
       <div className={styles.segments}>
         {items.length > 0 &&
           segments.map((segment, index) => (

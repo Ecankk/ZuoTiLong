@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Chip } from '../../components/ui/Chip'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { friendlyError } from '../../lib/errors'
 import { CorrectNumbersButton } from './CorrectNumbers'
 import styles from './ConfirmSplit.module.css'
 
@@ -113,16 +114,16 @@ export function ConfirmSplitCard({ data }: { data: PaperResponse }) {
         title="开始分析这份试卷？"
         confirmLabel="开始分析"
         pending={analyze.isPending}
-        error={analyze.error?.message}
+        error={analyze.error ? friendlyError(analyze.error) : null}
         onConfirm={() => analyze.mutate(undefined, { onSuccess: () => setConfirm(false) })}
       >
         <p>
-          做题龙会用本机的 Codex
-          逐题分析，整份试卷通常需要较长时间。期间可以离开这个页面，进度会显示在左下角。
+          做题龙会用本机的 AI
+          服务逐题分析，整份试卷通常需要较长时间。期间可以离开这个页面，进度会显示在左下角。
         </p>
         <p className={styles.note}>
           {unavailable
-            ? 'Codex 现在还没准备好，分析会先排队，准备好后自动开始。'
+            ? 'AI 服务现在还没准备好，分析会先排队，准备好后自动开始。'
             : '开始分析后就不能再纠正题号了。'}
         </p>
       </ConfirmDialog>

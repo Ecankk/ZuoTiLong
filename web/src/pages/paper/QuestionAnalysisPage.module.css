@@ -1,9 +1,28 @@
+.topNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.topNav .pager {
+  gap: var(--space-2);
+  margin-top: 0;
+}
+
+.keyHint {
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+}
+
 .layout {
   display: grid;
-  grid-template-columns: minmax(380px, 1fr) minmax(0, clamp(560px, 56%, 860px));
+  /* 原卷列更宽，手写看得清；分析列在内部按自身宽度调整 */
+  grid-template-columns: minmax(420px, 1.15fr) minmax(0, 1fr);
   gap: var(--space-5);
   align-items: start;
-  margin-top: var(--space-5);
+  margin-top: var(--space-3);
 }
 
 .source {
@@ -14,8 +33,10 @@
 
 .sourceHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
 
@@ -26,7 +47,27 @@
 
 .tools {
   display: flex;
+  align-items: center;
   gap: 2px;
+}
+
+/* 只在上下布局时出现 */
+.collapseToggle {
+  display: none;
+  height: 30px;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-regular);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.collapseToggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .iconButton {
@@ -38,11 +79,31 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
+  cursor: pointer;
 }
 
 .iconButton:hover {
   background: var(--surface-sunken);
   color: var(--text-strong);
+}
+
+.cropButton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: zoom-in;
+}
+
+.cropButton:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.cropButton + .cropButton {
+  margin-top: var(--space-2);
 }
 
 .cropImage {
@@ -53,10 +114,11 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   background: var(--surface-card);
+  transition: border-color var(--duration-base) var(--ease-out);
 }
 
-.cropImage + .cropImage {
-  margin-top: var(--space-2);
+.cropButton:hover .cropImage {
+  border-color: var(--color-primary);
 }
 
 .paper {
@@ -82,10 +144,39 @@
 }
 
 .analysis {
+  container: analysis / inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
+}
+
+/* 内容区较窄（如 960 宽窗口）：原卷在上、分析在下，原卷可以收起 */
+@container (max-width: 880px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .source {
+    position: static;
+  }
+
+  .cropImage {
+    max-height: 60vh;
+  }
+
+  .collapseToggle {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .collapsed .sourceBody {
+    display: none;
+  }
+
+  .collapsed .sourceHead {
+    margin-bottom: 0;
+  }
 }
 
 .layer {
@@ -168,6 +259,18 @@
   gap: var(--space-3);
 }
 
+/* 分析列太窄时“你写的 / 首个错误”上下排，公式不再频繁折行；考点卡片的按钮换到下面 */
+@container analysis (max-width: 520px) {
+  .compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topicCta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .compare h4 {
   margin-bottom: var(--space-2);
   color: var(--text-muted);
@@ -209,6 +312,24 @@
 .error .stepLabel {
   color: var(--status-wrong);
   font-weight: var(--font-weight-semibold);
+}
+
+/* 没有逐步对照时的首个错误：白底、左侧红线，正文常规字重 */
+.firstError {
+  border-left: 3px solid var(--status-wrong);
+}
+
+.errorStep {
+  color: var(--status-wrong);
+}
+
+.errorNote {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-subtle);
+  color: var(--text-muted);
+  font-size: var(--font-size-ui);
+  line-height: 1.75;
 }
 
 .fix {
@@ -302,6 +423,20 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* 考点标签可点：主色标签 + 公共 Chip 的悬停描边（G5） */
+.topicLink {
+  border-radius: var(--radius-pill);
+}
+
+.topicLink:hover {
+  text-decoration: none;
+}
+
+.topicLink:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .pager {

@@ -7,9 +7,12 @@ import type { Correctness, Paper } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Chip, type ChipTone } from '../../components/ui/Chip'
+import { ErrorState } from '../../components/ui/ErrorState'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
+import { Skeleton } from '../../components/ui/Skeleton'
 import { cx } from '../../lib/cx'
+import { friendlyError } from '../../lib/errors'
 import { correctnessLabel, monthDay, paperName } from '../../lib/labels'
 import styles from './PapersPage.module.css'
 
@@ -19,7 +22,8 @@ const statusText: Record<string, { label: string; tone: ChipTone }> = {
   segmented: { label: '已定位题目', tone: 'plain' },
   needs_review: { label: '识别待核对', tone: 'unknown' },
   partial_analysis: { label: '部分已分析', tone: 'plain' },
-  diagnosed: { label: '已分析', tone: 'correct' },
+  // 正误四色只表示作答结果；“已分析”是完成状态，用中性色
+  diagnosed: { label: '已分析', tone: 'plain' },
 }
 
 const today = () => {
@@ -46,7 +50,7 @@ function UploadCard() {
 
   return (
     <Card className={styles.upload} aria-label="上传试卷">
-      <div>
+      <div className={styles.intro}>
         <h2>上传做过的试卷</h2>
         <p>上传整份 PDF，做题龙会先定位每道题，再逐题分析。原文件只保存在这台电脑上。</p>
         <div className={styles.pens}>
@@ -91,7 +95,9 @@ function UploadCard() {
           {upload.isPending ? '正在上传…' : '上传并开始分析'}
         </Button>
       </form>
-      {upload.isError && <p className={cx(styles.message, styles.error)}>{upload.error.message}</p>}
+      {upload.isError && (
+        <p className={cx(styles.message, styles.error)}>{friendlyError(upload.error)}</p>
+      )}
     </Card>
   )
 }
@@ -108,10 +114,15 @@ function PaperCard({ paper }: { paper: Paper }) {
   const status = statusText[paper.analysis_status]
   const { counts } = paper
   return (
-    <Link to={`/papers/${paper.id}/questions`} className={styles.paper}>
+    // 整张卡片可点（标题链接铺满卡片），“总分待核定”是卡片上的另一个链接
+    <article className={styles.paper}>
       <div className={styles.paperTop}>
         <div>
-          <h3>{paperName(paper.title)}</h3>
+          <h3>
+            <Link to={`/papers/${paper.id}/questions`} className={styles.cardLink}>
+              {paperName(paper.title)}
+            </Link>
+          </h3>
           <span className={styles.meta}>
             {paper.exam_date ? `${monthDay(paper.exam_date)}作答` : '作答日期未填'}
           </span>
@@ -124,7 +135,12 @@ function PaperCard({ paper }: { paper: Paper }) {
             <b>{paper.score}</b> / {paper.total_score} 分
           </>
         ) : (
-          '总分待核定'
+          <>
+            <span>总分待核定</span> ·{' '}
+            <Link to={`/papers/${paper.id}#score`} className={styles.scoreLink}>
+              去核定总分
+            </Link>
+          </>
         )}
       </span>
       {counts.total > 0 ? (
@@ -155,13 +171,13 @@ function PaperCard({ paper }: { paper: Paper }) {
       ) : (
         <span className={styles.meta}>还没有定位到题目</span>
       )}
-    </Link>
+    </article>
   )
 }
 
 export function PapersPage() {
   const [scope, setScope] = useState<PaperScope>('0')
-  const { data, isError, error } = usePapers(scope)
+  const { data, error, refetch } = usePapers(scope)
   return (
     <>
       <PageHeader title="试卷" />
@@ -181,11 +197,12 @@ export function PapersPage() {
           onChange={setScope}
         />
       </div>
-      {isError && (
-        <Card padded className={styles.empty}>
-          {error.message}
-        </Card>
-      )}
+      {!data &&
+        (error ? (
+          <ErrorState error={error} title="试卷列表没能读取" onRetry={() => void refetch()} />
+        ) : (
+          <Skeleton variant="rows" rows={2} />
+        ))}
       {data &&
         (data.items.length === 0 ? (
           <Card padded className={styles.empty}>

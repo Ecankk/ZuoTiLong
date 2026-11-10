@@ -1,15 +1,18 @@
-import { ArrowRight, ChevronLeft, ChevronRight, ExternalLink, ZoomIn } from 'lucide-react'
-import { useState } from 'react'
-import { Link, useParams } from 'react-router'
-import { usePaperQuestions, useQuestion, useTasks } from '../../api/queries'
+import { ArrowRight, ChevronLeft, ChevronRight, FileText, ZoomIn } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
+import { usePaperQuestions, usePractices, useQuestion, useTasks } from '../../api/queries'
 import type { QuestionResponse, QuestionSummary, Region, StepComparison } from '../../api/types'
+import { ImageViewer, type ViewerTarget } from './ImageViewer'
 import { AdjustRegionsButton } from './RegionEditor'
 import { MathText } from '../../components/math/MathText'
 import { ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { ErrorState } from '../../components/ui/ErrorState'
 import { Chip, CorrectnessChip } from '../../components/ui/Chip'
 import { Fold } from '../../components/ui/Fold'
 import { PaperPlaceholder, type PaperLine } from '../../components/ui/PaperPlaceholder'
+import { Skeleton } from '../../components/ui/Skeleton'
 import { cx } from '../../lib/cx'
 import { QuestionStrip } from './QuestionStrip'
 import { ReviewCard } from './ReviewCard'
@@ -61,8 +64,8 @@ function Steps({ steps }: { steps: Step[] }) {
   )
 }
 
-/** 原卷切图；读取失败时显示占位，不露出破图。 */
-function CropImage({ url, alt }: { url: string; alt: string }) {
+/** 原卷切图；点击打开看图层。读取失败时显示占位，不露出破图。 */
+function CropImage({ url, alt, onOpen }: { url: string; alt: string; onOpen: () => void }) {
   const [failed, setFailed] = useState(false)
   if (failed)
     return (
@@ -72,7 +75,11 @@ function CropImage({ url, alt }: { url: string; alt: string }) {
         caption="原卷切图暂时无法显示"
       />
     )
-  return <img className={styles.cropImage} src={url} alt={alt} onError={() => setFailed(true)} />
+  return (
+    <button type="button" className={styles.cropButton} onClick={onOpen} title="点击放大查看">
+      <img className={styles.cropImage} src={url} alt={alt} onError={() => setFailed(true)} />
+    </button>
+  )
 }
 
 function SourcePanel({
@@ -88,8 +95,11 @@ function SourcePanel({
   images: string[]
   question?: { id: string; regions: Region[] }
 }) {
+  const [viewer, setViewer] = useState<ViewerTarget | null>(null)
+  // 窄窗口里原卷在分析上方，可以收起
+  const [collapsed, setCollapsed] = useState(false)
   return (
-    <Card className={styles.source} aria-label="原卷">
+    <Card className={cx(styles.source, collapsed && styles.collapsed)} aria-label="原卷">
       <div className={styles.sourceHead}>
         <strong>
           {page ? `原卷第 ${page} 页 · ` : ''}第 {number} 题
@@ -104,76 +114,135 @@ function SourcePanel({
             />
           )}
           {images[0] && (
-            <a
+            <button
+              type="button"
               className={styles.iconButton}
-              href={images[0]}
-              target="_blank"
-              rel="noreferrer"
+              onClick={() => setViewer({ mode: 'crop', index: 0 })}
               title="放大"
+              aria-label="放大查看切图"
             >
               <ZoomIn size={17} aria-hidden />
-            </a>
+            </button>
           )}
-          <a
-            className={styles.iconButton}
-            href={`/api/papers/${encodeURIComponent(paperId)}/file${page ? `#page=${page}` : ''}`}
-            target="_blank"
-            rel="noreferrer"
-            title="打开整页"
+          {question && question.regions.length > 0 && (
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={() => setViewer({ mode: 'page', page: page ?? 1 })}
+              title="看整页"
+              aria-label="查看原卷整页"
+            >
+              <FileText size={16} aria-hidden />
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.collapseToggle}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed(!collapsed)}
           >
-            <ExternalLink size={16} aria-hidden />
-          </a>
+            {collapsed ? '展开原卷' : '收起原卷'}
+          </button>
         </div>
       </div>
-      {images.length > 0 ? (
-        images.map((url, index) => (
-          <CropImage key={url} url={url} alt={`第 ${number} 题原卷切图 ${index + 1}`} />
-        ))
-      ) : (
-        <PaperPlaceholder
-          className={styles.paper}
-          lines={placeholderLines}
-          caption="原卷切图暂不可用"
-        />
-      )}
-      <div className={styles.pens}>
-        <span>
-          <i className={styles.pen} style={{ background: 'var(--text-regular)' }} />
-          黑笔：考试作答
-        </span>
-        <span>
-          <i className={styles.pen} style={{ background: 'var(--status-wrong)' }} />
-          红笔：事后批改
-        </span>
+      <div className={styles.sourceBody}>
+        {images.length > 0 ? (
+          images.map((url, index) => (
+            <CropImage
+              key={url}
+              url={url}
+              alt={`第 ${number} 题原卷切图 ${index + 1}`}
+              onOpen={() => setViewer({ mode: 'crop', index })}
+            />
+          ))
+        ) : (
+          <PaperPlaceholder
+            className={styles.paper}
+            lines={placeholderLines}
+            caption="原卷切图暂不可用"
+          />
+        )}
+        <div className={styles.pens}>
+          <span>
+            <i className={styles.pen} style={{ background: 'var(--text-regular)' }} />
+            黑笔：考试作答
+          </span>
+          <span>
+            <i className={styles.pen} style={{ background: 'var(--status-wrong)' }} />
+            红笔：事后批改
+          </span>
+        </div>
       </div>
+      <ImageViewer
+        target={viewer}
+        onTargetChange={setViewer}
+        paperId={paperId}
+        number={number}
+        crops={images}
+        regions={question?.regions ?? []}
+      />
     </Card>
   )
 }
 
-function Pager({
-  paperId,
-  questions,
-  number,
-}: {
-  paperId: string
-  questions: QuestionSummary[]
-  number: string
-}) {
+type Neighbors = { previous?: QuestionSummary; next?: QuestionSummary }
+
+/** 按题号排序后的上一题 / 下一题 */
+function neighbors(questions: QuestionSummary[], number: string): Neighbors {
   const sorted = [...questions].sort((a, b) => Number(a.number) - Number(b.number))
   const index = sorted.findIndex((question) => question.number === number)
-  const previous = sorted[index - 1]
-  const next = sorted[index + 1]
+  if (index < 0) return {}
+  return { previous: sorted[index - 1], next: sorted[index + 1] }
+}
+
+/** 正在输入、按了组合键或开着对话框时，方向键留给原来的用途 */
+function ignoreArrow(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+    return true
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return true
+  return Boolean(document.querySelector('[role="dialog"]'))
+}
+
+/** ← / → 切到上一题 / 下一题 */
+function useArrowKeys(paperId: string, { previous, next }: Neighbors) {
+  const navigate = useNavigate()
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (ignoreArrow(event)) return
+      const target =
+        event.key === 'ArrowLeft' ? previous : event.key === 'ArrowRight' ? next : undefined
+      if (!target) return
+      event.preventDefault()
+      navigate(`/papers/${paperId}/questions/${target.number}`)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [navigate, paperId, previous, next])
+}
+
+function Pager({ paperId, previous, next, size }: Neighbors & { paperId: string; size?: 'sm' }) {
   return (
     <div className={styles.pager}>
       {previous ? (
-        <ButtonLink variant="ghost" to={`/papers/${paperId}/questions/${previous.number}`}>
+        <ButtonLink
+          variant="ghost"
+          size={size}
+          to={`/papers/${paperId}/questions/${previous.number}`}
+          title="上一题（←）"
+        >
           <ChevronLeft size={16} aria-hidden />第 {previous.number} 题
         </ButtonLink>
       ) : (
         <span />
       )}
       {next && (
-        <ButtonLink variant="ghost" to={`/papers/${paperId}/questions/${next.number}`}>
+        <ButtonLink
+          variant="ghost"
+          size={size}
+          to={`/papers/${paperId}/questions/${next.number}`}
+          title="下一题（→）"
+        >
           第 {next.number} 题 <ChevronRight size={16} aria-hidden />
         </ButtonLink>
       )}
@@ -239,13 +308,18 @@ function AnswerAndError({ detail }: { detail: QuestionResponse }) {
       </div>
       <div>
         <h4>首个错误</h4>
-        <div className={cx(styles.step, error && styles.error)}>
+        <div className={cx(styles.step, error && styles.firstError)}>
           {error ? (
             <>
-              <MathText text={error.step} />
-              <span className={styles.stepLabel}>
-                <MathText text={error.evidence} />
-              </span>
+              {/* 只把出错的那一句标红；判断依据用次要色、阅读字号 */}
+              <div className={styles.errorStep}>
+                <MathText text={error.step} />
+              </div>
+              {error.evidence && (
+                <p className={styles.errorNote}>
+                  <MathText text={error.evidence} />
+                </p>
+              )}
             </>
           ) : (
             '没有找到明确的错误步骤'
@@ -256,6 +330,21 @@ function AnswerAndError({ detail }: { detail: QuestionResponse }) {
   )
 }
 
+/**
+ * “练习本题相关考点”跳到由这道题出的第一道练习（优先待做），按试卷分组查看；
+ * 练习列表还没读到时退回到第一个考点。
+ */
+function usePracticeLink(detail: QuestionResponse) {
+  const { data } = usePractices('paper')
+  const cards = (data?.items ?? [])
+    .flatMap((group) => group.items)
+    .filter((card) => card.question_id === detail.question.id && card.status !== 'inactive')
+  const first = cards.find((card) => card.status === 'pending') ?? cards[0]
+  if (first) return `/practice?view=paper&item=${encodeURIComponent(first.id)}`
+  const topic = detail.topics[0]
+  return topic ? `/practice?topic=${encodeURIComponent(topic.topic_id)}` : '/practice'
+}
+
 function Analysis({ detail }: { detail: QuestionResponse }) {
   const { question, diagnosis } = detail
   const showComparison = question.correctness !== 'correct'
@@ -263,6 +352,7 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
   const causes = diagnosis?.hypotheses ?? []
   const structure = structureText(diagnosis?.fingerprint)
   const practiceCount = detail.practice_counts.total - detail.practice_counts.inactive
+  const practiceLink = usePracticeLink(detail)
   let layer = 1
   return (
     <>
@@ -355,18 +445,22 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
       {detail.topics.length > 0 && (
         <Card className={styles.topicCta}>
           <div>
-            <small>本题考点</small>
+            <small>本题考点 · 点击查看详情</small>
             <div className={styles.tags}>
               {detail.topics.map((topic) => (
-                <Link key={topic.topic_id} to={`/topics/${encodeURIComponent(topic.topic_id)}`}>
-                  <Chip>{topic.name}</Chip>
+                <Link
+                  key={topic.topic_id}
+                  className={styles.topicLink}
+                  to={`/topics/${encodeURIComponent(topic.topic_id)}`}
+                >
+                  <Chip tone="primary">{topic.name}</Chip>
                 </Link>
               ))}
             </div>
           </div>
           {practiceCount > 0 && (
-            <ButtonLink variant="primary" to={`/practice?topic=${detail.topics[0].topic_id}`}>
-              练习这个考点 · {practiceCount} 道 <ArrowRight size={16} aria-hidden />
+            <ButtonLink variant="primary" to={practiceLink}>
+              练习本题相关考点 · {practiceCount} 道 <ArrowRight size={16} aria-hidden />
             </ButtonLink>
           )}
         </Card>
@@ -375,18 +469,79 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
   )
 }
 
+/** 题目页读取中：左边原卷、右边分析的骨架，避免整页空白。 */
+function LoadingLayout() {
+  return (
+    <div className={styles.layout}>
+      <Skeleton variant="question" />
+      <Skeleton rows={4} />
+    </div>
+  )
+}
+
 export function QuestionAnalysisPage() {
   const { paperId = '', number = '' } = useParams()
-  const { data: list } = usePaperQuestions(paperId)
+  const questions = usePaperQuestions(paperId)
+  const list = questions.data
   const { data: tasks } = useTasks()
   const summary = list?.items.find((question) => question.number === number)
   // 没有分析的题也读取详情，用来显示原卷切图
-  const { data: detail, isPending } = useQuestion(summary?.id)
-  if (!list) return null
+  const question = useQuestion(summary?.id)
+  const detail = question.data
+  const around = neighbors(list?.items ?? [], number)
+  useArrowKeys(paperId, around)
+  if (!list)
+    return questions.isError ? (
+      <ErrorState
+        error={questions.error}
+        title="题目没能读取"
+        onRetry={() => void questions.refetch()}
+        back={{ to: `/papers/${paperId}`, label: '回到试卷概览' }}
+      />
+    ) : (
+      <LoadingLayout />
+    )
   const analyzing = tasks?.active?.paper_id === paperId
+  let analysis
+  if (!summary)
+    analysis = (
+      <Card padded className={styles.notice}>
+        这份试卷里没有这道题。
+      </Card>
+    )
+  else if (detail && summary.analysis_available && detail.diagnosis)
+    analysis = (
+      <>
+        <Analysis detail={detail} />
+        <ReviewCard paperId={paperId} detail={detail} />
+      </>
+    )
+  else if (question.isError && !detail)
+    analysis = (
+      <ErrorState
+        error={question.error}
+        title="这道题没能读取"
+        onRetry={() => void question.refetch()}
+      />
+    )
+  else if (question.isPending) analysis = <Skeleton rows={4} />
+  else
+    analysis = (
+      <Card padded className={styles.notice}>
+        {summary.analysis_available
+          ? '这道题的逐题分析暂时无法显示。'
+          : analyzing
+            ? '做题龙正在分析这份试卷，完成后会显示在这里。'
+            : '这道题还没有逐题分析。'}
+      </Card>
+    )
   return (
     <>
       <QuestionStrip paperId={paperId} questions={list.items} analyzing={analyzing} />
+      <div className={styles.topNav}>
+        <span className={styles.keyHint}>可以用键盘 ← → 切换题目</span>
+        <Pager paperId={paperId} {...around} size="sm" />
+      </div>
       <div className={styles.layout}>
         <SourcePanel
           paperId={paperId}
@@ -396,25 +551,8 @@ export function QuestionAnalysisPage() {
           question={detail?.question}
         />
         <div className={styles.analysis}>
-          {detail && summary?.analysis_available && detail.diagnosis ? (
-            <>
-              <Analysis detail={detail} />
-              <ReviewCard paperId={paperId} detail={detail} />
-            </>
-          ) : (
-            !isPending && (
-              <Card padded className={styles.notice}>
-                {!summary
-                  ? '这份试卷里没有这道题。'
-                  : summary.analysis_available
-                    ? '这道题的逐题分析暂时无法显示。'
-                    : analyzing
-                      ? '做题龙正在分析这份试卷，完成后会显示在这里。'
-                      : '这道题还没有逐题分析。'}
-              </Card>
-            )
-          )}
-          <Pager paperId={paperId} questions={list.items} number={number} />
+          {analysis}
+          <Pager paperId={paperId} {...around} />
         </div>
       </div>
     </>

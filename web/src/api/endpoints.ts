@@ -10,6 +10,7 @@ import type {
   BankCard,
   AtomsResponse,
   BackupList,
+  FeedbackReadRequest,
   Overview,
   ProfileBatch,
   ProfileBatchCreated,
@@ -102,6 +103,8 @@ export const endpoints = {
   /** 按画像来一组：排一个 AI 选题任务，异步返回批次 */
   createProfileBatch: (body: ProfileBatchRequest) =>
     postJson<ProfileBatchCreated>('/api/practices/profile-batch', body),
+  /** 已读回执：相同请求幂等，版本过期 409 */
+  markFeedbackRead: (body: FeedbackReadRequest) => postJson<unknown>('/api/feedback/read', body),
   profileBatch: (batchId: string) =>
     request<ProfileBatch>(`/api/practices/profile-batches/${enc(batchId)}`),
   /** 服务健康和版本号（设置页“关于”用） */

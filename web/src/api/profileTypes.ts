@@ -39,6 +39,8 @@ export type WeakSpotEvidence = {
   attempt_id: string | null
   bank_id: string | null
   label: string
+  /** 原卷题号（有题号时可直达题目页） */
+  question_number?: string | null
   occurred_at: string | null
   first_error_stage: string | null
   first_error_evidence: string | null
@@ -82,7 +84,38 @@ export type FourWeekComparison = {
   basis: string
 }
 
-export type NextStepKind = 'continue_practice' | 'analyze_paper' | 'profile_batch'
+/** 实际顺序：read_feedback → review_results → continue_practice → analyze_paper → profile_batch */
+export type NextStepKind =
+  'read_feedback' | 'review_results' | 'continue_practice' | 'analyze_paper' | 'profile_batch'
+
+export type FeedbackSource = 'paper_practice' | 'profile_practice' | 'free_practice'
+
+/** overview.feedback.recent_items：最近的批改反馈和已读状态 */
+export type FeedbackItem = {
+  source: FeedbackSource
+  attempt_id: string
+  practice_id: string | null
+  paper_id: string | null
+  bank_id: string | null
+  batch_id: string | null
+  title: string
+  assessed_at: string | null
+  correct: boolean | null
+  feedback_revision: string
+  unread: boolean
+  read_at: string | null
+}
+
+/** overview.review.items：判断不确定或需要补材料的记录 */
+export type ReviewItem = {
+  source: EvidenceSource
+  question_id: string | null
+  attempt_id: string | null
+  practice_id: string | null
+  paper_id: string | null
+  bank_id: string | null
+  reason: string
+}
 
 export type NextStep = {
   kind: NextStepKind
@@ -105,7 +138,19 @@ export type Overview = {
     independent_correct_this_week: number
     grading_count: number
   }
-  totals: { pending_analysis_paper_count: number; unfinished_practice_count: number }
+  totals: {
+    pending_analysis_paper_count: number
+    unfinished_practice_count: number
+    unread_feedback_count?: number
+    needs_review_count?: number
+  }
+  feedback?: { unread_count: number; recent_items: FeedbackItem[] }
+  review?: {
+    total: number
+    counts: { exam_questions: number; practice_attempts: number; free_practice_attempts: number }
+    paper_issue_count: number
+    items: ReviewItem[]
+  }
   distribution: Distribution
   subjects: ProfileSubject[]
   weak_spots: WeakSpot[]
@@ -123,6 +168,7 @@ export type Overview = {
     source: EvidenceSource
     practice_source: 'paper_practice' | 'profile_practice' | null
     question_id: string | null
+    question_number?: string | null
     practice_id: string | null
     attempt_id: string | null
     paper_id: string | null
@@ -226,4 +272,12 @@ export type ProfileBatch = {
   limitations: { goal_id: string | null; reason: string }[]
   counts: { pending: number; grading: number; graded: number; needs_supplement: number }
   error: string | null
+}
+
+/** POST /api/feedback/read：已读回执（不改批改结果） */
+export type FeedbackReadRequest = {
+  request_id: string
+  source: FeedbackSource
+  attempt_id: string
+  feedback_revision: string
 }

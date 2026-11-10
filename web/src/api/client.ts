@@ -27,7 +27,12 @@ export function parseErrorBody(data: ErrorBody): { message?: string; reason?: st
     (value): value is Record<string, unknown> => !!value && typeof value === 'object',
   )
   return {
-    message: text(data.error) ?? text(data.detail) ?? text(nested?.message) ?? text(nested?.error),
+    message:
+      text(data.error) ??
+      text(data.message) ??
+      text(data.detail) ??
+      text(nested?.message) ??
+      text(nested?.error),
     reason: text(data.reason) ?? text(nested?.reason),
   }
 }

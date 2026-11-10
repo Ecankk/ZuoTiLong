@@ -154,6 +154,10 @@ export type Access = {
   masked: boolean
   analysis_allowed: boolean
   reason: string
+  /** B26：题集与教辅书内定位（没有真题身份的题用这些显示出处） */
+  collection_id?: string | null
+  collection_label?: string | null
+  book?: { part?: string | null; chapter?: string | null; number?: string | null } | null
 }
 
 export type PracticeCard = {

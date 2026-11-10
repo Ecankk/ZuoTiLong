@@ -1,0 +1,35 @@
+.text {
+  white-space: pre-line;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.choices.short {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.choices li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.letter {
+  flex: none;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.choiceText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}

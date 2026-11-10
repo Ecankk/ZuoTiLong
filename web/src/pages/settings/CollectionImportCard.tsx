@@ -5,6 +5,7 @@ import { endpoints } from '../../api/endpoints'
 import type { CollectionPackReport } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { friendlyError } from '../../lib/errors'
 import styles from './SettingsPage.module.css'
 
 const catalogText: Record<CollectionPackReport['catalog']['status'], string> = {
@@ -23,7 +24,7 @@ const kindText: Record<string, string> = {
 
 /** 后端错误换成用户能照着做的话 */
 export function packError(error: Error) {
-  if (!(error instanceof ApiError)) return error.message
+  if (!(error instanceof ApiError)) return friendlyError(error)
   if (error.status === 404) return '暂存的题集包已失效，请重新选择文件预演。'
   if (error.status === 413) return '题集包太大：压缩包最多 1 GB，解压后最多 2 GB、3 万个文件。'
   if (error.status === 409) {
@@ -32,7 +33,7 @@ export function packError(error: Error) {
     return '做题龙正在维护题库或有任务在进行，请稍后再试。'
   }
   if (error.status === 400) return `这个题集包不能使用：${error.message}`
-  return error.message
+  return friendlyError(error)
 }
 
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('zh-CN', { hour12: false }) : '')

@@ -33,17 +33,21 @@ afterEach(() => {
 it('switches a model, moves to the closest effort and saves only that tier', async () => {
   const fetch = mockServer()
   renderSettings()
-  const card = await screen.findByRole('region', { name: 'AI 模型' })
-  const model = await within(card).findByRole('combobox', { name: '判断用的模型' })
-  const effort = within(card).getByRole('combobox', { name: '判断的推理强度' })
+  const card = await screen.findByRole('region', { name: 'AI 模型与思考深度' })
+  const model = await within(card).findByRole('combobox', { name: '判断类任务用的模型' })
+  const effort = within(card).getByRole('combobox', { name: '判断类任务的思考深度' })
   await vi.waitFor(() => expect(model).toBeEnabled())
-  expect(effort).toHaveDisplayValue('xhigh')
-  expect(within(card).getByRole('combobox', { name: '整理的推理强度' })).toHaveDisplayValue('high')
-  expect(within(card).queryByText(/execution_profiles|judgment/)).not.toBeInTheDocument()
+  expect(effort).toHaveDisplayValue('非常仔细')
+  expect(within(card).getByRole('combobox', { name: '整理类任务的思考深度' })).toHaveDisplayValue(
+    '仔细',
+  )
+  expect(
+    within(card).queryByText(/execution_profiles|judgment|xhigh|reasoning/),
+  ).not.toBeInTheDocument()
 
   await userEvent.selectOptions(model, 'gpt-6-swift')
-  expect(effort).toHaveDisplayValue('low')
-  expect(within(card).getByText(/不支持“xhigh”，已改为“low”/)).toBeInTheDocument()
+  expect(effort).toHaveDisplayValue('快速')
+  expect(within(card).getByText(/没有“非常仔细”这一档，已改为“快速”/)).toBeInTheDocument()
 
   await userEvent.click(within(card).getByRole('button', { name: '保存' }))
   expect(await within(card).findByText('已保存，下一个任务起生效')).toBeInTheDocument()
@@ -68,11 +72,11 @@ it('marks a saved model this computer does not have instead of replacing it', as
     },
   })
   renderSettings()
-  const card = await screen.findByRole('region', { name: 'AI 模型' })
-  const model = await within(card).findByRole('combobox', { name: '判断用的模型' })
+  const card = await screen.findByRole('region', { name: 'AI 模型与思考深度' })
+  const model = await within(card).findByRole('combobox', { name: '判断类任务用的模型' })
   await vi.waitFor(() => expect(within(card).getAllByRole('alert')).toHaveLength(2))
   expect(model).toHaveDisplayValue('gpt-5-old')
-  expect(within(card).getAllByText(/本机不可用，任务会失败/)).toHaveLength(2)
+  expect(within(card).getAllByText(/这台电脑上用不了这个模型/)).toHaveLength(2)
 })
 
 it('explains why models cannot be chosen and disables the choices', async () => {
@@ -82,9 +86,9 @@ it('explains why models cannot be chosen and disables the choices', async () => 
     ],
   })
   renderSettings()
-  const card = await screen.findByRole('region', { name: 'AI 模型' })
-  expect(await within(card).findByText('Codex 还没有登录，暂时不能选择模型')).toBeInTheDocument()
-  expect(within(card).getByRole('combobox', { name: '判断用的模型' })).toBeDisabled()
+  const card = await screen.findByRole('region', { name: 'AI 模型与思考深度' })
+  expect(await within(card).findByText('AI 服务还没有登录，暂时不能选择模型')).toBeInTheDocument()
+  expect(within(card).getByRole('combobox', { name: '判断类任务用的模型' })).toBeDisabled()
   expect(within(card).getByRole('button', { name: '保存' })).toBeDisabled()
 })
 
@@ -93,13 +97,51 @@ it('reads the model list again while it is still being checked', async () => {
   const checking: AgentModels = { status: 'checking', reason: null, message: '', items: [] }
   const fetch = mockServer({ agentModels: [checking, agentModels] })
   renderSettings()
-  const card = await screen.findByRole('region', { name: 'AI 模型' })
-  expect(await within(card).findByText('正在读取本机可用的模型')).toBeInTheDocument()
-  expect(within(card).getByRole('combobox', { name: '整理用的模型' })).toBeDisabled()
+  const card = await screen.findByRole('region', { name: 'AI 模型与思考深度' })
+  expect(await within(card).findByText('正在读取这台电脑上可用的模型')).toBeInTheDocument()
+  expect(within(card).getByRole('combobox', { name: '整理类任务用的模型' })).toBeDisabled()
   await act(() => vi.advanceTimersByTimeAsync(CHECK_AGAIN_MS + 100))
   await vi.waitFor(() =>
-    expect(within(card).getByRole('combobox', { name: '整理用的模型' })).toBeEnabled(),
+    expect(within(card).getByRole('combobox', { name: '整理类任务用的模型' })).toBeEnabled(),
   )
   const reads = fetch.mock.calls.filter(([url]) => String(url) === '/api/agent/models')
   expect(reads).toHaveLength(2)
+})
+
+it('never shows the raw backend message when models are unavailable', async () => {
+  mockServer({
+    agentModels: [{ status: 'unavailable', reason: 'other', message: 'spawn ENOENT', items: [] }],
+  })
+  renderSettings()
+  const card = await screen.findByRole('region', { name: 'AI 模型与思考深度' })
+  expect(await within(card).findByText('暂时读不到可用的模型')).toBeInTheDocument()
+  expect(card.textContent).not.toMatch(/ENOENT/)
+})
+
+it('groups a long model list by name and lets the student search it', async () => {
+  const many = [
+    'gpt-6-a',
+    'gpt-6-b',
+    'gpt-6-c',
+    'gpt-5.1-a',
+    'gpt-5.1-b',
+    'o3',
+    'o3-mini',
+    'local-qwen',
+  ]
+  const items = [
+    ...agentModels.items,
+    ...many.map((name) => ({ id: name, name, efforts: ['low', 'high'] })),
+  ]
+  mockServer({ agentModels: [{ ...agentModels, items }] })
+  renderSettings()
+  const card = await screen.findByRole('region', { name: 'AI 模型与思考深度' })
+  const model = await within(card).findByRole('combobox', { name: '判断类任务用的模型' })
+  await vi.waitFor(() => expect(model).toBeEnabled())
+  expect(model.querySelectorAll('optgroup').length).toBeGreaterThan(1)
+  const search = within(card).getByRole('searchbox', { name: '搜索判断类任务用的模型' })
+  await userEvent.type(search, 'o3')
+  const names = [...model.querySelectorAll('option')].map((o) => o.textContent)
+  expect(names).toContain('o3-mini')
+  expect(names).not.toContain('gpt-6-b')
 })

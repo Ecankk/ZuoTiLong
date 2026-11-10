@@ -103,22 +103,39 @@
   min-width: 0;
 }
 
-/* 列表里只露出题目开头，完整内容在“查看整题”里看 */
+/* 列表里只露出题目开头（和 BankQuestion.tsx 的 clampHeight 一致），可以就地展开 */
 .clamped {
   position: relative;
   max-height: 220px;
   overflow: hidden;
 }
 
-/* 渐隐条固定在截断位置：内容不够高时它落在可见区域之外，短题干不会被盖住 */
-.clamped::after {
+/* 只有内容确实被截断时才加渐隐，避免看起来像公式被切了一半 */
+.faded::after {
   content: '';
   position: absolute;
-  top: calc(220px - 48px);
   right: 0;
+  bottom: 0;
   left: 0;
-  height: 48px;
+  height: 64px;
   background: linear-gradient(transparent, var(--surface-card));
+  pointer-events: none;
+}
+
+.expand {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.expand:hover {
+  text-decoration: underline;
 }
 
 .questionImage {
@@ -152,6 +169,9 @@
 
 .cardActions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
   margin-top: auto;
 }
 

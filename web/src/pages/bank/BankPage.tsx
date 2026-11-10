@@ -6,10 +6,19 @@ import { useBank, useBankCollections, useBankTopics, useTopic } from '../../api/
 import type { BankCard } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
+import { ErrorState } from '../../components/ui/ErrorState'
 import { Chip } from '../../components/ui/Chip'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
-import { BankQuestionCard, BankQuestionDialog, bookSection, type BankTopic } from './BankQuestion'
+import { Skeleton } from '../../components/ui/Skeleton'
+import {
+  BankQuestionCard,
+  BankQuestionDialog,
+  bookSection,
+  hiddenCollection,
+  type BankTopic,
+} from './BankQuestion'
+import { TopicName } from '../topics/TopicName'
 import styles from './BankPage.module.css'
 import { TopicSearch } from './TopicSearch'
 
@@ -32,20 +41,30 @@ function bySection(cards: BankCard[]) {
 
 /**
  * 题库浏览：先选题集（不同题集不混放），真题再按类别、年份筛选；都可以按考点筛选。
- * 地址栏保存题集、筛选、页码和打开的题（?open=题目编号），地址栏保存筛选、页码和打开的题（?open=题目编号），
+ * 地址栏保存题集、筛选、页码和打开的题（?open=题目编号），
  * 方便从考点页直接跳到某道题。
  */
 export function BankPage() {
   const [params, setParams] = useSearchParams()
-  const { data: collections, error: collectionsError } = useBankCollections()
+  const {
+    data: collections,
+    error: collectionsError,
+    refetch: refetchCollections,
+  } = useBankCollections()
   const asked = params.get('collection')
-  // 没有题的题集不显示（除非地址里正好指定了它）；默认真题
-  const shown = (collections ?? []).filter((c) => c.total > 0 || c.id === asked)
+  // 没有题的题集不显示（除非地址里正好指定了它）；示例题集是开发用的种子数据，不给用户看；默认真题
+  const shown = (collections ?? []).filter(
+    (c) => c.id !== hiddenCollection && (c.total > 0 || c.id === asked),
+  )
   const collection =
     shown.find((c) => c.id === asked) ?? shown.find((c) => c.id === 'zhenti') ?? shown[0]
   // 题集列表还没回来时先按地址（默认真题）取题，两个请求并行，首屏更快
   const loaded = collections !== undefined
-  const collectionId = loaded ? (collection?.id ?? '') : (asked ?? 'zhenti')
+  const collectionId = loaded
+    ? (collection?.id ?? '')
+    : asked && asked !== hiddenCollection
+      ? asked
+      : 'zhenti'
   const isExam = loaded ? collection?.kind === 'exam' : collectionId === 'zhenti'
   // 第二层：本题集里有题的数学类别（接口还没给 math_types 时，真题按三类显示）
   const mathTypes = collection?.math_types
@@ -63,7 +82,7 @@ export function BankPage() {
   }
   const page = Math.max(1, Number(params.get('page')) || 1)
   const openId = params.get('open')
-  const { data, isLoading, isError, error, isPlaceholderData } = useBank(
+  const { data, isLoading, isError, error, isPlaceholderData, refetch } = useBank(
     filter,
     (page - 1) * pageSize,
     pageSize,
@@ -113,7 +132,9 @@ export function BankPage() {
         </div>
       )}
       <Card className={styles.filters} aria-label="筛选">
-        {collection && !isExam && <span className={styles.collectionName}>{collection.name}</span>}
+        {collection && !isExam && shown.length <= 1 && (
+          <span className={styles.collectionName}>{collection.name}</span>
+        )}
         {mathTypes.length > 0 && (
           <Segmented<string>
             label="数学类别"
@@ -162,7 +183,9 @@ export function BankPage() {
           <span className={styles.topicFilter}>
             考点：
             <Link to={`/topics/${encodeURIComponent(filter.topic)}`}>
-              <Chip tone="primary">{topic?.topic.name ?? '加载中…'}</Chip>
+              <Chip tone="primary">
+                {topic ? <TopicName name={topic.topic.name} /> : '加载中…'}
+              </Chip>
             </Link>
             <button type="button" aria-label="清除考点筛选" onClick={() => update({ topic: '' })}>
               <X size={14} aria-hidden />
@@ -173,19 +196,27 @@ export function BankPage() {
       </Card>
 
       {(isError || collectionsError) && (
-        <Card padded className={styles.notice}>
-          {(error ?? collectionsError)?.message}
-        </Card>
+        <ErrorState
+          error={error ?? collectionsError}
+          title="没能读取题库"
+          onRetry={() => {
+            if (collectionsError) void refetchCollections()
+            void refetch()
+          }}
+        />
       )}
       {collections && !collection && (
         <Card padded className={styles.notice}>
           题库里还没有题目。
         </Card>
       )}
-      {(isLoading || (!collections && !data)) && !collectionsError && (
-        <Card padded className={styles.notice}>
-          正在读取…
-        </Card>
+      {(isLoading || (!collections && !data)) && !collectionsError && !isError && (
+        <div className={styles.grid}>
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+        </div>
       )}
       {data && data.total === 0 && (
         <Card padded className={styles.notice}>
@@ -205,6 +236,7 @@ export function BankPage() {
                 <BankQuestionCard
                   key={card.id}
                   card={card}
+                  inSection={Boolean(group.section)}
                   topics={topicsOf(card.id)}
                   onOpen={() => update({ open: card.id, page: String(page) })}
                 />

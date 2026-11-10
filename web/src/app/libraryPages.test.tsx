@@ -55,9 +55,7 @@ describe('bank page', () => {
     ).toEqual(['全部', '数一'])
 
     await userEvent.click(within(tabs).getByRole('radio', { name: '张宇1000题' }))
-    expect(
-      await screen.findByRole('heading', { name: '强化篇 · 第一章 函数极限 · 第 3 题' }),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '第 3 题 · 计算题' })).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: '强化篇 · 第一章 函数极限', level: 2 }),
     ).toBeInTheDocument()

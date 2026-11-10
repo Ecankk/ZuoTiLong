@@ -433,3 +433,9 @@
 .conclusions.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+
+.heatEmpty {
+  margin: var(--space-1) 0 var(--space-3) calc(16px + var(--space-3) + var(--space-3));
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}

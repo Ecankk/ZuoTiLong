@@ -515,7 +515,9 @@ export function HomePage() {
             )
           )}
 
-          {overview?.feedback && overview.feedback.recent_items.length > 0 ? (
+          {overview?.next_steps.find((step) => step.available)?.kind ===
+          'read_feedback' ? null : overview?.feedback &&
+            overview.feedback.recent_items.length > 0 ? (
             <Card padded className={styles.card} aria-label="最近批改">
               <div className={styles.cardHead}>
                 <h2>最近批改</h2>
@@ -591,6 +593,14 @@ export function HomePage() {
                   <li className={styles.plainRow}>
                     <span className={styles.spinner} aria-hidden />
                     做题龙{tasks.active.progress.message}
+                  </li>
+                )}
+                {tasks && !tasks.active && tasks.queued_count > 0 && (
+                  <li className={styles.plainRow}>
+                    {tasks.queued_count} 项在排队
+                    {tasks.availability.status === 'unavailable'
+                      ? '，学习服务准备好后会自动开始'
+                      : '，会按顺序自动开始'}
                   </li>
                 )}
               </ul>

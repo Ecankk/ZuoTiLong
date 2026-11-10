@@ -69,6 +69,7 @@ function DistBar({ d, thin = false }: { d: Distribution; thin?: boolean }) {
 /** 行尾只写一个最要紧的数：有薄弱写薄弱数，否则写有记录的考点数；完整分布放在悬停提示里 */
 const distSummary = (d: Distribution) => {
   const observed = d.mastered + d.learning + d.weak
+  if (observed + d.no_record === 0) return '暂无考点数据'
   return d.weak > 0 ? `${d.weak} 个薄弱` : observed > 0 ? `${observed} 个有记录` : '还没有记录'
 }
 
@@ -270,6 +271,10 @@ function Heatmap({ chapterId }: { chapterId: string }) {
   if (isPending) return <p className={styles.faint}>正在读取这一章的考点…</p>
   if (error) return <ErrorState inline error={error} onRetry={() => void refetch()} />
   const items = data.items
+  if (items.length === 0)
+    return (
+      <p className={styles.heatEmpty}>这一章暂时没有可显示的考点，考点目录整理好后会出现在这里。</p>
+    )
   return (
     <div className={styles.heat}>
       <div className={styles.cells} role="list" aria-label={`${data.node.name}的考点`}>

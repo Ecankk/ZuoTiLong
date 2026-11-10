@@ -1,0 +1,19 @@
+.card {
+  max-width: var(--read-max);
+}
+
+.card strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: var(--font-size-h3);
+}
+
+.card p {
+  margin-top: var(--space-2);
+  color: var(--text-regular);
+  line-height: 1.8;
+}
+
+.actions {
+  margin-top: var(--space-4);
+}

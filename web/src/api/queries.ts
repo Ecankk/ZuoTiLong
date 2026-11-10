@@ -145,6 +145,34 @@ export const useFreeAttempts = (bankId: string, offset: number, limit: number) =
     placeholderData: keepPreviousData,
   })
 
+/* 画像：第一段 'profile'，SSE 的 profile / personal / library 资源变化时失效 */
+export const useOverview = () =>
+  useQuery({ queryKey: ['profile', 'overview'], queryFn: endpoints.profileOverview, retry: false })
+
+export const useTrends = (enabled: boolean, weeks = 12) =>
+  useQuery({
+    queryKey: ['profile', 'trends', weeks],
+    queryFn: () => endpoints.profileTrends(weeks),
+    enabled,
+  })
+
+export const useAtoms = (nodeId: string | null) =>
+  useQuery({
+    queryKey: ['profile', 'atoms', nodeId ?? ''],
+    queryFn: () => endpoints.profileAtoms(nodeId ?? '', 0, 100),
+    enabled: Boolean(nodeId),
+  })
+
+/** 批次在选题中时每 3 秒刷新一次，结束后停止 */
+export const useProfileBatch = (batchId: string | null) =>
+  useQuery({
+    queryKey: ['profile', 'batch', batchId ?? ''],
+    queryFn: () => endpoints.profileBatch(batchId ?? ''),
+    enabled: Boolean(batchId),
+    refetchInterval: (query) =>
+      query.state.data && ['queued', 'selecting'].includes(query.state.data.status) ? 3000 : false,
+  })
+
 export const useProfile = () => useQuery({ queryKey: ['profile'], queryFn: endpoints.profile })
 
 export const useBankCollections = () =>

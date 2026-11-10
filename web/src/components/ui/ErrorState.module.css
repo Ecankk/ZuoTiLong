@@ -1,0 +1,32 @@
+.state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--status-partial);
+}
+
+.text {
+  min-width: 0;
+}
+
+.text strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: var(--font-size-ui);
+}
+
+.text p {
+  margin-top: var(--space-1);
+  color: var(--text-regular);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+
+.actions {
+  margin-top: var(--space-3);
+}

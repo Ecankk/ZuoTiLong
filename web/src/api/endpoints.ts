@@ -8,7 +8,16 @@ import type {
   AgentModels,
   AttemptBody,
   BankCard,
+  AtomsResponse,
+  BackupList,
+  FeedbackReadRequest,
+  Overview,
+  ProfileBatch,
+  ProfileBatchCreated,
+  ProfileBatchRequest,
+  Trends,
   BankCollection,
+  HealthResponse,
   CollectionPackReport,
   PageImage,
   FreeAttempt,
@@ -84,6 +93,24 @@ export const endpoints = {
   preferences: () => request<Preferences>('/api/preferences'),
   agentModels: () => request<AgentModels>('/api/agent/models'),
   dataStatus: () => request<DataStatus>('/api/data/status'),
+  /* ---------- 画像（B26） ---------- */
+  profileOverview: () => request<Overview>('/api/profile/overview'),
+  profileTrends: (weeks = 12) => request<Trends>(`/api/profile/trends?weeks=${weeks}`),
+  profileAtoms: (nodeId: string, offset = 0, limit = 60) =>
+    request<AtomsResponse>(
+      `/api/profile/nodes/${enc(nodeId)}/atoms?offset=${offset}&limit=${limit}`,
+    ),
+  /** 按画像来一组：排一个 AI 选题任务，异步返回批次 */
+  createProfileBatch: (body: ProfileBatchRequest) =>
+    postJson<ProfileBatchCreated>('/api/practices/profile-batch', body),
+  /** 已读回执：相同请求幂等，版本过期 409 */
+  markFeedbackRead: (body: FeedbackReadRequest) => postJson<unknown>('/api/feedback/read', body),
+  profileBatch: (batchId: string) =>
+    request<ProfileBatch>(`/api/practices/profile-batches/${enc(batchId)}`),
+  /** 服务健康和版本号（设置页“关于”用） */
+  health: () => request<HealthResponse>('/api/health'),
+  /** 已有的个人数据备份列表 */
+  backups: () => request<BackupList>('/api/maintenance/backups'),
   /** 题库浏览（view=library）；考点筛选包含子考点，由后端处理 */
   bank: (filter: BankFilter, offset: number, limit: number) => {
     const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })

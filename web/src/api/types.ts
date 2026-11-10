@@ -154,6 +154,10 @@ export type Access = {
   masked: boolean
   analysis_allowed: boolean
   reason: string
+  /** B26：题集与教辅书内定位（没有真题身份的题用这些显示出处） */
+  collection_id?: string | null
+  collection_label?: string | null
+  book?: { part?: string | null; chapter?: string | null; number?: string | null } | null
 }
 
 export type PracticeCard = {
@@ -168,6 +172,11 @@ export type PracticeCard = {
   topics: TopicRef[]
   access: Access
   latest_attempt_id: string | null
+  /** B26：卡片来源、当前有效批改结论与画像批次；旧接口没有时缺失 */
+  origin?: 'paper' | 'profile' | 'free_practice'
+  latest_correctness?: 'correct' | 'wrong' | 'partial' | 'unknown' | null
+  batch_id?: string | null
+  batch_title?: string | null
 }
 
 export type PracticeGroup = {
@@ -393,6 +402,12 @@ export type AttemptBody = {
   request_id: string
 }
 
+/** GET /api/health：服务是否在线、版本号 */
+export type HealthResponse = { ok: boolean; app: string; version: string; data_id?: string }
+
+/** GET /api/maintenance/backups：已有的个人数据备份，新的在前 */
+export type BackupList = { backups: { name: string; bytes: number }[] }
+
 /** GET /api/data/status */
 export type DataStatus = {
   data_dir: string
@@ -562,3 +577,5 @@ export type TopicResponse = {
   collection_counts: { collection_id: string; bank: number; ready: number; completed: number }[]
   practice_counts: PracticeCounts
 }
+
+export * from './profileTypes'

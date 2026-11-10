@@ -34,8 +34,25 @@ export const sourceName = (access: Access) =>
   access.year && access.math_type ? `${access.year} ${mathTypeName(access.math_type)}` : ''
 
 /** 练习题出处：“2021 数学一 · 第 3 题”；缺的部分不显示，全缺时为空字符串 */
-export const practiceSource = (access: Access) =>
-  [sourceName(access), access.number ? `第 ${access.number} 题` : ''].filter(Boolean).join(' · ')
+export function practiceSource(access: Access) {
+  const exam = sourceName(access)
+  if (exam) return [exam, access.number ? `第 ${access.number} 题` : ''].filter(Boolean).join(' · ')
+  // 题集题（如张宇1000题）：题集名 · 章 · 原题号；缺的部分不显示
+  const number = access.book?.number?.trim()
+  return [
+    access.collection_label,
+    access.book?.chapter,
+    number
+      ? /^\d+$/.test(number)
+        ? `第 ${number} 题`
+        : number
+      : access.number
+        ? `第 ${access.number} 题`
+        : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
 
 /** "2026-10-28" → "10月28日" */
 export function monthDay(date: string) {

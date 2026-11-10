@@ -44,7 +44,7 @@ Access 沿用现有 access 对象（id、math_type、year、number、reserved、
 
 | 方法/路径 | 参数 | 响应 |
 | --- | --- | --- |
-| GET /api/practices | group_by:'topic'/'paper'='topic'，status:PracticeStatus?，paper_id:string?，topic_id:string?，include_inactive:boolean=false，分页参数（按组） | Page<PracticeGroup> + `{counts:PracticeCounts}`；groups 不截断既有布置；多考点练习可出现在不同组，总计按练习 ID 去重 |
+| GET /api/practices | group_by:'topic'/'paper'/'source'/'batch'='topic'，source:'paper'/'profile'?（省略时合并两种来源），batch_id:string?，status:PracticeStatus?，paper_id:string?，topic_id:string?，include_inactive:boolean=false，分页参数（按组） | Page<PracticeGroup> + `{counts:PracticeCounts}`；groups 不截断既有布置；多考点练习可出现在不同组，总计按练习 ID 去重 |
 | GET /api/practices/{practice_id} | 无 | `{practice:PracticeCard,is_current:boolean,review_reason:string|null,question:object|null,goals:object[],selection_reason:string|null,latest_attempt:Attempt|null,actions:string[]}` |
 | GET /api/practices/{practice_id}/attempts | 分页参数 | Page<Attempt>；创建时间、ID 倒序；不带标准答案 |
 
@@ -76,7 +76,7 @@ reference 另含 `errata?:[{role,reason,evidence}]`（随该次快照捕获）�
 - 错误：400 参数/UUID/材料/角色；403 预留或未允许查看；404 题或作答不存在；409 request_id 冲突或活动执行写保护。
 - 画像：`preferences.include_free_practice` 默认 true，false 时只从画像和考点聚合中排除，历史不删。GET /api/profile 增加 `free_practice:{total,correct,wrong,pending,independent_correct,assisted_correct}`；考点详情 performance 增加 `source_counts:{exam,practice,free_practice:{同上}}`，free_practice 是绑定该节点的整题作答次数，不证明原子已掌握；successes/failures/state 只用批改明确指出的 topic_ids。
 
-## 画像与按画像选题（B26，已确认，实现中）
+## 画像与按画像选题（B26，已实现）
 
 只读规则：状态沿用考点 performance 聚合，映射 初步掌握→mastered、巩固中→learning、需要关注→weak、证据不足/未覆盖→no_record，原值和 state_reason 保留。无记录不算薄弱；独立做对只计明确独立的正确，受提示和独立性未知分开；没有足够证据时返回 null 加 unavailable_reasons，不补0、不算百分比或能力分。include_free_practice=false 时画像和趋势都不计自由练习。三个 GET 支持 ETag，空工作区返回 200 空结构加 limitations。
 
@@ -92,7 +92,15 @@ ProfileNode：`{id,parent_id,name,kind,math_types,state,state_reason,display_sta
 
 按画像选题：目标分 weak（最新有效表现失败）、review_due（只有受提示正确或距上次满14天）、uncovered（当前备考类别有可选 ready 题但无记录），名额按 5:3:2 最大余数分配（5→3/1/1，8→4/2/2，10→5/3/2），不足按 weak→review_due→uncovered 补，不强凑。候选复用原卷选题规则，并排除工作区所有已上传试卷的原题（含同题身份）。任务 kind 仍为 prepare_practice，paper_id=null；完成后前端跳 `/practice?source=profile&view=topic&item=<首个practice_id>`。
 
-练习卡新增 `origin:'paper'|'profile'|'free_practice'`、`latest_correctness:'correct'|'wrong'|'partial'|'unknown'|null`（与 latest_attempt 的有效批改一致，无有效批改为 null）、`batch_id`、`batch_title`；画像练习的 paper_id/paper_title/question_id 为 null。GET /api/practices 新增 `source=paper|profile`、`batch_id`，group_by 新增 source/batch。access 增加 `collection_label` 与 `book{part,chapter,number}`；参考材料中的“见原图”类占位投影为 null；自由练习403返回 `{error,reason:'masked'|'reserved'}`。首页新反馈未读与待核对计数见 H2（随本批实现）。
+练习卡新增 `origin:'paper'|'profile'|'free_practice'`、`latest_correctness:'correct'|'wrong'|'partial'|'unknown'|null`（与 latest_attempt 的有效批改一致，无有效批改为 null）、`batch_id`、`batch_title`；画像练习的 paper_id/paper_title/question_id 为 null。GET /api/practices 新增 `source=paper|profile`、`batch_id`，group_by 新增 source/batch。access 增加 `collection_label` 与 `book{part,chapter,number}`；参考材料中的“见原图”类占位投影为 null；自由练习403返回 `{error,reason:'masked'|'reserved',message}`（message 可直接展示）。
+
+实现补充：
+- overview 的 `totals` 另含 `unread_feedback_count`、`needs_review_count`；另有 `feedback{unread_count,recent_items[≤3]}` 与 `review{total,counts{exam_questions,practice_attempts,free_practice_attempts},paper_issue_count,items[≤5]}`。三个 GET 在个人库、题库写入或日期变化时失效。
+- `weak_spots[].evidence[]` 与 `recent_mistakes[]` 带 `question_number:string|null`：原卷来源为保存的题号字符串，对应 `/papers/:paper_id/questions/:question_number`（两段分别 encodeURIComponent）；练习/自由练习为 null，走 practice_id/attempt_id/bank_id。`first_error_stage` 取 entry/modeling/formula/calculation/finalization/unknown（展示：切入/建模/公式/计算/最终处理/环节未知），null 表示没有首错记录，不当作 unknown。
+- 目录原子未注明 math_types 时视为对所有备考类别适用。
+- `POST /api/feedback/read` body `{request_id:uuid,source:'paper_practice'|'profile_practice'|'free_practice',attempt_id,feedback_revision}`：同请求幂等200，换内容或版本过期409，记录不存在404；只记已读，不改批改。
+- 画像练习沿用 GET /api/practices/{id}、/attempts、POST /api/probes/{id}/submit、/api/attempts/{id}/supplement；固定图片为 `GET /api/practices/{id}/materials/question|analysis|answer`（允许时返回，no-store）。GET /api/tasks 的画像任务项带 `source:'profile_practice'`、`batch_id`。
+- 题库补图（B27）：BankCard 与题面投影可带只读 `supplemental_figures`（重绘图的角色、说明“按题意重绘”与依据，不含本机路径）；题图 URL 返回的已是原图加重绘图的显示图，前端无需拼接。
 
 ## 考点与题库
 

@@ -105,6 +105,7 @@ ZuoTiLong/
 | 个人原卷 | papers、questions、agent_reports、question_diagnoses、paper_question_bindings |
 | 个人练习 | diagnostic_probes、practice_goals、计划成员/关联表、probe_attempts、固定材料绑定、批改与解答修订历史 |
 | 个人自由练习 | free_practice_attempts（题库单题作答，request_id唯一，每次作答冻结题面/参考/标注/定义快照于practice-materials，个人备份包含、闲置上传清理保留其照片）；聚合为独立来源free_practice，同步整题判定不扩散为各考点证据，只有AI批改明确指出且属于冻结标注的topic_ids影响原子状态，可由preferences.include_free_practice排除 |
+| 个人画像练习与已读 | profile_practice_batches、profile_practice_exercises、profile_practice_attempts（按画像选题，不挂靠虚构试卷，材料与来源/定义固定在practice-materials）；feedback_read_receipts（批改已读，只记已读不改批改）。画像批改只按实际报告topic_ids与固定范围的交集进入source=profile_practice证据，不衔接新选题或整卷整理 |
 | 个人证据与设置 | learning_events、knowledge_mappings、knowledge_mapping_versions、preferences、bank_views、bank_exposures、bank_cross_reviews；画像为只读聚合 |
 | 本机执行 | learning_tasks、learning_results、task_reads、workflow_jobs、knowledge_preparation_*、tool_audit、record_versions；包含通用维护任务的执行日志，也只保存在工作区 |
 

@@ -10,7 +10,6 @@ import type {
   ProfileNode,
   ProfileSubject,
   WeakSpot,
-  WeakSpotEvidence,
 } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -19,6 +18,7 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { cx } from '../../lib/cx'
 import { ProfileBatchPanel } from './ProfileBatch'
+import { evidenceLink, stageLabel, weakSpotFacts } from '../../lib/profile'
 import styles from './ProfilePage.module.css'
 
 /* ---------- 共用：状态、阶段、出处链接 ---------- */
@@ -35,27 +35,6 @@ const distKey: Record<DisplayState, keyof Distribution> = {
   learning: 'learning',
   weak: 'weak',
   no_record: 'no_record',
-}
-
-/** 后端保存的首错环节枚举 → 中文；已经是中文或不认识的原样显示，unknown 不显示 */
-const stageText: Record<string, string> = {
-  entry: '读题',
-  modeling: '建模',
-  formula: '公式',
-  calculation: '计算',
-  finalization: '收尾',
-}
-export const stageLabel = (stage: string | null) =>
-  !stage || stage === 'unknown' ? null : (stageText[stage] ?? stage)
-
-/** 错题出处的链接：原卷进试卷页，练习进练习，自由练习进做题页 */
-export function evidenceLink(e: WeakSpotEvidence) {
-  if (e.source === 'practice' && e.practice_id)
-    return `/practice?item=${encodeURIComponent(e.practice_id)}`
-  if (e.source === 'free_practice' && e.bank_id)
-    return `/bank/${encodeURIComponent(e.bank_id)}/practice`
-  if (e.paper_id) return `/papers/${encodeURIComponent(e.paper_id)}`
-  return null
 }
 
 function Legend() {
@@ -117,10 +96,7 @@ function WeakSpotItem({
           <strong>{spot.name}</strong>
           {subjectName && <small>{subjectName}</small>}
         </div>
-        <p className={styles.spotFacts}>
-          近 28 天 {spot.recent_judged} 道有效判断里错了 {spot.recent_failures} 道
-          {spot.weak_atom_count > 0 && ` · ${spot.weak_atom_count} 个考点需要关注`}
-        </p>
+        <p className={styles.spotFacts}>{weakSpotFacts(spot)}</p>
         {spot.basis && <p className={styles.basis}>{spot.basis}</p>}
         {spot.evidence.length > 0 && (
           <ul className={styles.evidence} aria-label={`${spot.name}的错题`}>
@@ -222,14 +198,17 @@ function ConclusionCard({
 }
 
 function Conclusions({ overview }: { overview: Overview }) {
-  const { conclusions: c } = overview
+  const { conclusions: raw } = overview
+  // 同一个信息只说一次：“最需要补的一章”和排行第一项相同就不再单独成卡
+  const sameAsTop = raw.weakest_chapter?.node_id === overview.weak_spots[0]?.node_id
+  const c = sameAsTop ? { ...raw, weakest_chapter: null } : raw
   const comparison = c.independent_correct_comparison
-  // 三张卡都没有结论时只留一句，不摆三张空卡
+  // 都没有结论时只留一句，不摆空卡
   if (!c.weakest_chapter && !c.strongest_chapter && !comparison) {
     const reasons = [
       ...new Set(
         [
-          c.unavailable_reasons.weakest_chapter,
+          sameAsTop ? null : c.unavailable_reasons.weakest_chapter,
           c.unavailable_reasons.strongest_chapter,
           c.unavailable_reasons.independent_correct_comparison,
         ].filter((r): r is string => Boolean(r)),
@@ -245,13 +224,15 @@ function Conclusions({ overview }: { overview: Overview }) {
     )
   }
   return (
-    <div className={styles.conclusions}>
-      <ConclusionCard
-        label="哪一章最需要补"
-        tone="weak"
-        conclusion={c.weakest_chapter}
-        reason={c.unavailable_reasons.weakest_chapter}
-      />
+    <div className={cx(styles.conclusions, sameAsTop && styles.two)}>
+      {!sameAsTop && (
+        <ConclusionCard
+          label="哪一章最需要补"
+          tone="weak"
+          conclusion={c.weakest_chapter}
+          reason={c.unavailable_reasons.weakest_chapter}
+        />
+      )}
       <ConclusionCard
         label="哪一章相对稳"
         tone="strong"

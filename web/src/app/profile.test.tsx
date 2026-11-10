@@ -74,12 +74,12 @@ it('leads the profile with the biggest weak spots and their checkable evidence',
     .getAllByRole('listitem')
     .filter((li) => li.querySelector('strong'))
   expect(items[0]).toHaveTextContent('随机变量的数字特征')
-  expect(items[0]).toHaveTextContent('近 28 天 6 道有效判断里错了 4 道')
+  expect(items[0]).toHaveTextContent('近 28 天做了 6 道，错 4 道 · 3 个考点要补')
   expect(items[0]).toHaveTextContent('例：《2021数学一》第9题')
   const evidence = within(weak).getByRole('list', { name: '随机变量的数字特征的错题' })
   expect(within(evidence).getByRole('link', { name: /《2021数学一》第9题/ })).toHaveAttribute(
     'href',
-    '/papers/paper-2021',
+    '/papers/paper-2021/questions/9',
   )
   expect(within(evidence).getByRole('link', { name: /方差及其计算式/ })).toHaveAttribute(
     'href',
@@ -88,9 +88,10 @@ it('leads the profile with the biggest weak spots and their checkable evidence',
   expect(within(evidence).getAllByText('首错：计算')).toHaveLength(2)
   // 没有依据时如实不写，不编造
   expect(within(weak).getByText('重积分').closest('li')).not.toHaveTextContent('例：')
-  expect(screen.getByRole('region', { name: '哪一章最需要补' })).toHaveTextContent(
-    '随机变量的数字特征',
-  )
+  // 和排行第一项相同的“最需要补”卡不重复出现
+  expect(screen.queryByRole('region', { name: '哪一章最需要补' })).not.toBeInTheDocument()
+  expect(screen.getByRole('region', { name: '哪一章相对稳' })).toHaveTextContent('行列式')
+  expect(document.body.textContent).not.toMatch(/有效判断/)
   expect(screen.getByText('无记录：做过相关题后才会有判断')).toBeInTheDocument()
   // 趋势和热力格都是展开后才请求
   expect(called(fetch, '/api/profile/trends')).toBe(false)

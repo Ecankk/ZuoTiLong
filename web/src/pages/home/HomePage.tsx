@@ -13,6 +13,7 @@ import { Skeleton } from '../../components/ui/Skeleton'
 import { paperName } from '../../lib/labels'
 import { SETUP_GUIDE_PATH, setupMessage } from '../../lib/setup'
 import { ProfileBatchPanel } from '../profile/ProfileBatch'
+import { weakSpotFacts } from '../../lib/profile'
 import styles from './HomePage.module.css'
 
 /*
@@ -197,10 +198,7 @@ function WeakSpotsCard({ overview }: { overview: Overview }) {
             key={spot.node_id}
             to="/profile"
             title={spot.name}
-            detail={
-              spot.basis ??
-              `近 28 天 ${spot.recent_judged} 道有效判断里错了 ${spot.recent_failures} 道`
-            }
+            detail={spot.basis ?? weakSpotFacts(spot)}
             after={<span className={styles.amount}>错 {spot.recent_failures} 道</span>}
           />
         ))}

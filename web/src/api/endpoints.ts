@@ -8,7 +8,9 @@ import type {
   AgentModels,
   AttemptBody,
   BankCard,
+  BackupList,
   BankCollection,
+  HealthResponse,
   CollectionPackReport,
   PageImage,
   FreeAttempt,
@@ -84,6 +86,10 @@ export const endpoints = {
   preferences: () => request<Preferences>('/api/preferences'),
   agentModels: () => request<AgentModels>('/api/agent/models'),
   dataStatus: () => request<DataStatus>('/api/data/status'),
+  /** 服务健康和版本号（设置页“关于”用） */
+  health: () => request<HealthResponse>('/api/health'),
+  /** 已有的个人数据备份列表 */
+  backups: () => request<BackupList>('/api/maintenance/backups'),
   /** 题库浏览（view=library）；考点筛选包含子考点，由后端处理 */
   bank: (filter: BankFilter, offset: number, limit: number) => {
     const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })

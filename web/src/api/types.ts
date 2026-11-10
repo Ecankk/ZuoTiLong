@@ -393,6 +393,12 @@ export type AttemptBody = {
   request_id: string
 }
 
+/** GET /api/health：服务是否在线、版本号 */
+export type HealthResponse = { ok: boolean; app: string; version: string; data_id?: string }
+
+/** GET /api/maintenance/backups：已有的个人数据备份，新的在前 */
+export type BackupList = { backups: { name: string; bytes: number }[] }
+
 /** GET /api/data/status */
 export type DataStatus = {
   data_dir: string

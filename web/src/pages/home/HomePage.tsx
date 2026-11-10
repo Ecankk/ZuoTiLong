@@ -1,8 +1,8 @@
 import { ArrowRight, ChevronRight, CircleAlert, Flag, Upload } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { usePapers, usePractices, useTasks } from '../../api/queries'
-import type { Paper, PracticeCard, PracticeGroup } from '../../api/types'
+import { useOverview, usePapers, usePractices, useTasks } from '../../api/queries'
+import type { Overview, Paper, PracticeCard, PracticeGroup } from '../../api/types'
 import { ButtonLink } from '../../components/ui/Button'
 import { ButtonRow } from '../../components/ui/ButtonRow'
 import { Card } from '../../components/ui/Card'
@@ -12,6 +12,7 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { paperName } from '../../lib/labels'
 import { SETUP_GUIDE_PATH, setupMessage } from '../../lib/setup'
+import { ProfileBatchPanel } from '../profile/ProfileBatch'
 import styles from './HomePage.module.css'
 
 /*
@@ -41,6 +42,10 @@ const awaitingAnalysis = (paper: Paper) =>
   paper.counts.total > 0 &&
   (paper.analysis_status === 'segmented' || paper.analysis_status === 'needs_review')
 
+/** 练习出处：原卷练习写试卷名，画像练习写批次名（画像练习的 paper_title 为 null） */
+const cameFrom = (card: PracticeCard) =>
+  card.paper_title ? `来自${paperName(card.paper_title)}` : (card.batch_title ?? '按画像选的题')
+
 /** 同一道练习可能挂在多个考点下：按考点顺序去重 */
 function uniqueCards(groups: PracticeGroup[]) {
   const seen = new Map<string, { card: PracticeCard; group: PracticeGroup }>()
@@ -59,7 +64,7 @@ function MainCard({
   kicker: string
   title: string
   children: ReactNode
-  actions: ReactNode
+  actions?: ReactNode
   extra?: ReactNode
 }) {
   return (
@@ -70,7 +75,7 @@ function MainCard({
       </Chip>
       <h2>{title}</h2>
       <p className={styles.lead}>{children}</p>
-      <ButtonRow className={styles.actions}>{actions}</ButtonRow>
+      {actions && <ButtonRow className={styles.actions}>{actions}</ButtonRow>}
       {extra}
     </Card>
   )
@@ -103,12 +108,150 @@ function Row({
   )
 }
 
+/** 有画像总览时的主卡片：按 next_steps 中第一个可用的建议（顺序固定：继续练习 → 新试卷 → 按画像来一组） */
+function overviewMain(
+  overview: Overview,
+  cards: { card: PracticeCard; group: PracticeGroup }[],
+  papers: Paper[],
+) {
+  const step = overview.next_steps.find((s) => s.available)
+  if (step?.kind === 'continue_practice') {
+    const found = cards.find(({ card }) => card.id === step.target.practice_id)
+    const practiceId = step.target.practice_id ?? found?.card.id
+    return (
+      <MainCard
+        kicker="继续练习"
+        title={found ? `继续做“${found.group.label}”` : '继续上次的练习'}
+        actions={
+          <>
+            <ButtonLink
+              variant="primary"
+              size="lg"
+              to={practiceId ? `/practice?item=${encodeURIComponent(practiceId)}` : '/practice'}
+            >
+              继续做 <ArrowRight size={16} aria-hidden />
+            </ButtonLink>
+            <ButtonLink to="/practice">看全部练习</ButtonLink>
+          </>
+        }
+      >
+        {step.reason}
+      </MainCard>
+    )
+  }
+  if (step?.kind === 'analyze_paper') {
+    const paper = papers.find((p) => p.id === step.target.paper_id)
+    return (
+      <MainCard
+        kicker="有新试卷"
+        title={paper ? `${paperName(paper.title)} 等你核对题号` : '有新试卷等你核对题号'}
+        actions={
+          <ButtonLink
+            variant="primary"
+            size="lg"
+            to={
+              step.target.paper_id
+                ? `/papers/${encodeURIComponent(step.target.paper_id)}`
+                : '/papers'
+            }
+          >
+            去核对 <ArrowRight size={16} aria-hidden />
+          </ButtonLink>
+        }
+      >
+        {step.reason}
+      </MainCard>
+    )
+  }
+  return (
+    <MainCard
+      kicker="错题都做完了"
+      title="按画像来一组"
+      extra={
+        <>
+          <ProfileBatchPanel overview={overview} />
+          <p className={styles.extra}>
+            也可以 <Link to="/papers">上传新试卷</Link> 或 <Link to="/bank">在题库里挑题</Link>。
+          </p>
+        </>
+      }
+    >
+      从你的薄弱考点和该复习的考点里挑题。没做过的考点不会被当成薄弱。
+    </MainCard>
+  )
+}
+
+/** 首页“最该补的地方”：画像排行的前 3 个，每个一句依据 */
+function WeakSpotsCard({ overview }: { overview: Overview }) {
+  return (
+    <Card padded className={styles.card} aria-label="最该补的地方">
+      <div className={styles.cardHead}>
+        <h2>最该补的地方</h2>
+        <Link to="/profile" className={styles.more}>
+          看完整画像 →
+        </Link>
+      </div>
+      <ul className={styles.rows}>
+        {overview.weak_spots.slice(0, 3).map((spot) => (
+          <Row
+            key={spot.node_id}
+            to="/profile"
+            title={spot.name}
+            detail={
+              spot.basis ??
+              `近 28 天 ${spot.recent_judged} 道有效判断里错了 ${spot.recent_failures} 道`
+            }
+            after={<span className={styles.amount}>错 {spot.recent_failures} 道</span>}
+          />
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
+/** 首页“本周”：只放三个最有用的数字，其余在画像页 */
+function WeekCard({ overview }: { overview: Overview }) {
+  const s = overview.home_stats
+  return (
+    <Card padded className={styles.card} aria-label="本周">
+      <h2>本周</h2>
+      <div className={styles.stats3}>
+        <div>
+          <b>{s.attempts_this_week}</b>
+          <small>道作答</small>
+        </div>
+        <div>
+          <b className={styles.correct}>{s.independent_correct_this_week}</b>
+          <small>道独立做对</small>
+        </div>
+        <div>
+          <b className={styles.progressNumber}>{s.grading_count}</b>
+          <small>道批改中</small>
+        </div>
+      </div>
+      <ButtonRow className={styles.cardActions}>
+        <ButtonLink size="sm" to="/practice">
+          去练习
+        </ButtonLink>
+        <ButtonLink size="sm" variant="ghost" to="/bank">
+          在题库里挑题
+        </ButtonLink>
+        <ButtonLink size="sm" variant="ghost" to="/profile">
+          看完整画像
+        </ButtonLink>
+      </ButtonRow>
+    </Card>
+  )
+}
+
 export function HomePage() {
   const practicesQuery = usePractices('topic')
   const { data: practices } = practicesQuery
   const { data: tasks } = useTasks()
   const papersQuery = usePapers('0')
   const { data: papers } = papersQuery
+  // 画像总览接口还没上线或读取失败时，首页退回到只用练习和试卷推出的内容
+  const { data: overview } = useOverview()
   const now = new Date()
 
   const header = (
@@ -165,71 +308,73 @@ export function HomePage() {
       </Link>
     </p>
   )
-  const main =
-    papers.total === 0 ? (
-      <MainCard
-        kicker="开始"
-        title="上传第一份做过的试卷"
-        actions={
+  const fromOverview = overview && papers.total > 0 && overviewMain(overview, cards, papers.items)
+  const main = fromOverview ? (
+    fromOverview
+  ) : papers.total === 0 ? (
+    <MainCard
+      kicker="开始"
+      title="上传第一份做过的试卷"
+      actions={
+        <ButtonLink variant="primary" size="lg" to="/papers">
+          <Upload size={16} aria-hidden /> 去上传
+        </ButtonLink>
+      }
+    >
+      黑笔为考试作答，红笔为事后批改。做题龙会逐题分析，再针对薄弱考点挑选练习。
+    </MainCard>
+  ) : next ? (
+    <MainCard
+      kicker="继续练习"
+      title={`“${next.group.label}” 还有 ${nextGroupLeft} 道没做`}
+      actions={
+        <>
+          <ButtonLink variant="primary" size="lg" to={`/practice?item=${next.card.id}`}>
+            继续做 <ArrowRight size={16} aria-hidden />
+          </ButtonLink>
+          <ButtonLink to="/practice">看全部练习</ButtonLink>
+        </>
+      }
+      extra={paperLine}
+    >
+      {cameFrom(next.card)}的薄弱考点。一共还有 {pending.length} 道练习待做。
+    </MainCard>
+  ) : waitingPaper ? (
+    <MainCard
+      kicker="有新试卷"
+      title={`${paperName(waitingPaper.title)} 等你核对题号`}
+      actions={
+        <ButtonLink
+          variant="primary"
+          size="lg"
+          to={`/papers/${encodeURIComponent(waitingPaper.id)}`}
+        >
+          去核对 <ArrowRight size={16} aria-hidden />
+        </ButtonLink>
+      }
+    >
+      做题龙切出了 {waitingPaper.counts.total}{' '}
+      道题。核对题号后开始逐题分析，分析完会为薄弱考点挑练习。
+    </MainCard>
+  ) : (
+    <MainCard
+      kicker="都做完了"
+      title="练习都做完了"
+      actions={
+        <>
           <ButtonLink variant="primary" size="lg" to="/papers">
-            <Upload size={16} aria-hidden /> 去上传
+            <Upload size={16} aria-hidden /> 上传新试卷
           </ButtonLink>
-        }
-      >
-        黑笔为考试作答，红笔为事后批改。做题龙会逐题分析，再针对薄弱考点挑选练习。
-      </MainCard>
-    ) : next ? (
-      <MainCard
-        kicker="继续练习"
-        title={`“${next.group.label}” 还有 ${nextGroupLeft} 道没做`}
-        actions={
-          <>
-            <ButtonLink variant="primary" size="lg" to={`/practice?item=${next.card.id}`}>
-              继续做 <ArrowRight size={16} aria-hidden />
-            </ButtonLink>
-            <ButtonLink to="/practice">看全部练习</ButtonLink>
-          </>
-        }
-        extra={paperLine}
-      >
-        来自{paperName(next.card.paper_title)}的薄弱考点。一共还有 {pending.length} 道练习待做。
-      </MainCard>
-    ) : waitingPaper ? (
-      <MainCard
-        kicker="有新试卷"
-        title={`${paperName(waitingPaper.title)} 等你核对题号`}
-        actions={
-          <ButtonLink
-            variant="primary"
-            size="lg"
-            to={`/papers/${encodeURIComponent(waitingPaper.id)}`}
-          >
-            去核对 <ArrowRight size={16} aria-hidden />
+          <ButtonLink to="/bank">在题库里挑题</ButtonLink>
+          <ButtonLink variant="ghost" to="/profile">
+            看完整画像
           </ButtonLink>
-        }
-      >
-        做题龙切出了 {waitingPaper.counts.total}{' '}
-        道题。核对题号后开始逐题分析，分析完会为薄弱考点挑练习。
-      </MainCard>
-    ) : (
-      <MainCard
-        kicker="都做完了"
-        title="练习都做完了"
-        actions={
-          <>
-            <ButtonLink variant="primary" size="lg" to="/papers">
-              <Upload size={16} aria-hidden /> 上传新试卷
-            </ButtonLink>
-            <ButtonLink to="/bank">在题库里挑题</ButtonLink>
-            <ButtonLink variant="ghost" to="/profile">
-              看完整画像
-            </ButtonLink>
-          </>
-        }
-      >
-        可以上传新做的试卷，或者在题库里按考点挑几道题自己练。
-      </MainCard>
-    )
+        </>
+      }
+    >
+      可以上传新做的试卷，或者在题库里按考点挑几道题自己练。
+    </MainCard>
+  )
 
   return (
     <>
@@ -245,35 +390,39 @@ export function HomePage() {
         <div className={styles.column}>
           {main}
 
-          {pendingGroups.length > 0 && (
-            <Card padded className={styles.card} aria-label="待练的考点">
-              <div className={styles.cardHead}>
-                <h2>待练的考点</h2>
-                <Link to="/profile" className={styles.more}>
-                  看完整画像 →
-                </Link>
-              </div>
-              <ul className={styles.rows}>
-                {pendingGroups.slice(0, topicLimit).map(({ group, items }) => (
-                  <Row
-                    key={group.id}
-                    to={`/practice?item=${items[0].id}`}
-                    title={group.label}
-                    hint={`来自${[...new Set(items.map((i) => paperName(i.paper_title)))].join('、')}`}
-                    after={
-                      items.length > 1 && (
-                        <span className={styles.amount}>{items.length} 道待做</span>
-                      )
-                    }
-                  />
-                ))}
-              </ul>
-              {pendingGroups.length > topicLimit && (
-                <Link to="/practice" className={styles.moreRow}>
-                  还有 {pendingGroups.length - topicLimit} 个考点 · 去练习 →
-                </Link>
-              )}
-            </Card>
+          {overview && overview.weak_spots.length > 0 ? (
+            <WeakSpotsCard overview={overview} />
+          ) : (
+            pendingGroups.length > 0 && (
+              <Card padded className={styles.card} aria-label="待练的考点">
+                <div className={styles.cardHead}>
+                  <h2>待练的考点</h2>
+                  <Link to="/profile" className={styles.more}>
+                    看完整画像 →
+                  </Link>
+                </div>
+                <ul className={styles.rows}>
+                  {pendingGroups.slice(0, topicLimit).map(({ group, items }) => (
+                    <Row
+                      key={group.id}
+                      to={`/practice?item=${items[0].id}`}
+                      title={group.label}
+                      hint={[...new Set(items.map(cameFrom))].join('、')}
+                      after={
+                        items.length > 1 && (
+                          <span className={styles.amount}>{items.length} 道待做</span>
+                        )
+                      }
+                    />
+                  ))}
+                </ul>
+                {pendingGroups.length > topicLimit && (
+                  <Link to="/practice" className={styles.moreRow}>
+                    还有 {pendingGroups.length - topicLimit} 个考点 · 去练习 →
+                  </Link>
+                )}
+              </Card>
+            )
           )}
 
           {graded.length > 0 && (
@@ -288,7 +437,7 @@ export function HomePage() {
                     key={card.id}
                     to={`/practice?item=${card.id}`}
                     title={group.label}
-                    detail={`来自${paperName(card.paper_title)}`}
+                    detail={cameFrom(card)}
                     after={<Chip>已批改</Chip>}
                   />
                 ))}
@@ -298,27 +447,31 @@ export function HomePage() {
         </div>
 
         <div className={styles.column}>
-          <Card padded className={styles.card} aria-label="练习进度">
-            <h2>练习进度</h2>
-            <div className={styles.stats}>
-              <div>
-                <b>{pending.length}</b>
-                <small>道待做</small>
+          {overview ? (
+            <WeekCard overview={overview} />
+          ) : (
+            <Card padded className={styles.card} aria-label="练习进度">
+              <h2>练习进度</h2>
+              <div className={styles.stats}>
+                <div>
+                  <b>{pending.length}</b>
+                  <small>道待做</small>
+                </div>
+                <div>
+                  <b>{graded.length}</b>
+                  <small>道已批改</small>
+                </div>
               </div>
-              <div>
-                <b>{graded.length}</b>
-                <small>道已批改</small>
-              </div>
-            </div>
-            <ButtonRow className={styles.cardActions}>
-              <ButtonLink size="sm" to="/practice">
-                去练习
-              </ButtonLink>
-              <ButtonLink size="sm" variant="ghost" to="/bank">
-                在题库里挑题
-              </ButtonLink>
-            </ButtonRow>
-          </Card>
+              <ButtonRow className={styles.cardActions}>
+                <ButtonLink size="sm" to="/practice">
+                  去练习
+                </ButtonLink>
+                <ButtonLink size="sm" variant="ghost" to="/bank">
+                  在题库里挑题
+                </ButtonLink>
+              </ButtonRow>
+            </Card>
+          )}
 
           {(grading.length > 0 || (tasks && (tasks.active || tasks.queued_count > 0))) && (
             <Card padded className={styles.card} aria-label="正在进行">

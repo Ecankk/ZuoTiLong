@@ -220,3 +220,36 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.stats3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.stats3 div {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.stats3 b {
+  display: block;
+  color: var(--text-strong);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+}
+
+.stats3 small {
+  color: var(--text-muted);
+}
+
+.correct {
+  color: var(--status-correct) !important;
+}
+
+.progressNumber {
+  color: var(--color-primary) !important;
+}

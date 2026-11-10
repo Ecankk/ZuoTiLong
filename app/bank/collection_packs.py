@@ -79,6 +79,11 @@ def _export_record(conn,config,row,assets,*,read_view=None):
         for option in option_text:option['content']['images']=[]
         record['options']=option_text
     record['math_types']=json.loads(row['math_types_json']);record['errata']=metadata.get('errata',[])
+    if metadata.get('supplemental_figures'):
+        record['supplemental_figures']=deepcopy(metadata['supplemental_figures'])
+        value=record['supplemental_figures']
+        for e in value['entries']:e['image']=_asset(material_path(config.data,e['image']['path']),assets)
+        value['materialized_roles']=sorted({e['role'] for e in value['entries']})
     current=annotations.current(conn,config.data,bid,read_view=read_view)
     pending=metadata.get('annotation_status')
     status=current['analysis']['status'] if current else pending if pending in ('needs_review','needs_catalog') else 'unannotated'
@@ -221,6 +226,7 @@ def preview(conn,config,manifest,items,index,knowledge):
                 from app.bank.exam_identity import metadata as exam_metadata
                 normalized=exam_metadata(conn,bid);kind={'选择题':'choice','填空题':'fill','解答题':'proof'}.get(normalized['question_type'])
                 same=(annotation_packages.role_hashes(actual)==expected and kind==item['record']['question_type'] and normalized['max_score']==item['record']['max_score']
+                      and meta.get('supplemental_figures',{}).get('entries',[])==[{**e,'image':{**e['image'],'path':'bank-assets/source/'+e['image']['sha256']+{'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp'}[e['image']['media_type']]}} for e in item['record'].get('supplemental_figures',{}).get('entries',[])]
                       and meta.get('book')==item['record'].get('book') and meta.get('errata',[])==item['record'].get('errata',[])
                       and json.loads(old['math_types_json'])==item['record'].get('math_types',[]))
             except ValueError:same=False

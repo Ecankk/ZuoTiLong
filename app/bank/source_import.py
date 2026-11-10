@@ -40,7 +40,7 @@ def _state(conn):
             for name in ('bank_questions', 'bank_resources', 'bank_identity', 'bank_source_records') if name in tables}
 
 
-def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids=None, baselines=None):
+def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids=None, baselines=None,asset_root=None,figure_root=None):
     from app.bank.collections import require
     require(conn,collection)
     state = _state(conn)
@@ -48,11 +48,21 @@ def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids
     for bid,baseline in (baselines or {}).items():
         if bid not in current:current[bid]=dict(bank_id=bid,record_json=records.canonical(baseline),record_sha256=records.digest([baseline,[]]))
     questions = {r['id']: r for r in state.get('bank_questions', [])}
+    figure_owners={}
+    for row in current.values():
+        prior=json.loads(row['record_json'])
+        if prior['source_id']!=batch[0]['source_id'] or questions.get(row['bank_id'],{}).get('collection_id')!=collection:continue
+        for e in prior.get('supplemental_figures',{}).get('entries',[]):figure_owners[e['figure_id']]=(prior['source_uid'],e['role'])
+    for record in batch:
+        for e in record.get('supplemental_figures',{}).get('entries',[]):
+            if e['figure_id'] in figure_owners and figure_owners[e['figure_id']]!=(record['source_uid'],e['role']):raise ValueError('figure_id_conflict: '+e['figure_id'])
     identities = {r['bank_id']: (str(r['year']), r['math_type'], r['number']) for r in state.get('bank_identity', [])}
     excluded_ids = {r['source_uid'] for r in excluded}
     report = dict(source_id=batch[0]['source_id'], revision=batch[0]['revision'], added=[], updated=[], unchanged=[],
                   missing_fields=[], identity_conflicts=[], duplicate_candidates=[], excluded=excluded,
                   overrides_applied=applied, errata_applied=[],invalidated_annotations=[],needs_annotation=[],metadata_only=[],collection_id=collection,collection_conflicts=[])
+    report.update(figures_applied=[],figure_conflicts=[])
+    report['figures_sha256']=records.digest(corrections['figures']) if isinstance(corrections,dict) and 'figures' in corrections else None
     content_groups = {}
     for row in current.values():
         old = json.loads(row['record_json'])
@@ -64,6 +74,29 @@ def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids
             continue
         bid = (bank_ids or {}).get((record['source_id'],record['source_uid']), records.bank_id(record))
         old = current.get(bid)
+        previous=json.loads(old['record_json']) if old else {}
+        old_figs={e['figure_id']:e for e in previous.get('supplemental_figures',{}).get('entries',[])}
+        new_figs={e['figure_id']:e for e in record.get('supplemental_figures',{}).get('entries',[])}
+        for fid,e in old_figs.items():
+            if fid not in new_figs:raise ValueError('figure_manifest_incomplete: '+record['source_uid']+' / '+fid)
+            if new_figs[fid]['role']!=e['role']:raise ValueError('figure_id_conflict: '+fid)
+        old_material=new_material=None
+        if new_figs and asset_root is not None:
+            from app.bank.figures import material_revision
+            new_material=material_revision(record,asset_root,figure_root)
+            resource=next((r for r in state.get('bank_resources',[]) if r['bank_id']==bid),None)
+            if resource:
+                meta=json.loads(resource['metadata_json']);materials={}
+                for role,field in (('question','stem'),('analysis','explanation'),('answer','answer')):
+                    path=resource[role+'_path'] or '';text=questions[bid][field] or ''
+                    part=meta.get('resources',{}).get(role,{})
+                    image=part.get('display_image') or next(iter(part.get('images',[])),{})
+                    sha=image.get('sha256') if path else None
+                    if text or sha:materials[role]=dict(text=text,path=path,image_sha256=sha,sha256=records.digest(dict(text=text,image_sha256=sha)))
+                old_material=records.digest(materials)
+        for fid,e in new_figs.items():
+            before=old_figs.get(fid);action='added' if before is None else 'unchanged' if before==e else 'metadata_only' if before['image']['sha256']==e['image']['sha256'] else 'replaced'
+            report['figures_applied'].append(dict(bank_id=bid,source_uid=record['source_uid'],figure_id=fid,role=e['role'],kind=e['kind'],caption=e['caption'],reason=e['reason'],evidence=e['evidence'],action=action,old_image_sha256=before['image']['sha256'] if before else None,new_image_sha256=e['image']['sha256'],old_material_revision=old_material,new_material_revision=new_material,annotation_invalidated=False))
         report['errata_applied'].extend(dict(bank_id=bid,**e,original_fragment=e['find'],new_fragment=e['replace']) for e in record.get('errata',[]))
         if bid in questions:
             stored=questions[bid].get('collection_id')
@@ -80,11 +113,14 @@ def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids
         from app.bank.book_numbers import number_only
         metadata_only=category=='updated' and number_only(old,record,changes)
         if metadata_only:report['metadata_only'].append(bid)
-        if category=='updated' and old and any(json.loads(old['record_json'])[r]!=record[r] for r in ('stem','options','answer','analysis')):
+        figure_material_change=bool(new_figs and old_material!=new_material)
+        if category=='updated' and old and (any(json.loads(old['record_json'])[r]!=record[r] for r in ('stem','options','answer','analysis')) or figure_material_change):
             if any(table in _tables(conn) and conn.execute('SELECT 1 FROM '+table+' WHERE bank_id=?',(bid,)).fetchone() for table in ('question_annotation_links','imported_question_annotations')):report['invalidated_annotations'].append(bid)
             if 'question_annotations' in _tables(conn):
                 report['invalidated_annotations'].extend(r[0] for r in conn.execute('SELECT l.bank_id FROM question_annotation_links l JOIN question_annotations a ON a.id=l.annotation_id WHERE a.bank_id=?',(bid,)))
-        if category in ('added', 'updated') and not metadata_only:
+        figure_metadata_only=bool(old and new_figs and old_material==new_material and {k:v for k,v in previous.items() if k!='supplemental_figures'}=={k:v for k,v in record.items() if k!='supplemental_figures'})
+        if figure_metadata_only and bid not in report['metadata_only']:report['metadata_only'].append(bid)
+        if category in ('added', 'updated') and not metadata_only and not figure_metadata_only:
             report['needs_annotation'].append(bid)
         missing = [key for key in ('question_type', 'max_score') if record[key] is None]
         missing += [key for key in ('answer', 'analysis') if not record[key]['text'].strip() and not record[key]['images']]
@@ -107,19 +143,21 @@ def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids
         if len(ids) > 1 and any(b in report['added'] + report['updated'] + report['unchanged'] for b in ids):
             report['duplicate_candidates'].append(dict(bank_ids=sorted(ids), reason='identical_stem_and_options'))
     report['invalidated_annotations']=sorted(set(report['invalidated_annotations']))
+    for item in report['figures_applied']:item['annotation_invalidated']=item['bank_id'] in report['invalidated_annotations']
     report['plan_sha256'] = records.digest(dict(batch=batch, corrections=corrections, state=state, report=report))
     return report
 
 
-def _copy_assets(record, asset_root, library_root):
+def _copy_assets(record, asset_root, library_root,figure_root=None):
     manifest = {}
     extension = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp'}
     for role in ('stem', 'answer', 'analysis'):
-        source_parts = [record[role]] + ([o['content'] for o in record['options']] if role == 'stem' else [])
+        from app.bank.figures import parts
+        source_parts=parts(record,role,asset_root,figure_root)
         images = []
-        for part in source_parts:
+        for part,part_root in source_parts:
             for image in part['images']:
-                data = records.asset_path(asset_root, image['path']).read_bytes()
+                data = records.asset_path(part_root, image['path']).read_bytes()
                 if records.sha256(data) != image['sha256']:
                     raise ValueError('Asset changed after preview: ' + image['path'])
                 relative = 'bank-assets/source/' + image['sha256'] + extension[image['media_type']]
@@ -159,7 +197,7 @@ def _copy_assets(record, asset_root, library_root):
     return manifest
 
 
-def _apply(conn, config, batch, report, asset_root, *, bank_ids=None, initialize_schema=True):
+def _apply(conn, config, batch, report, asset_root, *, bank_ids=None, initialize_schema=True,figure_root=None):
     if initialize_schema:
         from app.storage.boundaries import LIBRARY_TABLES
         from app.storage.split import template, copy_schema
@@ -180,18 +218,40 @@ def _apply(conn, config, batch, report, asset_root, *, bank_ids=None, initialize
             continue
         if bid in report.get('metadata_only',[]):
             old=conn.execute('SELECT metadata_json FROM bank_resources WHERE bank_id=?',(bid,)).fetchone()
-            metadata=json.loads(old[0]);metadata['book']={**metadata.get('book',{}),'number':record['book']['number']}
+            metadata=json.loads(old[0])
+            if 'supplemental_figures' in record:
+                from copy import deepcopy
+                value=deepcopy(record['supplemental_figures'])
+                for e in value['entries']:
+                    image=e['image'];ext={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp'}[image['media_type']]
+                    image['path']='bank-assets/source/'+image['sha256']+ext
+                    if records.sha256((config.library_dir/image['path']).read_bytes())!=image['sha256']:raise ValueError('Corrupt figure asset')
+                metadata['supplemental_figures']=value
+            else:metadata['book']={**metadata.get('book',{}),'number':record['book']['number']}
             changes=[v for v in report['overrides_applied'] if v['source_uid']==record['source_uid']]
             sha=records.digest([record,changes]);text=records.canonical(record);audit=records.canonical(changes)
             conn.execute('UPDATE bank_resources SET metadata_json=? WHERE bank_id=?',(records.canonical(metadata),bid))
             conn.execute('UPDATE bank_source_records SET record_json=?,record_sha256=?,overrides_json=? WHERE bank_id=?',(text,sha,audit,bid))
             conn.execute('INSERT OR IGNORE INTO bank_source_versions VALUES(?,?,?,?,?)',(bid,sha,text,audit,now_iso()))
             continue
-        manifest = _copy_assets(record, asset_root, config.library_dir)
+        manifest = _copy_assets(record, asset_root, config.library_dir,figure_root)
         metadata = {k: record[k] for k in ('schema', 'source_id', 'revision', 'source_uid', *records.METADATA)}
         metadata.update(locator=record['locator'], original_source=record['original']['source_text'], resources=manifest)
         if 'book' in record:metadata['book']=record['book']
         if 'errata' in record:metadata['errata']=record['errata']
+        if 'supplemental_figures' in record:
+            from copy import deepcopy
+            value=deepcopy(record['supplemental_figures'])
+            for e in value['entries']:
+                image=e['image'];raw=records.asset_path(figure_root or asset_root,image['path']).read_bytes()
+                if records.sha256(raw)!=image['sha256']:raise ValueError('figure_hash_mismatch: '+e['figure_id'])
+                ext={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp'}[image['media_type']]
+                path='bank-assets/source/'+image['sha256']+ext;target=config.library_dir/path
+                target.parent.mkdir(parents=True,exist_ok=True)
+                if target.exists() and records.sha256(target.read_bytes())!=image['sha256']:raise ValueError('Corrupt figure asset')
+                if not target.exists():target.write_bytes(raw)
+                image['path']=path
+            metadata['supplemental_figures']=value
         changes = [v for v in report['overrides_applied'] if v['source_uid'] == record['source_uid']]
         sha = records.digest([record, changes])
         conn.execute('''INSERT INTO bank_questions(id,source,source_ref,stem,answer,explanation,tags_json,created_at)
@@ -219,12 +279,18 @@ def _apply(conn, config, batch, report, asset_root, *, bank_ids=None, initialize
                      (bid, sha, records.canonical(record), records.canonical(changes), now_iso()))
 
 
-def import_source(config, source_id, input_path, *, collection, asset_root=None, overrides=None, errata=None, confirm=None):
+def import_source(config, source_id, input_path, *, collection, asset_root=None, overrides=None, errata=None, confirm=None,figures=None,figure_root=None):
     asset_root = Path(asset_root or Path(input_path).parent)
     batch, corrections, applied, excluded = records.load(input_path, source_id, asset_root, overrides,errata)
+    if figure_root and not figures:raise ValueError('--figure-root requires --figures')
+    figure_root=Path(figure_root or Path(figures).parent) if figures else None
+    if figures:
+        from app.bank.figures import apply
+        if any('supplemental_figures' in record for record in batch):raise ValueError('figure_id_conflict: 不混用内嵌补图与外部清单')
+        document=apply(batch,figures,figure_root,collection);corrections={'prior':corrections,'figures':document}
     with library(config) as conn:
         conn.execute('BEGIN')
-        report = preview(conn, batch, corrections, applied, excluded,collection)
+        report = preview(conn, batch, corrections, applied, excluded,collection,asset_root=asset_root,figure_root=figure_root)
     if confirm is None:
         return dict(report, applied=False)
     if confirm != report['plan_sha256']:
@@ -233,10 +299,10 @@ def import_source(config, source_id, input_path, *, collection, asset_root=None,
     with library(config, write=True) as conn:
         conn.execute('BEGIN IMMEDIATE')
         try:
-            locked = preview(conn, batch, corrections, applied, excluded,collection)
+            locked = preview(conn, batch, corrections, applied, excluded,collection,asset_root=asset_root,figure_root=figure_root)
             if locked['plan_sha256'] != confirm:
                 raise ValueError('Library changed after preview; rerun --dry-run')
-            _apply(conn, config, batch, report, asset_root)
+            _apply(conn, config, batch, report, asset_root,figure_root=figure_root)
             conn.commit()
         except BaseException:
             conn.rollback()

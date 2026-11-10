@@ -71,7 +71,8 @@ def capture(conn,paper_id,data):
 
 def material_binding(conn,data,bank_id,annotation):
     actual=annotations.materials(conn,data,bank_id)
-    return {'bank_id':bank_id,'annotation_id':annotation['id'],
+    from app.bank.figures import markers as figure_markers
+    return {'bank_id':bank_id,'annotation_id':annotation['id'],**({'supplemental_figures':figure_markers(conn,bank_id)} if figure_markers(conn,bank_id) else {}),
             'content_revision':actual['question']['sha256'],
             'material_revision':catalog.digest(actual),
             'annotation_content_revision':annotation['content_revision'],

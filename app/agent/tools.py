@@ -44,18 +44,22 @@ def execute(root,data,action,payload,*,lease=None):
         with closing(connection(data)) as conn:
             from app.bank.errata import markers
             result['errata']=markers(conn,payload['bank_id'])
+            from app.bank.figures import markers as figure_markers
+            result['supplemental_figures']=figure_markers(conn,payload['bank_id'])
             if lease:
                 task=conn.execute('SELECT input_json FROM learning_tasks WHERE id=?',(lease['task_id'],)).fetchone()
                 inputs=json.loads(task[0])
                 if 'free_practice' in inputs:result['errata']=inputs['free_practice']['snapshot'].get('errata',[])
                 if 'profile_practice' in inputs:result['errata']=inputs['profile_practice']['snapshot'].get('errata',[])
+                for key in ('free_practice','profile_practice'):
+                    if key in inputs:result['supplemental_figures']=inputs[key]['snapshot'].get('supplemental_figures',[])
             binding=result.get('material_binding')
             if binding:
                 from app.bank.annotations import materials
                 from app.learning.tasks import digest
                 try:unchanged=digest(materials(conn,data,payload['bank_id']))==binding['material_revision']
                 except ValueError:unchanged=False
-                if not unchanged:result['errata']=[]
+                if not unchanged:result['errata']=[];result['supplemental_figures']=binding.get('supplemental_figures',[])
         content[0]={'type':'text','text':json.dumps(result,ensure_ascii=False)}
     return content
 

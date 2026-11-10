@@ -78,6 +78,8 @@ def init_tasks(conn):
         conn.execute(sql)
     from app.learning.free_practice import initialize as init_free
     init_free(conn)
+    from app.learning.profile_practice import initialize as init_profile
+    init_profile(conn)
     from app.knowledge.index import initialize
     initialize(conn)
     from app.bank.annotations import initialize as initialize_annotations
@@ -127,6 +129,10 @@ def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract
         with capture(conn,data):
             return capture_input(conn,root,data,kind,paper_id,attempt_id,contract_version=contract_version,
                 review_request=review_request,task_scope=task_scope,knowledge_request=knowledge_request,annotation_rule_revision=annotation_rule_revision)
+    if contract_version=='1.12':
+        if paper_id is not None or kind not in ('prepare_practice','grade_attempt'):raise ValueError('1.12仅用于无原卷的画像练习')
+        from app.learning.profile_practice import capture,capture_grade
+        return capture(conn,data,task_scope) if kind=='prepare_practice' else capture_grade(conn,data,attempt_id)
     if kind=='grade_attempt' and contract_version=='1.11':
         if paper_id is not None:raise ValueError('自由练习不关联原卷')
         from app.learning.free_practice import capture as capture_free
@@ -266,7 +272,7 @@ def create_task(conn, root, data, kind, paper_id, session_id, request_id, attemp
     if kind in PREPARATION_KINDS:
         from app.knowledge.maintenance import normalize_scope
         task_scope = normalize_scope(kind, task_scope)
-    elif task_scope is not None:raise ValueError('试卷任务不能携带通用知识维护作用域')
+    elif task_scope is not None and not (kind=='prepare_practice' and contract_version=='1.12'):raise ValueError('试卷任务不能携带通用知识维护作用域')
     from app.learning.contracts import default_version
     task_version=contract_version or (default_version(kind) if kind in PREPARATION_KINDS or kind in ('organize_knowledge','review_practice') else VERSION)
     if kind=='grade_attempt':
@@ -310,7 +316,7 @@ def create_task(conn, root, data, kind, paper_id, session_id, request_id, attemp
         inputs = prepared if prepared is not None else capture_input(conn, root, data, kind, paper_id, attempt_id, contract_version=task_version,
                                review_request=review_request, task_scope=task_scope, knowledge_request=knowledge_request)
         inputs['contract_version']=task_version
-        if kind=='prepare_practice':
+        if kind=='prepare_practice' and task_version!='1.12':
             latest=conn.execute('SELECT report_json FROM agent_reports WHERE paper_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1',(paper_id,)).fetchone()
             report=json.loads(latest[0]) if latest else {}
             if report.get('review',{}).get('status')!='verified' or report.get('completion')!='complete':
@@ -373,19 +379,24 @@ def receipt(conn, task_id):
 def deliver(conn, root, data, payload, lease):
     from app.bank.capture_view import active,capture,ACTIVE
     task=check_lease(conn,lease,allow_completed=True)
-    if task['kind']!='prepare_practice' or task_inputs(conn,task).get('contract_version')!='1.10' or receipt(conn,task['id']):
+    if task['kind']!='prepare_practice' or task_inputs(conn,task).get('contract_version') not in ('1.10','1.12') or receipt(conn,task['id']):
         return _deliver(conn,root,data,payload,lease)
     if conn.in_transaction:
         with capture(conn,data):return _deliver(conn,root,data,payload,lease)
     with atomic(conn):
         versions=tuple(conn.execute('PRAGMA '+db+'.data_version').fetchone()[0] for db in ('main','library'))
         with capture(conn,data) as view:
-            validate_result(payload,task['kind'],'1.10')
-            current=capture_input(conn,root,data,task['kind'],task['paper_id'],contract_version='1.10')
-            current['contract_version']='1.10'
-            from app.learning.practice_knowledge import validate_input
-            validate_input(conn,task,task_inputs(conn,task),current,payload['result'])
-            from app.learning.selection import normalize
+            inputs=task_inputs(conn,task);version=inputs['contract_version']
+            validate_result(payload,task['kind'],version)
+            current=capture_input(conn,root,data,task['kind'],task['paper_id'],contract_version=version,task_scope=inputs.get('task_scope'))
+            current['contract_version']=version
+            if version=='1.12':
+                from app.learning.profile_practice import validate_input,normalize
+                validate_input(conn,inputs,current)
+            else:
+                from app.learning.practice_knowledge import validate_input
+                validate_input(conn,task,inputs,current,payload['result'])
+                from app.learning.selection import normalize
             normalized=normalize(conn,data,task,payload['result'])
     with task_write(conn,versions):
         token=ACTIVE.set(view)
@@ -430,6 +441,10 @@ def _deliver(conn, root, data, payload, lease,*,prepared=None,normalized=None):
             current=inputs
         elif task['kind']=='review_practice':
             from app.learning.practice_review import validate_input
+            validate_input(conn,inputs,current)
+            current=inputs
+        elif inputs.get('contract_version')=='1.12' and task['kind']=='prepare_practice':
+            from app.learning.profile_practice import validate_input
             validate_input(conn,inputs,current)
             current=inputs
         elif inputs.get('contract_version') in ('1.9','1.10') and task['kind'] in ('prepare_practice','grade_attempt'):
@@ -493,6 +508,12 @@ def _deliver(conn, root, data, payload, lease,*,prepared=None,normalized=None):
             if result['completion'] != 'complete':
                 conn.execute("UPDATE papers SET import_status='partial_analysis' WHERE id=?", (task['paper_id'],))
             result_projection = applied
+        elif task['kind']=='prepare_practice' and inputs.get('contract_version')=='1.12':
+            from app.learning.profile_practice import normalize,save_selection
+            result_projection=save_selection(conn,data,task,rid,normalized if normalized is not None else normalize(conn,data,task,result))
+        elif task['kind']=='grade_attempt' and inputs.get('contract_version')=='1.12':
+            from app.learning.profile_practice import save_grade
+            result_projection=save_grade(conn,task,current,result,rid)
         elif task['kind'] == 'prepare_practice':
             if inputs.get('contract_version')=='1.10':
                 from app.learning.selection import normalize
@@ -738,6 +759,11 @@ def finish_task(conn, task_id):
 def task_package(conn, task_id):
     task = task_record(conn, task_id)
     inputs=task_inputs(conn,task)
+    if inputs.get('contract_version')=='1.12':
+        from app.learning.selection import public
+        return {**{k:task[k] for k in ('id','kind','paper_id','attempt_id','input_revision','status')},
+                'result_schema':result_schema(task['kind'],'1.12'),'receipt':receipt(conn,task_id),
+                **({'selection':public(inputs['selection'])} if task['kind']=='prepare_practice' else {'profile_practice':inputs['profile_practice']})}
     if inputs.get('contract_version')=='1.11':
         return {**{k:task[k] for k in ('id','kind','paper_id','attempt_id','input_revision','status')},
                 'result_schema':result_schema(task['kind'],'1.11'),'receipt':receipt(conn,task_id),'free_practice':inputs['free_practice']}

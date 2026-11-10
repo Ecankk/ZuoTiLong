@@ -48,6 +48,7 @@ def execute(root,data,action,payload,*,lease=None):
                 task=conn.execute('SELECT input_json FROM learning_tasks WHERE id=?',(lease['task_id'],)).fetchone()
                 inputs=json.loads(task[0])
                 if 'free_practice' in inputs:result['errata']=inputs['free_practice']['snapshot'].get('errata',[])
+                if 'profile_practice' in inputs:result['errata']=inputs['profile_practice']['snapshot'].get('errata',[])
             binding=result.get('material_binding')
             if binding:
                 from app.bank.annotations import materials
@@ -77,10 +78,13 @@ def _execute(root,data,action,payload,*,lease=None):
             from app.learning.tasks import check_lease
             task=check_lease(conn,lease,allow_completed=action in ('deliver_result','preflight') or action in ('apply_report','assess') and set(payload)=={'result'})
             task_inputs=json.loads(task['input_json'])
+            if task_inputs.get('contract_version')=='1.12' and task['kind']=='grade_attempt' and action in ('read_bank','read_attempt','task_context'):
+                from app.learning.profile_practice import supplement
+                return supplement(conn,data,task,action,payload,image_content)
             if task_inputs.get('contract_version')=='1.11' and action in ('read_bank','read_attempt','task_context'):
                 from app.learning.free_practice import supplement
                 return supplement(conn,data,task,action,payload,image_content)
-            if task['kind']=='prepare_practice' and task_inputs.get('contract_version')=='1.10':
+            if task['kind']=='prepare_practice' and task_inputs.get('contract_version') in ('1.10','1.12'):
                 if action not in ('context','preflight','deliver_result','apply_report','read_bank','read_skill'):raise ValueError('选题只判断后端候选，不自行召回或读取候选外材料')
                 if action=='read_bank' and (payload.get('bank_id') not in task_inputs['selection']['candidates'] or payload.get('role','question')!='question' or set(payload)-{'bank_id','role'}):
                     raise ValueError('选题补看仅限本次候选ID的题干图')

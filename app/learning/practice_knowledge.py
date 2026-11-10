@@ -313,6 +313,10 @@ def grading_version(conn,attempt_id):
 
 
 def grading_contract(conn,attempt_id,requested=None):
+    if conn.execute('SELECT 1 FROM profile_practice_attempts WHERE id=?',(attempt_id,)).fetchone():
+        if requested not in (None,'1.12'):raise ValueError('画像练习须使用1.12批改契约')
+        return '1.12'
+    if requested=='1.12':raise ValueError('1.12仅用于画像练习')
     if conn.execute("SELECT 1 FROM free_practice_attempts WHERE id=?",(attempt_id,)).fetchone():
         if requested not in (None,'1.11'):raise ValueError('自由练习须使用1.11批改契约')
         return '1.11'

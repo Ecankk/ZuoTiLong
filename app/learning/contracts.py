@@ -119,6 +119,12 @@ def default_version(kind):
 def result_schema(kind, version=None):
     import copy
     version=version or default_version(kind)
+    if version=='1.12' and kind in ('prepare_practice','grade_attempt'):
+        schema=result_schema(kind,'1.10' if kind=='prepare_practice' else '1.11')
+        schema['properties']['schema_version']={'const':'1.12'}
+        schema['properties']['paper_id']={'type':'null'}
+        schema['$id']='urn:mathlens:learning-result:1.12:'+kind
+        return schema
     if kind=='grade_attempt' and version=='1.11':
         schema=result_schema(kind,'1.0')
         schema['properties']['schema_version']={'const':'1.11'}
@@ -271,7 +277,7 @@ def validate_result(payload, kind, version=None, *, analysis_context=None):
                 if q['number'] in references and evidence.get('student_state')=='visible' and q['evidence_status']=='readable' and q['correctness']=='unknown':
                     errors.append(f"第{q['number']}题：作答可辨且已提供参考答案/解析，须对照核验后判定正误；不能因错因未知而将正误记未知")
         if errors:raise ValueError('分析交付校验失败：\n'+'\n'.join(errors))
-    elif kind == 'prepare_practice' and payload['schema_version']!='1.10':
+    elif kind == 'prepare_practice' and payload['schema_version'] not in ('1.10','1.12'):
         goals = {g['id']: g for g in result['goals']}
         if len(goals) != len(result['goals']):
             raise ValueError('补强目标标识重复')

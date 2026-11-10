@@ -26,6 +26,11 @@ class PracticeService:
         with self.database.session(write=True) as conn:
             return {'images':[save_answer_image(conn,self.config.data,content) for content in contents]}
     def submit(self,probe_id,body):
+        with self.database.session() as conn:profile=conn.execute('SELECT 1 FROM profile_practice_exercises WHERE id=?',(probe_id,)).fetchone()
+        if profile:
+            from app.learning.profile_practice import ProfilePracticeService
+            service=ProfilePracticeService(config=self.config,database=self.database)
+            return service.submit(probe_id,body)
         with self.database.session(write=True) as conn:
             result=submit_probe(conn,probe_id,body)
             from app.learning.practice_knowledge import bind_attempt
@@ -33,6 +38,11 @@ class PracticeService:
             result['job']=queue_attempt_grading(conn,result['attempt_id'],self.config.root,self.config.data)
             return result
     def supplement(self,attempt_id,body):
+        with self.database.session() as conn:profile=conn.execute('SELECT 1 FROM profile_practice_attempts WHERE id=?',(attempt_id,)).fetchone()
+        if profile:
+            from app.learning.profile_practice import ProfilePracticeService
+            service=ProfilePracticeService(config=self.config,database=self.database)
+            return service.supplement(attempt_id,body)
         with self.database.session(write=True) as conn:
             result=supplement_attempt(conn,attempt_id,body)
             result['job']=queue_attempt_grading(conn,attempt_id,self.config.root,self.config.data)

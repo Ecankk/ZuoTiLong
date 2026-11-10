@@ -228,19 +228,26 @@ class FrontendReads:
                                created_at=item['created_at'], status=status, goal_ids=[g['id'] for g in goals],
                                topics=[{'topic_id': tid, 'name': nodes[tid]['name']} for tid in sorted(resolved) if tid in nodes],
                                access=student_access, latest_attempt_id=latest['id'] if latest else None))
+        if paper_id is None:
+            from app.learning.profile_practice import cards
+            result.extend(cards(conn,include_access))
         return result
 
-    def practices(self, group_by='topic', status=None, paper_id=None, topic_id=None, include_inactive=False, offset=0, limit=20):
-        if group_by not in ('topic', 'paper') or status is not None and status not in PRACTICE_STATUSES:
+    def practices(self, group_by='topic', status=None, paper_id=None, topic_id=None, include_inactive=False, offset=0, limit=20,source=None,batch_id=None):
+        if source not in (None,'paper','profile'):raise ValueError('练习来源不合法')
+        if group_by not in ('topic', 'paper','source','batch') or status is not None and status not in PRACTICE_STATUSES:
             raise ValueError('练习筛选不合法')
         with self.rt.database.session() as conn:
             if paper_id:
                 self._paper(conn, paper_id)
             cards = [c for c in self._cards(conn, paper_id) if (include_inactive or c['status'] != 'inactive')
-                     and (status is None or c['status'] == status) and (topic_id is None or any(t['topic_id'] == topic_id for t in c['topics']))]
+                     and (source is None or c['origin']==source) and (batch_id is None or c['batch_id']==batch_id) and (status is None or c['status'] == status) and (topic_id is None or any(t['topic_id'] == topic_id for t in c['topics']))]
         groups = {}
         for card in cards:
-            keys = [(card['paper_id'], card['paper_title'])] if group_by == 'paper' else [(t['topic_id'], t['name']) for t in card['topics']] or [('unlinked', '尚未关联考点')]
+            if group_by=='source':keys=[(card['origin'],'画像选题' if card['origin']=='profile' else '原卷练习')]
+            elif group_by=='batch':keys=[(card['batch_id'] or card['paper_id'],card['batch_title'] or card['paper_title'])]
+            elif group_by=='paper':keys=[(card['paper_id'] or card['batch_id'],card['paper_title'] or card['batch_title'])]
+            else:keys=[(t['topic_id'],t['name']) for t in card['topics']] or [('unlinked','尚未关联考点')]
             for key, label in keys:
                 group = groups.setdefault(key, dict(id=key, label=label, items=[]))
                 group['items'].append(card)
@@ -256,6 +263,8 @@ class FrontendReads:
         return row
 
     def practice(self, practice_id):
+        with self.rt.database.session() as conn:profile=conn.execute('SELECT 1 FROM profile_practice_exercises WHERE id=?',(practice_id,)).fetchone()
+        if profile:return self.rt.profile_practice.detail(practice_id)
         with self.rt.database.session() as conn:
             row = self._probe(conn, practice_id)
             card = next(c for c in self._cards(conn, row['paper_id']) if c['id'] == practice_id)
@@ -284,6 +293,8 @@ class FrontendReads:
                         latest_attempt=latest_payload, actions=actions)
 
     def attempts(self, practice_id, offset=0, limit=20):
+        with self.rt.database.session() as conn:profile=conn.execute('SELECT 1 FROM profile_practice_exercises WHERE id=?',(practice_id,)).fetchone()
+        if profile:return self.rt.profile_practice.history(practice_id,offset,limit)
         with self.rt.database.session() as conn:
             self._probe(conn, practice_id)
             values = rows(conn, 'SELECT * FROM probe_attempts WHERE probe_id=? ORDER BY created_at DESC,id DESC', (practice_id,))
@@ -304,7 +315,7 @@ class FrontendReads:
         with self.rt.database.session() as conn:free=free_counts(conn,canonical)
         return dict(topic=dict(id=canonical, parent_id=node['parent_id'], name=node['label'], kind=origin.get('node_kind', node['scope_level']),
                                definition=origin.get('definition', ''), conditions=origin.get('conditions', []), boundaries=origin.get('boundaries', [])),
-                    performance={**{k: node[k] for k in ('state', 'state_reason', 'successes', 'failures', 'pending', 'attempt_count')},'source_counts':{'exam':sum(e['source']=='exam' for e in node['events']),'practice':sum(e['source'] not in ('exam','free_practice') for e in node['events']),'free_practice':free}},
+                    performance={**{k: node[k] for k in ('state', 'state_reason', 'successes', 'failures', 'pending', 'attempt_count')},'source_counts':{'exam':sum(e['source']=='exam' for e in node['events']),'practice':sum(e['source'] not in ('exam','free_practice') for e in node['events']),'free_practice':free,'profile_practice':sum(e['source']=='profile_practice' for e in node['events'])}},
                     question_counts={v: counts[v] for v in ('completed', 'bank')},
                       practice_counts=practice_counts(cards),collection_counts=self._navigation()['collection_counts'][canonical])
 

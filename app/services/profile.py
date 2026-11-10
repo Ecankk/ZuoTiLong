@@ -113,6 +113,7 @@ class ProfileService:
                 originals=uploaded_originals(conn);excluded=set(originals)
                 excluded.update(r[0] for r in conn.execute('SELECT bank_id FROM bank_views'))
                 excluded.update(r[0] for r in conn.execute('SELECT bank_id FROM diagnostic_probes'))
+                excluded.update(r[0] for r in conn.execute('SELECT bank_id FROM profile_practice_exercises'))
                 excluded.update(f['bank_id'] for f in fs if f['bank_id'])
                 reserved={(v['math_type'],str(v['year'])) for v in prefs['reserved']}
                 excluded.update(r['bank_id'] for r in conn.execute('SELECT * FROM bank_identity') if (r['math_type'],str(r['year'])) in reserved)

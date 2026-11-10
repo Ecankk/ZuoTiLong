@@ -17,7 +17,8 @@ def capture(conn,data,inputs):
     report=json.loads(inputs['reports'][-1]['report_json']);diagnoses={str(q['number']):q for q in report['questions']}
     state=inputs['practice_plan']['state'];affected=set(state.get('affected_numbers',[]))
     from app.bank.originals import uploaded_originals
-    excluded=set(uploaded_originals(conn));loc=location(dict(conn.execute('SELECT * FROM papers WHERE id=?',(inputs['paper']['id'],)).fetchone()))
+    from app.learning.profile_practice import excluded as history_excluded
+    excluded=history_excluded(conn);loc=location(dict(conn.execute('SELECT * FROM papers WHERE id=?',(inputs['paper']['id'],)).fetchone()))
     for q in inputs['questions']:
         if q.get('match_bank_id'):excluded.update(policy_group(conn,q['match_bank_id']))
         if loc['status']=='located' and str(q['number']).isascii() and str(q['number']).isdecimal():
@@ -104,6 +105,10 @@ def normalize(conn,data,task,result):
     errors=[]
     from app.bank.originals import uploaded_originals
     originals=uploaded_originals(conn)
+    from app.learning.profile_practice import excluded
+    already=excluded(conn)
+    for item in result['selections']:
+        if item['bank_id'] in already and item['bank_id'] not in originals:errors.append('bank_id='+item['bank_id']+'：已作答、已布置或已曝光，不能作为新选题')
     missing=sorted(set(targets)-set(result['limitations']));extra=sorted(set(result['limitations'])-set(targets))
     if missing:errors.append('limitations缺少目标ID：'+', '.join(missing))
     if extra:errors.append('limitations含未知目标ID：'+', '.join(extra))

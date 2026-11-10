@@ -47,6 +47,8 @@ class AppRuntime:
         self.frontend = FrontendReads(self)
         from app.services.profile import ProfileService
         self.profile=ProfileService(self)
+        from app.learning.profile_practice import ProfilePracticeService
+        self.profile_practice=ProfilePracticeService(self)
         self.tasks = TaskSummary(self)
         self.events = EventStream(self)
 

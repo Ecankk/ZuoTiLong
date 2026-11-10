@@ -226,9 +226,10 @@ def save(conn,task,inputs,result,rid):
     if conn.execute('SELECT 1 FROM bank_identity WHERE bank_id=?',(scope['bank_id'],)).fetchone():record_view(conn,scope['bank_id'],'analysis')
     return {'attempt_id':aid,'source':'free_practice'}
 
-def supplement(conn,data,task,action,payload,image_content):
+def supplement(conn,data,task,action,payload,image_content,*,scope=None):
     """Supplemental tools must stay on the captured version, even after a library swap."""
-    scope=json.loads(task['input_json'])['free_practice'];images=[]
+    if scope is None:scope=json.loads(task['input_json'])['free_practice']
+    images=[]
     if action=='read_bank':
         if payload.get('bank_id')!=scope['bank_id']:raise ValueError('仅可读取本次自由练习固定题目')
         from app.storage.practice_materials import load,image_path

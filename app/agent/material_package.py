@@ -115,7 +115,7 @@ def initial_inputs(conn,root,data,task_id,lease):
     pictures=[]
     if task['kind']=='analyze_paper':
         _analyze(conn,root,data,task,inputs,lease,header,pictures)
-    elif task['kind']=='prepare_practice' and inputs['contract_version']=='1.10':
+    elif task['kind']=='prepare_practice' and inputs['contract_version'] in ('1.10','1.12'):
         scope=inputs['selection']
         from app.learning.selection import public,summary
         header['selection']=public(scope)
@@ -125,14 +125,17 @@ def initial_inputs(conn,root,data,task_id,lease):
                 'limitations':{t['goal']['id']:'' for t in scope['targets']}}}
         header['requirements']+=['每目标选1–2题，每原子含已保留练习总计不超过3题。只从目标candidate_ids选择，题目可关联多个目标。',
             '只判断教学适配并写选择理由、回答范围；无合适题留空并在limitations[目标ID]说明。无缺口写空字符串。禁止catalog；确需看图时仅可read_bank读取候选题干。后端负责保留其他练习。']
+        if inputs['contract_version']=='1.12':header['requirements'].append('这是画像选题，不关联原卷；整个批次最多'+str(inputs['profile_batch']['body']['size'])+'题。默认每目标1题，确有不同训练环节再选2题。')
         for bid,c in scope['candidates'].items():
             record_read(conn,lease,'candidate_summary',bid,'summary',digest(summary(c)))
             record_read(conn,lease,'prepared_recall',bid,c['annotation_id'],digest(c['binding']))
         for n in scope['definitions']:record_read(conn,lease,'practice_definition',n['id'],inputs['practice_knowledge']['catalog_revision'],digest(n))
-    elif task['kind']=='grade_attempt' and inputs['contract_version']=='1.11':
-        scope=inputs['free_practice'];header['free_practice']=scope
-        header['grading_mode']='fill_equivalence' if scope['snapshot']['question_type']=='填空题' else 'whole_question'
+    elif task['kind']=='grade_attempt' and inputs['contract_version'] in ('1.11','1.12'):
+        key='profile_practice' if inputs['contract_version']=='1.12' else 'free_practice'
+        scope=inputs[key];header[key]=scope
+        header['grading_mode']='assigned_scope' if key=='profile_practice' else 'fill_equivalence' if scope['snapshot']['question_type']=='填空题' else 'whole_question'
         header['assignment']={'prompt':'本题全部要求；填空题仅判断所填结果的数学等价性。'}
+        if key=='profile_practice':header['assignment']=scope['assignment']
         from app.storage.practice_materials import image_path
         for role,item in scope['snapshot']['material_manifest']['resources'].items():
             if item['image_file']:pictures.append(('固定题目材料 '+role,image_path(data,scope['snapshot'],role)))
@@ -140,7 +143,7 @@ def initial_inputs(conn,root,data,task_id,lease):
         for image in image_records(conn,scope['body']['image_ids']):
             pictures.append(('作答图片 角色 '+scope['body']['image_roles'].get(image['id'],'own_work'),answer_image(image,data)))
         header['requirements']+=['仅判断本题，不选题、不整理。填空题只核验数学等价并给一句说明；答案不一致不能据此判错。题干/参考/定义/作答已齐。不要把整题正误扩散到全部考点；topic_ids只列有实际证据的快照考点。']
-        record_read(conn,lease,'free_practice',scope['id'],'materials',digest(scope))
+        record_read(conn,lease,key,scope['id'],'materials',digest(scope))
     elif task['kind']=='grade_attempt':
         attempt=next(a for a in inputs['attempts'] if a['id']==task['attempt_id'])
         probe=next(p for p in inputs['probes'] if p['id']==attempt['probe_id'])
@@ -185,8 +188,8 @@ def initial_inputs(conn,root,data,task_id,lease):
         header['task']=task_package(conn,task_id)
         header['requirements'].append('当前角色方法正文已附；按本任务实际材料清单补读原始材料，不需要再读read_skill。')
     if task['kind']=='grade_attempt':
-        if inputs['contract_version']=='1.11':
-            body=inputs['free_practice']['body'];image_ids=body['image_ids'];roles=body['image_roles']
+        if inputs['contract_version'] in ('1.11','1.12'):
+            body=inputs['profile_practice' if inputs['contract_version']=='1.12' else 'free_practice']['body'];image_ids=body['image_ids'];roles=body['image_roles']
         else:
             image_ids=json.loads(attempt['images_json']);roles=json.loads(attempt.get('image_roles_json') or '{}')
         header['requirements']+=['feedback只写1–3句结论：说清对不对、关键问题在哪；不复述做对的部分、首错、参考推导或建议，这些分别放在observations、first_error、reference_reasoning、next_step等结构化字段。无需固定标签。此规则取代方法正文中反馈包含推导和改进方向的旧要求。',
@@ -195,7 +198,7 @@ def initial_inputs(conn,root,data,task_id,lease):
             header['requirements'].append('本次确实附有事后批改图片，仅此时单独评价其中的批改，放在observations等对应结构化字段；不将事后批改冒充独立作答，也不在feedback重复。')
         else:
             header['requirements'].append('本次未附事后批改图片，学生可见反馈和结构化文字都不要提事后批改，也不要写“未见事后批改痕迹”等无关说明。')
-    header['materials_complete']=task['kind'] in ('analyze_paper','grade_attempt','organize_knowledge','review_question') or task['kind']=='prepare_practice' and inputs['contract_version']=='1.10'
+    header['materials_complete']=task['kind'] in ('analyze_paper','grade_attempt','organize_knowledge','review_question') or task['kind']=='prepare_practice' and inputs['contract_version'] in ('1.10','1.12')
     if header['materials_complete']:header['requirements'].append('材料已齐、已登记下列阅读回执，无需调用context。正常直接判断后交付；仅实际新发现材料缺口时补读。')
     header['read_receipts']=[dict(r) for r in conn.execute('SELECT kind,record_id,role,sha256 FROM task_reads WHERE task_id=? AND run_token=? ORDER BY kind,record_id,role',(task['id'],task['run_token']))]
     result=[{'type':'text','text':json.dumps(header,ensure_ascii=False)}]

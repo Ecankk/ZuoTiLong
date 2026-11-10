@@ -53,7 +53,7 @@ def facts(conn):
         verified=report.get('review',{}).get('status')=='verified' and report.get('completion')=='complete'
         correctness=diagnosis.get('correctness','unknown')
         values.append(dict(source='exam',practice_source=None,id=row['id'],question_id=row['id'],practice_id=None,
-            attempt_id=None,paper_id=row['paper_id'],bank_id=row['match_bank_id'],batch_id=None,label=f"{row['title']} 第{row['number']}题",
+            attempt_id=None,paper_id=row['paper_id'],question_number=str(row['number']),bank_id=row['match_bank_id'],batch_id=None,label=f"{row['title']} 第{row['number']}题",
             occurred_at=row['exam_date'] or row['paper_created'],correct=(True if correctness=='correct' else False if correctness in ('wrong','partial') else None) if verified else None,
             independent=None,answer_exposed=None,pending=False,assessment=None,first_error=diagnosis.get('first_error'),
             counted=evidence.get('student_state')=='visible' and bool(evidence.get('student_work','').strip()),needs_review=correctness=='unknown'))
@@ -83,6 +83,7 @@ def facts(conn):
                 occurred_at=row['created_at'],correct=(assessment or {}).get('correct'),independent=not bool(row['answer_exposed']),answer_exposed=bool(row['answer_exposed']),
                 pending=assessment is None,assessment=assessment,assessed_at=_assessment_time(conn,assessment,row['created_at']),first_error=(assessment or {}).get('first_error'),
                 needs_review=bool(assessment and assessment.get('correct') is None)))
+    for value in values:value.setdefault('question_number',None)
     return values
 
 
@@ -234,7 +235,7 @@ class ProfileService:
             failures=[f for f in recent if f['correct'] is False]
             if not failures:continue
             failures.sort(key=lambda f:f['occurred_at'],reverse=True)
-            evidence=[dict(**{k:f[k] for k in ('source','paper_id','question_id','practice_id','attempt_id','bank_id','label','occurred_at')},
+            evidence=[dict(**{k:f[k] for k in ('source','paper_id','question_id','question_number','practice_id','attempt_id','bank_id','label','occurred_at')},
                 first_error_stage=(f['first_error'] or {}).get('stage'),first_error_evidence=(f['first_error'] or {}).get('evidence')) for f in failures[:3]]
             stage_names={'entry':'切入','modeling':'建模','formula':'公式','calculation':'计算','finalization':'最终处理'}
             stages=list(dict.fromkeys(stage_names[e['first_error_stage']] for e in evidence if e['first_error_stage'] in stage_names))
@@ -276,5 +277,5 @@ class ProfileService:
             subjects=subjects,weak_spots=spots[:5],conclusions=dict(strongest_chapter=strong[0] if strong else None,weakest_chapter=weak,independent_correct_comparison=comparison,
                 unavailable_reasons=dict(strongest_chapter=None if strong else '有效记录不足',weakest_chapter=None if weak else '近期失败依据不足',independent_correct_comparison=None if comparison else '前后两个四周窗口缺少可确认独立性的判断记录')),
             feedback=dict(unread_count=unread,recent_items=receipts[:3]),review=dict(total=len(review),counts={k:sum(f['source']==s for f in review) for k,s in [('exam_questions','exam'),('practice_attempts','practice'),('free_practice_attempts','free_practice')]},paper_issue_count=d['issues'],items=[dict(**{k:f[k] for k in ('source','question_id','attempt_id','practice_id','paper_id','bank_id')},reason='已有判断不确定或需补材料') for f in review[:5]]),
-            recent_mistakes=[{k:f[k] for k in ('source','practice_source','question_id','practice_id','attempt_id','paper_id','bank_id','batch_id','label','occurred_at','answer_exposed','topic_ids')} for f in sorted(d['facts'],key=lambda f:f['occurred_at'] or '',reverse=True) if f['correct'] is False][:3],
+            recent_mistakes=[{k:f[k] for k in ('source','practice_source','question_id','question_number','practice_id','attempt_id','paper_id','bank_id','batch_id','label','occurred_at','answer_exposed','topic_ids')} for f in sorted(d['facts'],key=lambda f:f['occurred_at'] or '',reverse=True) if f['correct'] is False][:3],
             next_steps=next_steps,profile_batch_eligibility=dict(can_create=bool(targets),reason=None if targets else '请先选择备考类别或积累可选题目/证据',target_counts=counts),limitations=self.limitations(d))

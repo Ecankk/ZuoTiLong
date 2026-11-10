@@ -84,6 +84,12 @@ class ProfileEvidenceTests(unittest.TestCase):
             self.assertEqual(spot['evidence'][0]['first_error_stage'],'calculation')
             self.assertIn('漏乘内层导数',spot['evidence'][0]['first_error_evidence'])
             self.assertEqual(spot['kind'],'chapter')
+            numbers={r['id']:str(r['number']) for r in f.conn.execute('SELECT id,number FROM questions')}
+            for item in [e for s in overview['weak_spots'] for e in s['evidence']]+overview['recent_mistakes']:
+                if item['source']=='exam':
+                    self.assertEqual(item['question_number'],numbers[item['question_id']])
+                    self.assertEqual(item['paper_id'],'paper-test')
+                else:self.assertIsNone(item['question_number'])
             for subject in overview['subjects']:
                 self.assertNotIn('atoms',subject)
                 for chapter in subject['chapters']:self.assertNotIn('atoms',chapter)

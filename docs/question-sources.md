@@ -43,6 +43,19 @@ S02 的来源字段可匹配“严选”115 条、“武忠祥”103 条、“1k
 | S10 | [fjw345/mathonline](https://github.com/fjw345/mathonline) | 先前仅查 README，声明含考研数学题并排除部分缺图/答案待确认题。 | 仅候选，尚未完成真实数据核对、冻结版本或接入。不能以 README 数量充当本库覆盖率。 |
 | S11 | [YLXDXX/AM601-kaoyan](https://github.com/YLXDXX/AM601-kaoyan) | 先前仅在线查看：国科大601高等数学甲 LaTeX 真题，部分年份有参考答案。 | 自主命题，可后续筛选方法训练；不能直接归为全国统考数一/二/三。未接入。 |
 
+### 2026-11-10 补充调研
+
+只读调研，未接入。没有找到新的、可整库导入的名师电子题库；S02 仍是最大的扩充来源。
+
+| ID | 来源 / 固定版本 | 核查结果 | 判断 |
+| --- | --- | --- | --- |
+| S12 | [Evan26Ma/daguan-cxy-local](https://github.com/Evan26Ma/daguan-cxy-local/tree/2dda2523a8e1310331e08fceef90efa58287ac93) `web/data/local_question_banks/` | 两份概率增补 JSON 共 389 条（230＋159），题干、答案、解析均为电子文本；抽 6 题，1 题解析方法不当，有占位杂质，含 2025 数一等真题 | 候选。逐题核算、与 S01/S02 去重后小批接入；389 是记录数，不是新增题数 |
+| S13 | [科数网模拟卷](https://kmath.cn/math/paper_list.aspx)（2026-11-10 读取） | 目录列 128 套模拟卷（含张宇 2027 八套卷），题干为电子 LaTeX；答案和解析要登录或付费，未核 | 仅线索。站点声明版权所有，不做自动抓取 |
+| S14 | [疾风劲草](https://bbkaoyan.cn/)（2026-11-10） | 按科目、年份、作者组织的真题和模拟卷；正文要登录，未核 | 仅线索 |
+| S15 | [北航出版社李林 2025 高数讲义解析](https://temp.buaapress.com.cn/other/9787512441743/gaoshu.pdf) | 103 页文字 PDF，只有解答，不含题干 | 只有同版题干时才能用 |
+
+不建议接入：LIMO 考研子集、gtqbhksl/22408、TsekaLuk/Kaoyan-Math2-Papers（解析有错，或 OCR 残缺、类别混乱，且都是已有真题）；fjw345/mathonline（S10）复核后只有答案结论，没有推导；只有网盘目录的名师合集页面。
+
 [MathRecall](https://github.com/HSEZCZYW/MathRecall) 提供错题系统代码，但题库需用户自行放到私有目录；它属于产品参考，不作为新增题源统计。AI错题本、kaoyan-quiz 等也应与题源分开登记。
 
 ## 接入规则

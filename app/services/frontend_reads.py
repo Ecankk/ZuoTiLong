@@ -221,10 +221,13 @@ class FrontendReads:
             goals = [g for g in plan_goals(conn, state) if conn.execute('SELECT 1 FROM probe_goals WHERE probe_id=? AND goal_id=?', (item['id'], g['id'])).fetchone()]
             topic_ids = {tid for g in goals for tid in json.loads(g['payload_json']).get('topic_ids', [])}
             resolved = {tid if tid in nodes else redirects.get(tid,tid) for tid in topic_ids}
-            result.append(dict(id=item['id'], paper_id=pid, paper_title=item['paper_title'], question_id=item['question_id'], bank_id=item['bank_id'],
+            from app.learning.practice_presentation import source_for,correctness
+            student_access=access(conn,item['bank_id']) if include_access else None
+            if include_access:student_access.update(source_for(conn,self.rt.config.data,item))
+            result.append(dict(id=item['id'],origin='paper',latest_correctness=correctness(assessed),batch_id=None,batch_title=None,paper_id=pid, paper_title=item['paper_title'], question_id=item['question_id'], bank_id=item['bank_id'],
                                created_at=item['created_at'], status=status, goal_ids=[g['id'] for g in goals],
                                topics=[{'topic_id': tid, 'name': nodes[tid]['name']} for tid in sorted(resolved) if tid in nodes],
-                               access=access(conn, item['bank_id']) if include_access else None, latest_attempt_id=latest['id'] if latest else None))
+                               access=student_access, latest_attempt_id=latest['id'] if latest else None))
         return result
 
     def practices(self, group_by='topic', status=None, paper_id=None, topic_id=None, include_inactive=False, offset=0, limit=20):
@@ -272,9 +275,13 @@ class FrontendReads:
                     actions.append('supplement' if latest else 'submit')
                     if latest and not card['access']['analysis_allowed']:actions.append('reveal_analysis')
             goals = [json.loads(g['payload_json']) for g in plan_goals(conn, practice_state(conn, row['paper_id'])) if g['id'] in card['goal_ids']]
+            from app.learning.practice_presentation import reference
+            question=reference(question) if question else question
+            latest_payload=attempt(latest,conn) if latest else None
+            if latest_payload and latest_payload['assessment']:latest_payload['assessment']=reference(latest_payload['assessment'],question)
             return dict(practice=card, is_current=current, review_reason=None if current else '旧练习或材料待核，历史作答保留',
                         question=question, goals=goals, selection_reason=json.loads(row['payload_json']).get('selection_reason') if question is not None else None,
-                        latest_attempt=attempt(latest,conn) if latest else None, actions=actions)
+                        latest_attempt=latest_payload, actions=actions)
 
     def attempts(self, practice_id, offset=0, limit=20):
         with self.rt.database.session() as conn:

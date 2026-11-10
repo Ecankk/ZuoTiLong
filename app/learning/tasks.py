@@ -644,7 +644,9 @@ def _save_plan(conn, data, task, result_id, result):
                    'skill_id': skill, 'skill_label': anchor['label'],
                    'targets': anchor['evidence'], 'discriminates': exercise['selection_reason'],
                    'priority': min(g[1]['priority'] for g in selected), 'accepted': [],
-                   'source_result_id': result_id}
+                     'source_result_id': result_id}
+        from app.learning.practice_presentation import metadata as source_metadata
+        payload['source_metadata']=source_metadata(conn,bank_id)
         conn.execute('INSERT INTO diagnostic_probes VALUES(?,?,?,?,?,?,?,?)',
                      (pid, paper_id, qids[anchor['question_numbers'][0]], bank_id, skill, encode(payload), 'awaiting_response', stamp()))
         for gid, goal in selected:

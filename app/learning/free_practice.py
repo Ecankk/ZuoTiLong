@@ -55,13 +55,17 @@ def public(conn,row):
         if item['text'] or item['image_file']:target[role+'_text']=display_text(role,item)
         if item['image_file']:target[role+'_image']=f'/api/bank/{row["bank_id"]}/practice/attempts/{row["id"]}/materials/{role}'
     reference['errata']=snapshot.get('errata',[])
+    from app.learning.practice_presentation import reference as clean_reference
+    assessment=json.loads(row['assessment_json']) if row['assessment_json'] else None
+    reference=clean_reference(reference,assessment)
+    if assessment:assessment=clean_reference(assessment,reference)
     job=conn.execute('SELECT id,status FROM workflow_jobs WHERE attempt_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
     from app.learning.feedback import info
     return {**body,**info(conn,'free_practice',row['id'],row['assessment_json']),'id':row['id'],'bank_id':row['bank_id'],'source':'free_practice',
         'question_type':snapshot['question_type'],'collection_id':snapshot['collection_id'],
         'materials':{'question':question,'reference':reference if row['assessment_json'] else None},
         'answer_exposed':bool(row['answer_exposed']),'created_at':row['created_at'],
-        'assessment':json.loads(row['assessment_json']) if row['assessment_json'] else None,'job':dict(job) if job else None}
+        'assessment':assessment,'job':dict(job) if job else None}
 
 def counts(conn,topic_id=None):
     result=dict(total=0,correct=0,wrong=0,pending=0,independent_correct=0,assisted_correct=0)
@@ -106,7 +110,9 @@ class FreePracticeService:
         from app.bank.access import access
         if not conn.execute('SELECT 1 FROM bank_questions WHERE id=?',(bid,)).fetchone():raise ServiceError('题库题目不存在',404)
         state=access(conn,bid)
-        if state['reserved'] or not state['can_view']:raise ServiceError('题目未允许查看或属于预留卷',403)
+        if state['reserved'] or not state['can_view']:
+            from app.learning.practice_presentation import denied
+            denied(state)
         from app.bank.annotations import materials,current
         actual=materials(conn,self.config.data,bid)
         from app.storage.practice_materials import freeze
@@ -135,7 +141,9 @@ class FreePracticeService:
             from app.bank.access import access
             try:state=access(conn,bid)
             except ValueError:state={'can_view':False,'reserved':False,'analysis_allowed':False}
-            if not latest and (state['reserved'] or not state['can_view']):raise ServiceError('题目未允许查看或属于预留卷',403)
+            if not latest and (state['reserved'] or not state['can_view']):
+                from app.learning.practice_presentation import denied
+                denied(state)
             reference=bool(latest and latest['assessment_json']) or state['analysis_allowed']
             resources=snapshot['material_manifest']['resources'];question={};refs={}
             for role,item in resources.items():
@@ -144,6 +152,8 @@ class FreePracticeService:
                 if item['image_file'] and latest:target[role+'_image']=f'/api/bank/{bid}/practice/attempts/{latest["id"]}/materials/{role}'
                 elif item['image_file']:target[role+'_image']=f'/api/bank/{bid}/{role}'
             refs['errata']=snapshot.get('errata',[])
+            from app.learning.practice_presentation import reference as clean_reference
+            refs=clean_reference(refs,json.loads(latest['assessment_json']) if latest and latest['assessment_json'] else None)
             total=conn.execute('SELECT count(*) FROM free_practice_attempts WHERE bank_id=?',(bid,)).fetchone()[0]
             return dict(bank_id=bid,question_type=snapshot['question_type'],collection_id=snapshot['collection_id'],question=question,
                 source=snapshot['source'],
@@ -170,7 +180,9 @@ class FreePracticeService:
             from app.bank.access import access,policy_group,reveal
             if not conn.execute('SELECT 1 FROM bank_questions WHERE id=?',(bid,)).fetchone():raise ServiceError('题库题目不存在',404)
             state=access(conn,bid)
-            if state['reserved'] or not state['can_view']:raise ServiceError('题目未允许查看或属于预留卷',403)
+            if state['reserved'] or not state['can_view']:
+                from app.learning.practice_presentation import denied
+                denied(state)
             snapshot,state=self._snapshot(conn,bid)
             group=policy_group(conn,bid)
             exposed=body['answer_exposed'] or any(conn.execute('SELECT 1 FROM bank_exposures WHERE bank_id=?',(i,)).fetchone() for i in group) or any(r!='own_work' for r in body['image_roles'].values())

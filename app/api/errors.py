@@ -13,7 +13,9 @@ async def conflict(request: Request, exc: BridgeConflict):
 
 
 async def invalid(request: Request, exc: Exception):
-    return JSONResponse({'error': str(exc)}, status_code=getattr(exc, 'status', 400))
+    value={'error':str(exc)}
+    if getattr(exc,'reason',None) in ('masked','reserved'):value.update(reason=exc.reason,message=str(exc))
+    return JSONResponse(value, status_code=getattr(exc, 'status', 400))
 
 
 async def validation(request: Request, exc: RequestValidationError):

@@ -235,6 +235,12 @@ def snapshot(conn):
     for tid,event in topic_events(conn):
         tid=canonical(tid)
         if tid in grouped:grouped[tid]['events'].append(event)
+    from app.learning.profile_practice import topic_events as profile_events
+    from app.storage.boundaries import table_exists
+    if table_exists(conn,'profile_practice_attempts'):
+        for tid,event in profile_events(conn):
+            tid=canonical(tid)
+            if tid in grouped:grouped[tid]['events'].append(event)
     from app.knowledge.profile import aggregate
     for item in grouped.values():
         aggregate(item)

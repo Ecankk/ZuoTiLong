@@ -16,7 +16,9 @@ def capture(conn,data,inputs):
     scope=inputs['practice_knowledge'];nodes={n['id']:n for n in scope['catalog_nodes']}
     report=json.loads(inputs['reports'][-1]['report_json']);diagnoses={str(q['number']):q for q in report['questions']}
     state=inputs['practice_plan']['state'];affected=set(state.get('affected_numbers',[]))
-    excluded=set();loc=location(dict(conn.execute('SELECT * FROM papers WHERE id=?',(inputs['paper']['id'],)).fetchone()))
+    from app.bank.originals import uploaded_originals
+    from app.learning.profile_practice import excluded as history_excluded
+    excluded=history_excluded(conn);loc=location(dict(conn.execute('SELECT * FROM papers WHERE id=?',(inputs['paper']['id'],)).fetchone()))
     for q in inputs['questions']:
         if q.get('match_bank_id'):excluded.update(policy_group(conn,q['match_bank_id']))
         if loc['status']=='located' and str(q['number']).isascii() and str(q['number']).isdecimal():
@@ -101,6 +103,12 @@ def normalize(conn,data,task,result):
     from app.learning.practice_knowledge import require_binding
     inputs=task_inputs(conn,task);scope=inputs['selection'];targets={t['goal']['id']:t for t in scope['targets']}
     errors=[]
+    from app.bank.originals import uploaded_originals
+    originals=uploaded_originals(conn)
+    from app.learning.profile_practice import excluded
+    already=excluded(conn)
+    for item in result['selections']:
+        if item['bank_id'] in already and item['bank_id'] not in originals:errors.append('bank_id='+item['bank_id']+'：已作答、已布置或已曝光，不能作为新选题')
     missing=sorted(set(targets)-set(result['limitations']));extra=sorted(set(result['limitations'])-set(targets))
     if missing:errors.append('limitations缺少目标ID：'+', '.join(missing))
     if extra:errors.append('limitations含未知目标ID：'+', '.join(extra))
@@ -113,6 +121,7 @@ def normalize(conn,data,task,result):
                     for tid in goal['topic_ids']:atoms.setdefault(tid,set()).add(row[0])
     for i,item in enumerate(result['selections']):
         bid=item['bank_id'];gids=item['goal_ids']
+        if bid in originals:errors.append('bank_id='+bid+'：已上传试卷原题不能用于新选题；paper_ids='+str(originals[bid]))
         if bid in used:errors.append('bank_id='+bid+'：同题须合并为一个选择，goal_ids='+str(gids))
         used.add(bid)
         if not gids:errors.append('bank_id='+bid+'：goal_ids不能为空')

@@ -76,6 +76,8 @@ def asset_path(root, path):
 
 def validate(record, asset_root):
     canonical(record)  # Also reject non-finite JSON numbers in otherwise free original records.
+    from app.bank.figures import SUPPLEMENT
+    RECORD_SCHEMA['properties']['supplemental_figures']=SUPPLEMENT
     Draft202012Validator(RECORD_SCHEMA).validate(record)
     if isinstance(record['math_type'], bool):
         raise ValueError('math_type must be an integer')
@@ -85,6 +87,10 @@ def validate(record, asset_root):
         for image in part['images']:
             if sha256(asset_path(asset_root, image['path']).read_bytes()) != image['sha256']:
                 raise ValueError('Image SHA256 mismatch: ' + image['path'])
+    if 'supplemental_figures' in record:
+        from app.bank.figures import validate as validate_figures
+        validate_figures(record['supplemental_figures'],asset_root)
+        if any(not record[role]['images'] for role in record['supplemental_figures']['materialized_roles']):raise ValueError('materialized补图角色缺显示图')
     if digest(record['original']['record']) != record['original']['sha256']:
         raise ValueError('Original record SHA256 mismatch: ' + record['source_uid'])
     if not record['stem']['text'].strip() and not record['stem']['images']:

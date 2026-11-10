@@ -127,6 +127,8 @@ def _initialize_connection(database,conn):
     initialize_identity_reviews(conn)
     from app.learning.tasks import init_tasks
     init_tasks(conn)
+    from app.learning.feedback import initialize as initialize_feedback
+    initialize_feedback(conn)
     from app.bank.metadata import initialize as initialize_bank_metadata
     initialize_bank_metadata(conn)
     from app.bank.source_records import initialize as initialize_bank_sources

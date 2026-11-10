@@ -222,6 +222,8 @@ def text_resources(conn,bid,result,*,reference=False):
     """Add readable text for real text-only bank resources; preserve legacy URLs."""
     from app.bank.errata import markers
     result['errata']=markers(conn,bid)
+    from app.bank.figures import markers as figure_markers
+    result['supplemental_figures']=[e for e in figure_markers(conn,bid) if reference or e['role']=='stem']
     resource=conn.execute('SELECT * FROM bank_resources WHERE bank_id=?',(bid,)).fetchone()
     if not resource:
         result.pop('question_image',None);result.pop('analysis_image',None)

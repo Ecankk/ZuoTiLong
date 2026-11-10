@@ -52,6 +52,10 @@ def guard(conn, root, data, kind, paper_id, attempt_id=None, *, review_request=N
         if paper_id is not None or attempt_id is not None:raise ValueError('通用知识任务不能关联学生试卷/作答')
         from app.knowledge.maintenance import guard as preparation_guard
         return preparation_guard(conn,data,kind,task_scope)
+    if task_scope is not None and isinstance(task_scope,dict) and 'profile_batch_id' in task_scope or kind=='grade_attempt' and conn.execute('SELECT 1 FROM profile_practice_attempts WHERE id=?',(attempt_id,)).fetchone():
+        if paper_id is not None:raise ValueError('画像练习不关联原卷')
+        from app.learning.profile_practice import guard as profile_guard
+        return profile_guard(conn,data,kind,task_scope,attempt_id)
     if task_scope is not None:raise ValueError('试卷任务不能夹带题库作用域')
     if kind=='grade_attempt' and conn.execute("SELECT 1 FROM free_practice_attempts WHERE id=?",(attempt_id,)).fetchone():
         if paper_id is not None:raise ValueError('自由练习不关联原卷')
@@ -101,7 +105,7 @@ def guard(conn, root, data, kind, paper_id, attempt_id=None, *, review_request=N
 def enqueue(conn, root, data, kind, paper_id, request_id, attempt_id=None, *,
             workflow_id=None, auto_prepare=False, review_request=None, index_after=False, task_scope=None,
             knowledge_request=None, contract_version=None, index_contract_version='1.8',
-            practice_contract_version=None, continue_practice=False):
+            practice_contract_version=None, continue_practice=False,prepared_guard=None):
     from app.learning.contracts import KINDS,default_version,result_schema
     from app.learning.tasks import atomic, encode
     if kind not in KINDS or ((kind == 'grade_attempt') != bool(attempt_id)):
@@ -122,7 +126,7 @@ def enqueue(conn, root, data, kind, paper_id, request_id, attempt_id=None, *,
     from app.knowledge.maintenance import KINDS as preparation_kinds, normalize_scope
     if kind in preparation_kinds:
         task_scope = normalize_scope(kind,task_scope)
-    elif task_scope is not None:raise ValueError('试卷任务不能携带通用知识作用域')
+    elif task_scope is not None and not (kind=='prepare_practice' and contract_version=='1.12' and set(task_scope)=={'profile_batch_id'}):raise ValueError('试卷任务不能携带通用知识作用域')
     scope_json = encode(task_scope) if task_scope is not None else None
     prior_job=conn.execute('SELECT * FROM workflow_jobs WHERE request_id=?',(request_id,)).fetchone()
     version=contract_version or (prior_job['contract_version'] if prior_job else default_version(kind))
@@ -163,7 +167,8 @@ def enqueue(conn, root, data, kind, paper_id, request_id, attempt_id=None, *,
             return dict(existing)
         # A browser retry after losing the HTTP response must also reuse the
         # current pending work when its fresh request UUID differs.
-        current_guard = guard(conn, root, data, kind, paper_id, attempt_id, review_request=review_request,task_scope=task_scope,knowledge_request=knowledge_request)
+        if prepared_guard is not None and not (kind=='prepare_practice' and version=='1.12' and task_scope):raise ValueError('预计算守卫仅用于画像批次入队')
+        current_guard = prepared_guard if prepared_guard is not None else guard(conn, root, data, kind, paper_id, attempt_id, review_request=review_request,task_scope=task_scope,knowledge_request=knowledge_request)
         existing = conn.execute('''SELECT * FROM workflow_jobs WHERE paper_id IS ? AND kind=?
           AND attempt_id IS ? AND review_json IS ? AND scope_json IS ? AND knowledge_json IS ? AND contract_version=?
           AND practice_contract_version=? AND continue_practice=? AND auto_prepare=?
@@ -270,6 +275,7 @@ def retry_job(conn, root, data, job_id):
             contract_version=job['contract_version'],index_contract_version=job['index_contract_version'],
             practice_contract_version=job['practice_contract_version'],continue_practice=bool(job['continue_practice']))
         conn.execute("UPDATE knowledge_preparation_items SET job_id=? WHERE job_id=? AND status='running'",(replacement['id'],job_id))
+        conn.execute('UPDATE profile_practice_batches SET job_id=? WHERE job_id=?',(replacement['id'],job_id))
         return
     from app.learning.tasks import encode
     conn.execute("UPDATE workflow_jobs SET guard_json=?,status='queued',error=NULL,updated_at=? WHERE id=?",
@@ -300,6 +306,7 @@ def continue_job(conn,root,data,job,task):
     """Schedule from a locally validated, committed task result."""
     if task['status']!='completed' or not task['result_id']:
         raise ValueError('原阶段尚未确认完成')
+    if json.loads(task['input_json']).get('contract_version')=='1.12':return
     if task['kind'] in ('maintain_catalog','annotate_questions'):
         from app.knowledge.preparation import advance
         advance(conn,root,data,job,task)

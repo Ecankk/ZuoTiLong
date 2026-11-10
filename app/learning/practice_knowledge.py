@@ -71,7 +71,8 @@ def capture(conn,paper_id,data):
 
 def material_binding(conn,data,bank_id,annotation):
     actual=annotations.materials(conn,data,bank_id)
-    return {'bank_id':bank_id,'annotation_id':annotation['id'],
+    from app.bank.figures import markers as figure_markers
+    return {'bank_id':bank_id,'annotation_id':annotation['id'],**({'supplemental_figures':figure_markers(conn,bank_id)} if figure_markers(conn,bank_id) else {}),
             'content_revision':actual['question']['sha256'],
             'material_revision':catalog.digest(actual),
             'annotation_content_revision':annotation['content_revision'],
@@ -313,6 +314,10 @@ def grading_version(conn,attempt_id):
 
 
 def grading_contract(conn,attempt_id,requested=None):
+    if conn.execute('SELECT 1 FROM profile_practice_attempts WHERE id=?',(attempt_id,)).fetchone():
+        if requested not in (None,'1.12'):raise ValueError('画像练习须使用1.12批改契约')
+        return '1.12'
+    if requested=='1.12':raise ValueError('1.12仅用于画像练习')
     if conn.execute("SELECT 1 FROM free_practice_attempts WHERE id=?",(attempt_id,)).fetchone():
         if requested not in (None,'1.11'):raise ValueError('自由练习须使用1.11批改契约')
         return '1.11'

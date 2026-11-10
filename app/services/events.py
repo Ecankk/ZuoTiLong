@@ -85,7 +85,7 @@ class EventStream:
                 if current['preparation'] != previous['preparation']:
                     yield self.frame('preparation.changed', {'preparation':current['preparation']})
                 if current['resource_tokens'] != previous['resource_tokens']:
-                    yield self.frame('resources.changed', dict(resources=['papers','questions','practices','knowledge','bank','preferences'], resource_tokens=current['resource_tokens']))
+                    yield self.frame('resources.changed', dict(resources=['papers','questions','practices','knowledge','bank','preferences','profile'], resource_tokens=current['resource_tokens']))
                 version, previous = latest, current
         except RuntimeError:
             yield 'event: error\ndata: {"error":"后台状态暂不可用，请重新连接"}\n\n'

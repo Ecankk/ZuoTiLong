@@ -31,9 +31,9 @@ def question(question_id: str, request: Request, rt=Depends(runtime)):
 
 @router.get('/practices')
 def practices(request: Request, group_by: str='topic', status: str|None=None, paper_id: str|None=None,
-              topic_id: str|None=None, include_inactive: bool=False,
+              topic_id: str|None=None, include_inactive: bool=False,source:str|None=None,batch_id:str|None=None,
               offset: int=Query(0, ge=0), limit: int=Query(20, ge=1, le=100), rt=Depends(runtime)):
-    return conditional(request, rt.frontend.practices(group_by, status, paper_id, topic_id, include_inactive, offset, limit))
+    return conditional(request, rt.frontend.practices(group_by, status, paper_id, topic_id, include_inactive, offset, limit,source,batch_id))
 
 
 @router.get('/practices/{practice_id}')

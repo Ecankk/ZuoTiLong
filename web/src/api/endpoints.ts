@@ -45,7 +45,18 @@ import type {
   UploadedImage,
 } from './types'
 
-export type PracticeGrouping = 'topic' | 'paper'
+/** group_by：按考点 / 按试卷（画像题按批次成组） / 按来源 / 按画像批次 */
+export type PracticeGrouping = 'topic' | 'paper' | 'source' | 'batch'
+
+/** GET /api/practices 的可选筛选（app/api/frontend_resources.py 的实际参数） */
+export type PracticeFilter = {
+  /** paper：原卷练习；profile：画像选题；省略为两者合并 */
+  source?: 'paper' | 'profile'
+  batchId?: string
+  status?: string
+  paperId?: string
+  topicId?: string
+}
 export type PaperScope = '0' | '1'
 /** collection 必填：不同题集不混在一起浏览 */
 export type BankFilter = {
@@ -84,10 +95,20 @@ export const endpoints = {
     request<PaperSummaryResponse>(`/api/papers/${enc(paperId)}/summary`),
   question: (questionId: string) =>
     orNull(request<QuestionResponse>(`/api/questions/${enc(questionId)}`)),
-  practices: (groupBy: PracticeGrouping, includeInactive: boolean) =>
-    request<PracticesResponse>(
-      `/api/practices?group_by=${groupBy}&include_inactive=${includeInactive}&offset=0&limit=100`,
-    ),
+  practices: (groupBy: PracticeGrouping, includeInactive: boolean, filter: PracticeFilter = {}) => {
+    const query = new URLSearchParams({
+      group_by: groupBy,
+      include_inactive: String(includeInactive),
+      offset: '0',
+      limit: '100',
+    })
+    if (filter.source) query.set('source', filter.source)
+    if (filter.batchId) query.set('batch_id', filter.batchId)
+    if (filter.status) query.set('status', filter.status)
+    if (filter.paperId) query.set('paper_id', filter.paperId)
+    if (filter.topicId) query.set('topic_id', filter.topicId)
+    return request<PracticesResponse>(`/api/practices?${query}`)
+  },
   practice: (practiceId: string) =>
     orNull(request<PracticeResponse>(`/api/practices/${enc(practiceId)}`)),
   preferences: () => request<Preferences>('/api/preferences'),

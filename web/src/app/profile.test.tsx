@@ -164,7 +164,7 @@ it('confirms before queuing a profile batch, shows progress and jumps to the pra
   expect(await screen.findByText(/做题龙正在按画像挑题/)).toBeInTheDocument()
   expect(await screen.findByRole('link', { name: /开始做/ }, { timeout: 6000 })).toHaveAttribute(
     'href',
-    '/practice?source=profile&view=topic&item=profile-probe-1',
+    '/practice?source=profile&view=topic&item=profile-probe-1&batch=profile-batch-1',
   )
 }, 10000)
 

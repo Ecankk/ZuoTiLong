@@ -1,5 +1,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { endpoints, type BankFilter, type PaperScope, type PracticeGrouping } from './endpoints'
+import {
+  endpoints,
+  type PracticeFilter,
+  type BankFilter,
+  type PaperScope,
+  type PracticeGrouping,
+} from './endpoints'
 import type { PreferencesChange } from './types'
 
 /**
@@ -39,10 +45,14 @@ export const useQuestion = (questionId: string | undefined) =>
     enabled: Boolean(questionId),
   })
 
-export const usePractices = (groupBy: PracticeGrouping, includeInactive = false) =>
+export const usePractices = (
+  groupBy: PracticeGrouping,
+  includeInactive = false,
+  filter: PracticeFilter = {},
+) =>
   useQuery({
-    queryKey: queryKeys.practices(groupBy, includeInactive),
-    queryFn: () => endpoints.practices(groupBy, includeInactive),
+    queryKey: [...queryKeys.practices(groupBy, includeInactive), filter],
+    queryFn: () => endpoints.practices(groupBy, includeInactive, filter),
   })
 
 export const usePractice = (practiceId: string | undefined) =>

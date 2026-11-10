@@ -36,10 +36,13 @@ function useActiveBatch() {
   return [batchId, save] as const
 }
 
-export const practiceLinkForBatch = (practiceIds: string[]) =>
-  practiceIds.length
-    ? `/practice?source=profile&view=topic&item=${encodeURIComponent(practiceIds[0])}`
-    : '/practice?source=profile&view=topic'
+/** 文档约定的跳转（source=profile&view=topic&item=首个练习）；带上 batch 只看这一组 */
+export const practiceLinkForBatch = (practiceIds: string[], batchId?: string) => {
+  const batch = batchId ? `&batch=${encodeURIComponent(batchId)}` : ''
+  return practiceIds.length
+    ? `/practice?source=profile&view=topic&item=${encodeURIComponent(practiceIds[0])}${batch}`
+    : `/practice?source=profile&view=topic${batch}`
+}
 
 const categoryText = { weak: '薄弱', review_due: '该复习', uncovered: '新考点' } as const
 
@@ -90,7 +93,7 @@ function BatchProgress({ batchId, onDone }: { batchId: string; onDone: () => voi
             </p>
           ))}
           <ButtonRow className={styles.actions}>
-            <ButtonLink variant="primary" to={practiceLinkForBatch(batch.practice_ids)}>
+            <ButtonLink variant="primary" to={practiceLinkForBatch(batch.practice_ids, batch.id)}>
               开始做 <ArrowRight size={16} aria-hidden />
             </ButtonLink>
             <Button variant="ghost" onClick={onDone}>

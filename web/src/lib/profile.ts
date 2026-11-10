@@ -28,3 +28,11 @@ export function evidenceLink(e: WeakSpotEvidence) {
 export const weakSpotFacts = (spot: WeakSpot) =>
   `近 28 天做了 ${spot.recent_judged} 道，错 ${spot.recent_failures} 道` +
   (spot.weak_atom_count > 0 ? ` · ${spot.weak_atom_count} 个考点要补` : '')
+
+/** 后端的依据句已经写了“做了几道、错几道”时，只补一句“几个考点要补”，不重复计数 */
+export const weakSpotFactsBesideBasis = (spot: WeakSpot) =>
+  !spot.basis
+    ? weakSpotFacts(spot)
+    : spot.weak_atom_count > 0
+      ? `${spot.weak_atom_count} 个考点要补`
+      : ''

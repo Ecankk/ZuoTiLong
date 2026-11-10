@@ -18,7 +18,7 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { cx } from '../../lib/cx'
 import { ProfileBatchPanel } from './ProfileBatch'
-import { evidenceLink, stageLabel, weakSpotFacts } from '../../lib/profile'
+import { evidenceLink, stageLabel, weakSpotFactsBesideBasis } from '../../lib/profile'
 import styles from './ProfilePage.module.css'
 
 /* ---------- 共用：状态、阶段、出处链接 ---------- */
@@ -97,7 +97,9 @@ function WeakSpotItem({
           <strong>{spot.name}</strong>
           {subjectName && <small>{subjectName}</small>}
         </div>
-        <p className={styles.spotFacts}>{weakSpotFacts(spot)}</p>
+        {weakSpotFactsBesideBasis(spot) && (
+          <p className={styles.spotFacts}>{weakSpotFactsBesideBasis(spot)}</p>
+        )}
         {spot.basis && <p className={styles.basis}>{spot.basis}</p>}
         {spot.evidence.length > 0 && (
           <ul className={styles.evidence} aria-label={`${spot.name}的错题`}>

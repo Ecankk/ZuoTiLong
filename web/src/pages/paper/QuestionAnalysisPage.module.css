@@ -259,10 +259,15 @@
   gap: var(--space-3);
 }
 
-/* 分析列太窄时“你写的 / 首个错误”上下排，公式不再频繁折行 */
+/* 分析列太窄时“你写的 / 首个错误”上下排，公式不再频繁折行；考点卡片的按钮换到下面 */
 @container analysis (max-width: 520px) {
   .compare {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topicCta {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
@@ -420,25 +425,13 @@
   gap: var(--space-2);
 }
 
-/* 考点标签可点：描边 + 悬停加深，和纯展示的标签区分开 */
+/* 考点标签可点：主色标签 + 公共 Chip 的悬停描边（G5） */
 .topicLink {
   border-radius: var(--radius-pill);
-  text-decoration: none;
 }
 
 .topicLink:hover {
   text-decoration: none;
-}
-
-.topicLink > span {
-  border: 1px solid rgba(43, 76, 155, 0.25);
-  transition:
-    background var(--duration-base) var(--ease-out),
-    border-color var(--duration-base) var(--ease-out);
-}
-
-.topicLink:hover > span {
-  border-color: var(--color-primary);
 }
 
 .topicLink:focus-visible {

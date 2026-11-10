@@ -445,7 +445,7 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
       {detail.topics.length > 0 && (
         <Card className={styles.topicCta}>
           <div>
-            <small>本题考点 · 点击查看考点详情</small>
+            <small>本题考点 · 点击查看详情</small>
             <div className={styles.tags}>
               {detail.topics.map((topic) => (
                 <Link

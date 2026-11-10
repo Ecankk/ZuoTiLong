@@ -51,7 +51,7 @@ def _attempt_evidence(conn):
                    'detail':{'independent':is_independent,'answer_exposed':not is_independent,'attempt_id':row['id']}}
 
 
-def build_profile(conn):
+def build_profile(conn,*,temporal=True):
     grouped={}
     def skill(sid,label):return grouped.setdefault(sid,{'skill_id':sid,'label':label,'events':[],
                                                        'hypotheses':[],'probe_ids':[]})
@@ -119,7 +119,9 @@ def build_profile(conn):
         payload=parsed(row['payload_json'],{})
         skill(row['skill_id'],payload.get('skill_label') or row['skill_id'])['probe_ids'].append(row['id'])
     for item in grouped.values():
-        events=sorted(item['events'],key=lambda e:(e['created_at'],e['source']=='attempt',e['id']))
+        from app.learning.dates import project,groups,mixed
+        if temporal:item['events']=project(conn,item['events'])
+        events=[e for bucket in groups(item['events']) for e in sorted(bucket,key=lambda e:e['id'])] if temporal else sorted(item['events'],key=lambda e:(e['created_at'],e['source']=='attempt',e['id']))
         item['events']=events
         effective=[e for e in events if e['kind'] in ('exam_error','exam_success','probe_failure','probe_success')
                    and (e['source']!='exam' or e.get('verified'))]
@@ -134,11 +136,17 @@ def build_profile(conn):
                     attempt_count=len({e['attempt_id'] for e in events if e.get('attempt_id')}))
         if not effective:
             item.update(state='未覆盖',state_reason='尚无足够的有效作答结论；待核对分析、猜测或材料不足不等于确定薄弱。')
+        elif temporal and mixed(groups(effective)[-1]):
+            item.update(state='巩固中',state_reason='同一时间范围内有对有错，还需要再练几道。')
         elif effective[-1]['kind'] in ('exam_error','probe_failure'):
             item.update(state='需要关注',state_reason='最近的有效作答仍有错误证据；解析后完成单独记录。')
         else:
-            last_error=max((i for i,e in enumerate(effective) if e['kind'] in ('exam_error','probe_failure')),default=-1)
-            following=[e for e in effective[last_error+1:] if e['kind'] in ('exam_success','probe_success')]
+            if temporal:
+                ordered=groups(effective);last_error=max((i for i,b in enumerate(ordered) if any(e['kind'] in ('exam_error','probe_failure') for e in b)),default=-1)
+                following=[e for b in ordered[last_error+1:] for e in b]
+            else:
+                last_error=max((i for i,e in enumerate(effective) if e['kind'] in ('exam_error','probe_failure')),default=-1)
+                following=[e for e in effective[last_error+1:] if e['kind'] in ('exam_success','probe_success')]
             diverse=len({e['paper_id'] for e in following})>=2 or len({e['created_at'][:10] for e in following})>=2
             if len(following)>=2 and diverse:
                 item.update(state='初步掌握',state_reason='最近错误之后，已有跨卷或不同日期的两次有效成功；仅适用于已记录的环节。')

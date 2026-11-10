@@ -62,7 +62,7 @@ def guard(conn, root, data, kind, paper_id, attempt_id=None, *, review_request=N
         from app.learning.free_practice import capture
         return capture(conn,data,attempt_id)
     paper = conn.execute('SELECT * FROM papers WHERE id=?', (paper_id,)).fetchone()
-    if not paper or paper['archived_at'] or not paper['source_path']:
+    if not paper or paper['archived_at'] or not paper['source_path'] or paper['import_decision']!='accepted':
         raise ValueError('试卷不存在、已归档或缺少原PDF')
     result = {'source_sha256': resource_digest(paper_path(data,paper['source_path'],root), data)}
     if knowledge_request is not None:

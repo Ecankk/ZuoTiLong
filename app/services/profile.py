@@ -40,6 +40,7 @@ def distribution(nodes):
 
 
 def state_reason(node):
+    if '同一时间范围' in node['state_reason']:return node['state_reason']
     return {'需要关注':'最近做的题还有出错，建议再练几道。','巩固中':'已经做对过，换几道题再试试。',
             '初步掌握':'在不同试卷或不同日期做对过，继续练习保持。',
             '未覆盖':'还没有这部分的做题记录。','证据不足':'记录还不够，再做几道才能判断。'}[node['state']]
@@ -51,16 +52,18 @@ def _assessment_time(conn,assessment,fallback):
 
 def facts(conn):
     values=[]
-    for row in conn.execute('''SELECT q.*,p.title,p.exam_date,p.created_at paper_created,d.diagnosis_json,r.report_json
+    for row in conn.execute('''SELECT q.*,p.title,p.exam_date,p.exam_date_precision,p.exam_date_unknown_reason,p.created_at paper_created,d.diagnosis_json,r.report_json
         FROM questions q JOIN papers p ON p.id=q.paper_id JOIN question_diagnoses d ON d.question_id=q.id
         JOIN agent_reports r ON r.id=d.report_id WHERE p.archived_at IS NULL'''):
         diagnosis=json.loads(row['diagnosis_json']);report=json.loads(row['report_json'])
         evidence=diagnosis.get('answer_evidence') or {}
         verified=report.get('review',{}).get('status')=='verified' and report.get('completion')=='complete'
         correctness=diagnosis.get('correctness','unknown')
-        values.append(dict(source='exam',practice_source=None,id=row['id'],question_id=row['id'],practice_id=None,
+        from app.services.profile_metrics import loss
+        score=loss(diagnosis,row)
+        values.append(dict(**score,exam_date=row['exam_date'],exam_date_precision=row['exam_date_precision'],exam_date_unknown_reason=row['exam_date_unknown_reason'],source='exam',practice_source=None,id=row['id'],question_id=row['id'],practice_id=None,
             attempt_id=None,paper_id=row['paper_id'],question_number=str(row['number']),bank_id=row['match_bank_id'],batch_id=None,label=f"{row['title']} 第{row['number']}题",
-            occurred_at=row['exam_date'] or row['paper_created'],correct=(True if correctness=='correct' else False if correctness in ('wrong','partial') else None) if verified else None,
+            occurred_at=row['exam_date'],correct=(True if correctness=='correct' else False if correctness in ('wrong','partial') else None) if verified else None,
             independent=None,answer_exposed=None,pending=False,assessment=None,first_error=diagnosis.get('first_error'),
             counted=evidence.get('student_state')=='visible' and bool(evidence.get('student_work','').strip()),needs_review=correctness=='unknown'))
     for row in conn.execute('''SELECT a.*,d.paper_id,d.question_id,d.bank_id,p.title FROM probe_attempts a
@@ -89,7 +92,10 @@ def facts(conn):
                 occurred_at=row['created_at'],correct=(assessment or {}).get('correct'),independent=not bool(row['answer_exposed']),answer_exposed=bool(row['answer_exposed']),
                 pending=assessment is None,assessment=assessment,assessed_at=_assessment_time(conn,assessment,row['created_at']),first_error=(assessment or {}).get('first_error'),
                 needs_review=bool(assessment and assessment.get('correct') is None)))
-    for value in values:value.setdefault('question_number',None)
+    for value in values:
+        value.setdefault('question_number',None)
+        for field in ('exam_date','exam_date_precision','exam_date_unknown_reason','max_score','score_earned','lost_points','loss_basis'):value.setdefault(field,None)
+        value.setdefault('loss_unavailable_reason','not_exam')
     return values
 
 
@@ -162,11 +168,14 @@ class ProfileService:
             for tid,n in nodes.items():
                 observed=[f for f in fs if set(f['topic_ids']) & (descendants[tid]|{tid})]
                 node_facts[tid]=observed
+                from app.learning.dates import latest
+                n['last_attempt_date']=latest(observed)
+                if n['last_attempt_date'] and n['last_attempt_date']['precision']!='day':n['last_attempt_at']=None
                 n['distribution']=distribution(nodes[a] for a in descendants[tid])
                 n.update(ready_question_count=len(ready[tid]),study_ready_question_count=len(study[tid]),selectable_question_count=len(selectable[tid]))
                 if n['kind']!='atom':
                     n.update(successes=sum(f['correct'] is True and f['independent'] is not False for f in observed),failures=sum(f['correct'] is False and f['independent'] is not False for f in observed),assisted=sum(f['correct'] is True and f['independent'] is False for f in observed))
-                    n['last_attempt_at']=max((f['occurred_at'] for f in observed if f['occurred_at']),default=None)
+                    n['last_attempt_at']=max((f['occurred_at'] for f in observed if f['occurred_at']),default=None) if not n['last_attempt_date'] or n['last_attempt_date']['precision']=='day' else None
             result=dict(clock=clock,generated_at=clock.isoformat(),prefs=prefs,release=release,facts=fs,nodes=nodes,descendants=descendants,
                 node_facts=node_facts,receipts=receipts,pending_papers=pending_papers,issues=issues,cards=cards,snapshot=snapshot,operational_facts=operational)
             self.value=result;self.key=key if key==(self.rt.workspace.revision(),now().date().isoformat()) else None
@@ -181,10 +190,11 @@ class ProfileService:
     def trends(self,weeks=12):
         if type(weeks) is not int or not 1<=weeks<=52:raise ValueError('weeks须为1–52')
         d=self.data();clock=d['clock'];monday=clock.replace(hour=0,minute=0,second=0,microsecond=0)-timedelta(days=clock.weekday())
-        start=monday-timedelta(weeks=weeks-1);weekly=[];period=[];undated=[]
+        start=monday-timedelta(weeks=weeks-1);weekly=[];period=[];undated=[];unplaced={'month':[],'unknown':[]}
         for f in d['facts']:
             dt=dated(f['occurred_at'],clock.tzinfo)
-            if dt is None:undated.append(f)
+            if dt is None:
+                undated.append(f);unplaced['month' if f.get('exam_date_precision')=='month' else 'unknown'].append(f)
             elif start<=dt<=clock:period.append(f)
         for i in range(weeks):
             a=start+timedelta(weeks=i);b=a+timedelta(weeks=1)
@@ -192,13 +202,13 @@ class ProfileService:
             weekly.append(dict(week_start=a.date().isoformat(),week_end=(b-timedelta(days=1)).date().isoformat(),complete=b<=clock,
                 sources={s:count(f for f in rows if f['source']==s) for s in ('exam','practice','free_practice')}))
         return dict(generated_at=d['generated_at'],timezone=clock.strftime('%z'),include_free_practice=d['prefs']['include_free_practice'],
-            period={'from':start.isoformat(),'to':clock.isoformat(),'weeks':weeks,'week_starts_on':'monday'},weekly=weekly,totals=count(period),undated=count(undated),limitations=self.limitations(d))
+            period={'from':start.isoformat(),'to':clock.isoformat(),'weeks':weeks,'week_starts_on':'monday'},weekly=weekly,totals=count(period),undated=count(undated),unplaced_by_precision={k:count(v) for k,v in unplaced.items()},limitations=self.limitations(d))
 
     def limitations(self,d):
         values=[]
         if not d['release']:values.append('考点目录还没准备好，暂时看不到的部分不代表你不会。')
         if d['snapshot']['pending_sources']:values.append('还有一些作答没整理到考点里，这里的统计还不完整。')
-        if any(f['source']=='exam' and f['independent'] is None for f in d['facts']):values.append('无法确认原卷是否独立完成，所以没计入独立做对。没填作答日期的卷子，目前按上传日期统计。')
+        if any(f['source']=='exam' and f['independent'] is None for f in d['facts']):values.append('无法确认原卷是否独立完成，所以没计入独立做对。没填日期或只记得月份的卷子会计入历史记录，不会放进每周统计。')
         return values
 
     def targets(self,d,subject=None,chapter=None):
@@ -213,9 +223,11 @@ class ProfileService:
         for tid,n in nodes.items():
             if tid not in allowed or n['kind']!='atom' or not n['selectable_question_count']:continue
             if n['math_types'] and d['prefs']['study_type'] and d['prefs']['study_type'] not in n['math_types']:continue
-            observed=d['node_facts'][tid];dt=dated(n['last_attempt_at'],d['clock'].tzinfo)
+            observed=d['node_facts'][tid]
+            from app.learning.dates import interval
+            bounds=interval((n.get('last_attempt_date') or {}).get('value'),d['clock'])
             if n['display_state']=='weak':category='weak'
-            elif n['assisted'] and not n['successes'] or dt and d['clock']-dt>=timedelta(days=14):category='review_due'
+            elif n['assisted'] and not n['successes'] or bounds and d['clock'].date()-bounds[1]>=timedelta(days=14):category='review_due'
             elif not observed and not n['pending'] and n['study_ready_question_count']:category='uncovered'
             else:continue
             result.append(dict(topic_id=tid,name=n['name'],category=category,reason=n['state_reason']))
@@ -227,31 +239,9 @@ class ProfileService:
         subjects=[]
         for n in nodes.values():
             if n['kind']=='subject':subjects.append(dict(n,chapters=[deepcopy(c) for c in nodes.values() if c['kind']=='chapter' and c['parent_id']==n['id']]))
-        spots=[];window=clock-timedelta(days=28)
-        for n in nodes.values():
-            if n['kind'] not in ('chapter','topic') or not n['distribution']['weak']:continue
-            if n['kind']=='topic':
-                cursor=n['parent_id'];seen=set();nested=False
-                while cursor in nodes and cursor not in seen:
-                    seen.add(cursor)
-                    if nodes[cursor]['kind'] in ('chapter','topic'):nested=True;break
-                    cursor=nodes[cursor]['parent_id']
-                if nested:continue
-            recent=[f for f in d['node_facts'][n['id']] if f['correct'] is not None and f['independent'] is not False and dated(f['occurred_at'],clock.tzinfo) and window<=dated(f['occurred_at'],clock.tzinfo)<=clock]
-            failures=[f for f in recent if f['correct'] is False]
-            if not failures:continue
-            failures.sort(key=lambda f:f['occurred_at'],reverse=True)
-            evidence=[dict(**{k:f[k] for k in ('source','paper_id','question_id','question_number','practice_id','attempt_id','bank_id','label','occurred_at')},
-                first_error_stage=(f['first_error'] or {}).get('stage'),first_error_evidence=(f['first_error'] or {}).get('evidence')) for f in failures[:3]]
-            stage_names={'entry':'切入','modeling':'建模','formula':'公式','calculation':'计算','finalization':'最终处理'}
-            stages=list(dict.fromkeys(stage_names[e['first_error_stage']] for e in evidence if e['first_error_stage'] in stage_names))
-            basis=(f'近28天做了{len(recent)}道，错{len(failures)}道。例：'+'、'.join(e['label'] for e in evidence)+('；最先出错的环节：'+'、'.join(stages) if stages else '')+'。') if evidence else None
-            spots.append(dict(node_id=n['id'],name=n['name'],kind=n['kind'],subject_id=n['parent_id'],weak_atom_count=n['distribution']['weak'],
-                observed_atom_count=sum(nodes[a]['display_state']!='no_record' for a in d['descendants'][n['id']]),total_atom_count=len(d['descendants'][n['id']]),
-                recent_failures=len(failures),recent_judged=len(recent),failure_ratio=len(failures)/len(recent),window={'from':window.isoformat(),'to':clock.isoformat()},
-                basis=basis,evidence=evidence))
-        spots.sort(key=lambda s:s['evidence'][0]['occurred_at'] or '',reverse=True)
-        spots.sort(key=lambda s:(-s['recent_failures'],-s['failure_ratio'],-s['weak_atom_count']))
+        from app.services.profile_metrics import weak_spots,first_error_summary,evidence
+        from app.learning.dates import recent
+        spots=weak_spots(d)
         def conclusion(n):
             fs=d['node_facts'][n['id']];judged=[f for f in fs if f['correct'] is not None and f['independent'] is not False]
             return dict(node_id=n['id'],name=n['name'],subject_id=n['parent_id'],basis=f'已批改的{len(judged)}道题里，做对{sum(f["correct"] is True for f in judged)}道、错{sum(f["correct"] is False for f in judged)}道；只说明这些做过的题，不能代表整章都会。',judged_count=len(judged),successes=sum(f['correct'] is True for f in judged),failures=sum(f['correct'] is False for f in judged),
@@ -262,7 +252,7 @@ class ProfileService:
             c=conclusion(n);dates={f['occurred_at'][:10] for f in d['node_facts'][n['id']] if f['occurred_at'] and f['correct'] is not None}
             if c['judged_count']>=5 and len(dates)>=2 and c['observed_atom_count']>=min(2,c['total_atom_count']) and not c['weak_atom_count'] and c['successes']:strong.append(c)
         strong.sort(key=lambda c:(c['failures']/c['judged_count'],-c['independent_correct'],-c['observed_atom_count']/max(1,c['total_atom_count']),c['node_id']))
-        weak=next((conclusion(nodes[s['node_id']]) for s in spots if s['kind']=='chapter' and s['recent_failures']>=2 and conclusion(nodes[s['node_id']])['judged_count']>=3),None)
+        weak=next((conclusion(nodes[s['node_id']]) for s in spots if s['kind']=='chapter' and (s['recent_failures'] if s['evidence_period']=='recent' else s['historical_failures'])>=2 and conclusion(nodes[s['node_id']])['judged_count']>=3),None)
         windows=[]
         for a,b in ((monday-timedelta(weeks=8),monday-timedelta(weeks=4)),(monday-timedelta(weeks=4),monday)):
             fs=[f for f in d['facts'] if f['independent'] is True and f['correct'] is not None and dated(f['occurred_at'],clock.tzinfo) and a<=dated(f['occurred_at'],clock.tzinfo)<b]
@@ -276,12 +266,16 @@ class ProfileService:
             ('read_feedback',unread,'查看新的批改反馈'),('review_results',len(review),'核对已有判断或补充材料'),('continue_practice',unfinished,'继续未完成练习'),('analyze_paper',d['pending_papers'],'核对切题后开始新卷分析'),('profile_batch',len(targets),'按已有画像选择一组练习'))]
         week_counts=count(week)
         visible_atoms=set().union(*(d['descendants'][s['id']] for s in subjects)) if subjects else set()
+        recent_judged=sum(f.get('counted',True) and f['correct'] is not None and f['independent'] is not False and recent(f['occurred_at'],clock) for f in d['facts'])
+        history_fallback=any(s['evidence_period']=='historical' for s in spots[:5])
         return dict(generated_at=d['generated_at'],study_type=d['prefs']['study_type'],timezone=clock.strftime('%z'),week={'from':monday.isoformat(),'to':clock.isoformat(),'week_starts_on':'monday'},
             catalog_release_id=d['release'],include_free_practice=d['prefs']['include_free_practice'],home_stats=dict(attempts_this_week=week_counts['attempts'],independent_correct_this_week=week_counts['independent_correct'],grading_count=sum(f['pending'] for f in d['operational_facts'])),
             totals=dict(pending_analysis_paper_count=d['pending_papers'],unfinished_practice_count=unfinished,unread_feedback_count=unread,needs_review_count=len(review)),
             distribution=distribution(n for n in nodes.values() if n['kind']=='atom' and n['id'] in visible_atoms),
-            subjects=subjects,weak_spots=spots[:5],conclusions=dict(strongest_chapter=strong[0] if strong else None,weakest_chapter=weak,independent_correct_comparison=comparison,
+            subjects=subjects,weak_spots=spots[:5],first_error_summary=first_error_summary(d),
+            weak_spots_context=dict(recent_window={'from':(clock-timedelta(days=27)).date().isoformat(),'to':clock.date().isoformat()},recent_judged_count=recent_judged,recent_evidence_sufficient=recent_judged>=5,uses_history_fallback=history_fallback,explanation=('近期记录较少，下面也参考了历史错题。' if recent_judged<5 else '有些章节近期没有错题记录，下面用历史错题补充。') if history_fallback else None),
+            history_counts=dict(month_dated_attempts=sum(f.get('exam_date_precision')=='month' and f.get('counted',True) for f in d['facts']),unknown_dated_attempts=sum(f['source']=='exam' and f.get('exam_date_precision')=='unknown' and f.get('counted',True) for f in d['facts'])),conclusions=dict(strongest_chapter=strong[0] if strong else None,weakest_chapter=weak,independent_correct_comparison=comparison,
                 unavailable_reasons=dict(strongest_chapter=None if strong else '记录还不够，再做几道才能判断。',weakest_chapter=None if weak else '最近的错题还不够，暂时不能判断哪章最弱。',independent_correct_comparison=None if comparison else '前后各四周里，能确认独立完成并批改过的题还不够。')),
             feedback=dict(unread_count=unread,recent_items=receipts[:3]),review=dict(total=len(review),counts={k:sum(f['source']==s for f in review) for k,s in [('exam_questions','exam'),('practice_attempts','practice'),('free_practice_attempts','free_practice')]},paper_issue_count=d['issues'],items=[dict(**{k:f[k] for k in ('source','question_id','attempt_id','practice_id','paper_id','bank_id')},reason='已有判断不确定或需补材料') for f in review[:5]]),
-            recent_mistakes=[{k:f[k] for k in ('source','practice_source','question_id','question_number','practice_id','attempt_id','paper_id','bank_id','batch_id','label','occurred_at','answer_exposed','topic_ids')} for f in sorted(d['facts'],key=lambda f:f['occurred_at'] or '',reverse=True) if f['correct'] is False][:3],
+            recent_mistakes=[evidence(f) for f in sorted(d['facts'],key=lambda f:f['occurred_at'] or '',reverse=True) if f['correct'] is False and f.get('counted',True)][:3],
             next_steps=next_steps,profile_batch_eligibility=dict(can_create=bool(targets),reason=None if targets else '请先选择数一、数二或数三；如果已经选好，暂时没有适合你这次练的题。',target_counts=counts),limitations=self.limitations(d))

@@ -144,7 +144,7 @@ def capture_input(conn, root, data, kind, paper_id, attempt_id=None, *, contract
         return capture(conn, data, kind, task_scope,annotation_rule_revision=annotation_rule_revision)
     if task_scope is not None:raise ValueError('试卷任务不能夹带题库维护作用域')
     paper = conn.execute('SELECT * FROM papers WHERE id=?', (paper_id,)).fetchone()
-    if not paper or paper['archived_at']:
+    if not paper or paper['archived_at'] or paper['import_decision']!='accepted':
         raise ValueError('试卷不存在或已归档')
     paper = dict(paper)
     if not paper.get('source_path'):

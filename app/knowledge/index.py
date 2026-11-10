@@ -77,7 +77,7 @@ def compact_catalog(conn):
 
 def sources(conn, paper_id=None):
     """Authoritative current snapshots, independent of existing index mappings."""
-    raw = legacy_profile(conn)
+    raw = legacy_profile(conn,temporal=False)
     events = {e['id']: e for item in raw for e in item['events']}
     output = []
     def add(sid, kind, pid, content, evidence):
@@ -243,6 +243,8 @@ def snapshot(conn):
             if tid in grouped:grouped[tid]['events'].append(event)
     from app.knowledge.profile import aggregate
     for item in grouped.values():
+        from app.learning.dates import project
+        item['events']=project(conn,item['events'])
         aggregate(item)
         if any(s['mapping_status']=='legacy_unversioned' for s in item['scopes']):
             item['state_reason']+=' 包含尚未按当前目录/规则核验的历史映射，需整理后再作细考点判断。'

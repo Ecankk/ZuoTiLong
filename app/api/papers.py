@@ -31,9 +31,9 @@ def papers(request:Request,archived:str='0',offset:int|None=Query(None,ge=0),lim
 @router.post('/papers',status_code=201)
 def create_paper(body:PaperDraft,rt=Depends(runtime)):return rt.mutate(rt.papers.create,body.model_dump())
 @router.post('/papers/import')
-async def import_paper(file:UploadFile=File(...),title:str=Form(''),exam_date:str=Form(''),rt=Depends(runtime)):
+async def import_paper(file:UploadFile=File(...),title:str=Form(''),exam_date:str=Form(''),exam_date_precision:str|None=Form(None),exam_date_unknown_reason:str|None=Form(None),rt=Depends(runtime)):
     content=await file.read(80*1024*1024+1)
-    result,status=await run_in_threadpool(rt.mutate,rt.papers.import_pdf,file.filename,content,{'title':title,'exam_date':exam_date})
+    result,status=await run_in_threadpool(rt.mutate,rt.papers.import_pdf,file.filename,content,{'title':title,'exam_date':exam_date,'exam_date_precision':exam_date_precision,'exam_date_unknown_reason':exam_date_unknown_reason})
     return JSONResponse(result,status_code=status)
 @router.get('/papers/{paper_id}/file')
 def paper_file(paper_id:str,rt=Depends(runtime)):return resource_response(rt.resources.paper(paper_id))

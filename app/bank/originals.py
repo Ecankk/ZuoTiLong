@@ -7,7 +7,7 @@ def uploaded_originals(conn):
     from app.bank.capture_view import active
     view=active(conn)
     if view is not None and hasattr(view,'uploaded_originals'):return view.uploaded_originals
-    papers={r['id']:dict(r) for r in conn.execute("SELECT * FROM papers WHERE source_path IS NOT NULL AND source_path!=''")}
+    papers={r['id']:dict(r) for r in conn.execute("SELECT * FROM papers WHERE source_path IS NOT NULL AND source_path!='' AND import_decision!='withdrawn'")}
     identities=list(conn.execute('SELECT bank_id,math_type,year FROM bank_identity'))
     seeds={}
     def add(bid,pid):

@@ -11,7 +11,8 @@ def aggregate(item):
         old=grouped.get(key)
         if old is None or priority.get(event['kind'],0)>priority.get(old['kind'],0):
             grouped[key]=event
-    events=sorted(grouped.values(),key=lambda e:(e['created_at'],e['id']))
+    from app.learning.dates import groups,mixed
+    buckets=groups(list(grouped.values()));events=[e for bucket in buckets for e in sorted(bucket,key=lambda e:e['id'])]
     item['events']=events
     item['question_ids']=sorted(set(item['question_ids']))
     item['probe_ids']=sorted(set(item['probe_ids']))
@@ -26,11 +27,14 @@ def aggregate(item):
         papers=len({s['paper_id'] for s in item['scopes']}))
     if not effective:
         item.update(state='证据不足' if item['scopes'] else '未覆盖',state_reason='已关联题目不等于掌握；暂无足够的有效表现证据。')
+    elif mixed(groups(effective)[-1]):
+        item.update(state='巩固中',state_reason='同一时间范围内有对有错，还需要再练几道。')
     elif effective[-1]['kind'] in ('exam_error','probe_failure'):
         item.update(state='需要关注',state_reason='最近有效作答仍有相关错误；仅反映有证据的知识环节。')
     else:
-        last_error=max((i for i,e in enumerate(effective) if e['kind'] in ('exam_error','probe_failure')),default=-1)
-        following=effective[last_error+1:]
+        ordered=groups(effective)
+        last_error=max((i for i,bucket in enumerate(ordered) if any(e['kind'] in ('exam_error','probe_failure') for e in bucket)),default=-1)
+        following=[e for bucket in ordered[last_error+1:] for e in bucket]
         diverse=len({e['paper_id'] for e in following})>=2 or len({e['created_at'][:10] for e in following})>=2
         kind = item.get('origin', {}).get('node_kind')
         narrow = kind == 'atom' if kind is not None else item.get('scope_level') == 'concept'

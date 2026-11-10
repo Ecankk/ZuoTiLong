@@ -13,6 +13,7 @@
 | Agent实际工具与交付契约 | [Agent协议](agent-workflow.md) | 全部产品规则、开发验收 |
 | 项目框架、前后端/Agent通信与后端职责 | [项目架构](backend-architecture.md) | 第二份路线图、发布流程 |
 | 题源状态与接入 | [题源目录](question-sources.md)、[题源接口](bank-source-interface.md) | 主线任务与全局版本流水 |
+| 题库维护流程（导入、标注、待核分流、勘误、补图） | [题库维护](bank-curation-workflow.md) | 批次结果、命令字段 |
 | 开发验证怎么选、何时停止 | [开发验收](full-loop-test-checklist.md) | 本次任务完成状态 |
 | 需要本人体验时怎么操作 | [人工清单](manual-test-checklist.md) | 默认批准门槛或开发回归 |
 

@@ -29,3 +29,20 @@ it('never shows undefined or 第 0 题 for collection questions without exam ide
   )
   expect(practiceSource(access({ math_type: null, year: null, number: 12 }))).toBe('第 12 题')
 })
+
+it('labels collection questions with collection, chapter and original number', () => {
+  expect(
+    practiceSource(
+      access({
+        math_type: 0,
+        year: '',
+        number: 0,
+        collection_label: '张宇1000题',
+        book: { part: '强化篇', chapter: '第45章', number: '12' },
+      }),
+    ),
+  ).toBe('张宇1000题 · 第45章 · 第 12 题')
+  expect(
+    practiceSource(access({ math_type: 0, year: '', number: 0, collection_label: '张宇1000题' })),
+  ).toBe('张宇1000题')
+})

@@ -30,3 +30,5 @@ def initialize(conn):
         record['math_types']=[1];sha=digest([record,json.loads(row['overrides_json'])]);text=canonical(record)
         conn.execute('UPDATE bank_source_records SET record_json=?,record_sha256=? WHERE bank_id=?',(text,sha,row['bank_id']))
         conn.execute('INSERT OR IGNORE INTO bank_source_versions VALUES(?,?,?,?,?)',(row['bank_id'],sha,text,row['overrides_json'],now_iso()))
+    from app.bank.book_numbers import initialize as book_numbers
+    book_numbers(conn)

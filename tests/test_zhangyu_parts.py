@@ -48,6 +48,7 @@ class ZhangyuPartTests(unittest.TestCase):
             with patch.object(adapter,'PARTS',parts),patch.object(adapter,'__file__',str(root/'adapter.py')):
                 default=adapter.adapt(root);explicit=adapter.adapt(root,parts=['strengthening'])
                 self.assertEqual(canonical(default),canonical(explicit))
+                self.assertEqual(default[0]['book']['number'],'1')
                 combined=adapter.adapt(root,parts=['comprehensive','basic'])
                 self.assertEqual([r['book']['part'] for r in combined],['基础篇','综合篇'])
                 self.assertEqual(combined[0]['analysis']['text'],'')

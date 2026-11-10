@@ -15,6 +15,7 @@ def convert(item):
     if content['illustrations']:raise ValueError('Pinned S03 subset unexpectedly contains images')
     book=dict(title=identity['book_title_claimed'],edition=identity['edition_label_claimed'],part=identity['part'],
         chapter=identity['chapter_title'],number=None,locator=source['source_uid'])
+    if identity['part']=='强化篇':book['number']=str(source['source_question_number'])
     if identity['part']=='综合篇':
         book['number']=str(source['source_question_number'])
         book['locator']=book['chapter']+' / 第 '+book['number']+' 题'

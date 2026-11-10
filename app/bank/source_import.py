@@ -52,7 +52,7 @@ def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids
     excluded_ids = {r['source_uid'] for r in excluded}
     report = dict(source_id=batch[0]['source_id'], revision=batch[0]['revision'], added=[], updated=[], unchanged=[],
                   missing_fields=[], identity_conflicts=[], duplicate_candidates=[], excluded=excluded,
-                  overrides_applied=applied, errata_applied=[],invalidated_annotations=[],needs_annotation=[],collection_id=collection,collection_conflicts=[])
+                  overrides_applied=applied, errata_applied=[],invalidated_annotations=[],needs_annotation=[],metadata_only=[],collection_id=collection,collection_conflicts=[])
     content_groups = {}
     for row in current.values():
         old = json.loads(row['record_json'])
@@ -77,11 +77,14 @@ def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids
         sha = records.digest([record, changes])
         category = 'added' if not old else 'unchanged' if old['record_sha256'] == sha else 'updated'
         report[category].append(bid)
+        from app.bank.book_numbers import number_only
+        metadata_only=category=='updated' and number_only(old,record,changes)
+        if metadata_only:report['metadata_only'].append(bid)
         if category=='updated' and old and any(json.loads(old['record_json'])[r]!=record[r] for r in ('stem','options','answer','analysis')):
             if any(table in _tables(conn) and conn.execute('SELECT 1 FROM '+table+' WHERE bank_id=?',(bid,)).fetchone() for table in ('question_annotation_links','imported_question_annotations')):report['invalidated_annotations'].append(bid)
             if 'question_annotations' in _tables(conn):
                 report['invalidated_annotations'].extend(r[0] for r in conn.execute('SELECT l.bank_id FROM question_annotation_links l JOIN question_annotations a ON a.id=l.annotation_id WHERE a.bank_id=?',(bid,)))
-        if category in ('added', 'updated'):
+        if category in ('added', 'updated') and not metadata_only:
             report['needs_annotation'].append(bid)
         missing = [key for key in ('question_type', 'max_score') if record[key] is None]
         missing += [key for key in ('answer', 'analysis') if not record[key]['text'].strip() and not record[key]['images']]
@@ -174,6 +177,15 @@ def _apply(conn, config, batch, report, asset_root, *, bank_ids=None, initialize
     for record in batch:
         bid = (bank_ids or {}).get((record['source_id'],record['source_uid']), records.bank_id(record))
         if record['source_uid'] in excluded or bid in report['unchanged']:
+            continue
+        if bid in report.get('metadata_only',[]):
+            old=conn.execute('SELECT metadata_json FROM bank_resources WHERE bank_id=?',(bid,)).fetchone()
+            metadata=json.loads(old[0]);metadata['book']={**metadata.get('book',{}),'number':record['book']['number']}
+            changes=[v for v in report['overrides_applied'] if v['source_uid']==record['source_uid']]
+            sha=records.digest([record,changes]);text=records.canonical(record);audit=records.canonical(changes)
+            conn.execute('UPDATE bank_resources SET metadata_json=? WHERE bank_id=?',(records.canonical(metadata),bid))
+            conn.execute('UPDATE bank_source_records SET record_json=?,record_sha256=?,overrides_json=? WHERE bank_id=?',(text,sha,audit,bid))
+            conn.execute('INSERT OR IGNORE INTO bank_source_versions VALUES(?,?,?,?,?)',(bid,sha,text,audit,now_iso()))
             continue
         manifest = _copy_assets(record, asset_root, config.library_dir)
         metadata = {k: record[k] for k in ('schema', 'source_id', 'revision', 'source_uid', *records.METADATA)}

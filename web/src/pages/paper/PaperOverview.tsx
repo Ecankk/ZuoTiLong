@@ -51,6 +51,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
   const { data: tasks } = useTasks()
   const [confirm, setConfirm] = useState(false)
   const [confirmPrepare, setConfirmPrepare] = useState(false)
+  const [confirmStart, setConfirmStart] = useState(false)
   const practice = data.practice_counts
   const hasReport = analysis.report_id !== null
   const analyze = useAction(
@@ -116,7 +117,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
               <Button
                 variant="primary"
                 disabled={analyze.isPending}
-                onClick={() => analyze.mutate(true)}
+                onClick={() => setConfirmStart(true)}
               >
                 开始分析
               </Button>
@@ -127,7 +128,7 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
       {(prepare.isSuccess || preparing) && (
         <p className={styles.ok}>已开始准备练习，完成后会出现在“练习”里。</p>
       )}
-      {((!confirmPrepare && prepare.error) || (!confirm && analyze.error)) && (
+      {((!confirmPrepare && prepare.error) || (!confirm && !confirmStart && analyze.error)) && (
         <p className={styles.error}>{friendlyError(prepare.error ?? analyze.error)}</p>
       )}
       <ConfirmDialog
@@ -140,6 +141,23 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
         onConfirm={() => analyze.mutate(true, { onSuccess: () => setConfirm(false) })}
       >
         做题龙会按现在的原卷重新逐题分析，生成新的结果。旧的分析和你的作答都会保留。
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={confirmStart}
+        onOpenChange={setConfirmStart}
+        title="开始分析这份试卷？"
+        confirmLabel="确认开始分析"
+        pending={analyze.isPending}
+        error={analyze.error ? friendlyError(analyze.error) : null}
+        onConfirm={() => analyze.mutate(true, { onSuccess: () => setConfirmStart(false) })}
+      >
+        <div className={styles.dialogText}>
+          <p>
+            做题龙会用本机的 AI
+            服务逐题分析这份试卷：看你写了什么、判断对错、找出第一个出错的地方。整份试卷通常需要较长时间，期间可以离开这个页面，进度会显示在左下角。
+          </p>
+          {unavailable && <p>AI 服务现在还没准备好，分析会先排队，准备好后自动开始。</p>}
+        </div>
       </ConfirmDialog>
       <ConfirmDialog
         open={confirmPrepare}

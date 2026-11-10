@@ -61,6 +61,7 @@ it('starts the first analysis from the analysis card with confirmed:true', async
   renderAt('/papers/paper-fresh')
   const card = await screen.findByRole('region', { name: '分析' })
   await userEvent.click(within(card).getByRole('button', { name: '开始分析' }))
+  await userEvent.click(await screen.findByRole('button', { name: '确认开始分析' }))
   const call = fetch.mock.calls.find(([url]) => String(url).includes('/analyze'))
   expect(String(call?.[0])).toBe('/api/papers/paper-fresh/analyze')
   expect(JSON.parse(String(call?.[1]?.body))).toEqual({ confirmed: true })

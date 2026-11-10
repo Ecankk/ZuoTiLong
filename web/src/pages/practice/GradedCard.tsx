@@ -1,21 +1,26 @@
-import { Check, Upload } from 'lucide-react'
+import { ArrowRight, Check, Upload } from 'lucide-react'
 import { useState } from 'react'
-import type { Attempt, PracticeGroup, PracticeResponse } from '../../api/types'
+import type { Attempt, PracticeResponse } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button, ButtonLink } from '../../components/ui/Button'
 import { practiceLink } from '../bank/BankQuestion'
 import { Card } from '../../components/ui/Card'
-import { Chip, CorrectnessChip } from '../../components/ui/Chip'
+import { CorrectnessChip } from '../../components/ui/Chip'
 import { Fold } from '../../components/ui/Fold'
 import { cx } from '../../lib/cx'
-import { assessmentCorrectness, practiceSource } from '../../lib/labels'
+import { assessmentCorrectness } from '../../lib/labels'
 import { QuestionContent } from './AnswerCard'
 import { AttemptForm } from './AttemptForm'
+import { PracticeHeading } from './PracticeHeading'
 import { RevealButton } from './RevealButton'
+import { usefulAnalysis } from './selection'
 import styles from './PracticeCard.module.css'
 
 /** 作答照片沿用旧的图片入口 */
 export const answerImageUrl = (id: string) => `/api/answer-images/${encodeURIComponent(id)}`
+
+/** 下一道要做的题，由练习页按当前列表算好传进来 */
+export type NextPractice = { to: string; label: string }
 
 const roleLabel: Record<string, string> = {
   own_work: '我的作答',
@@ -23,7 +28,7 @@ const roleLabel: Record<string, string> = {
   external_solution: '参考解析',
 }
 
-function submittedTime(iso: string) {
+export function submittedTime(iso: string) {
   const date = new Date(iso)
   const today = new Date().toDateString() === date.toDateString()
   const time = date.toLocaleTimeString('zh-CN', {
@@ -75,57 +80,60 @@ const paragraphs = (text: string) =>
     .map((line) => line.trim())
     .filter(Boolean)
 
-const hasReference = (detail: PracticeResponse) => {
+/** 参考材料里真正有内容的部分；“参考解析见原图”这类占位文字不算 */
+function referenceParts(detail: PracticeResponse) {
   const question = detail.question
-  return Boolean(
-    question &&
-    (question.analysis_text ||
-      question.analysis_image ||
-      question.expected ||
-      question.solution_note),
+  if (!question) return null
+  const parts = {
+    expected: question.expected || null,
+    image: question.analysis_image || null,
+    text: usefulAnalysis(question.analysis_text),
+    note: question.solution_note || null,
+  }
+  return Object.values(parts).some(Boolean) ? parts : null
+}
+
+export function ReferenceAnalysis({
+  detail,
+  defaultOpen = false,
+}: {
+  detail: PracticeResponse
+  defaultOpen?: boolean
+}) {
+  const parts = referenceParts(detail)
+  if (!parts) return null
+  return (
+    <Fold title="参考解析" hint="参考答案和完整解析" defaultOpen={defaultOpen}>
+      {parts.expected && (
+        <p>
+          <b>参考答案：</b>
+          <MathText text={parts.expected} />
+        </p>
+      )}
+      {parts.image && <img className={styles.questionImage} src={parts.image} alt="参考解析" />}
+      {parts.text && <MathText text={parts.text} />}
+      {parts.note && (
+        <p>
+          <MathText text={parts.note} />
+        </p>
+      )}
+    </Fold>
   )
 }
 
-export function ReferenceAnalysis({ detail }: { detail: PracticeResponse }) {
-  const question = detail.question
-  const hasAnalysis =
-    question &&
-    (question.analysis_text ||
-      question.analysis_image ||
-      question.expected ||
-      question.solution_note)
-  if (hasAnalysis)
-    return (
-      <Fold title="参考解析" defaultOpen>
-        {question.expected && (
-          <p>
-            <b>参考答案：</b>
-            <MathText text={question.expected} />
-          </p>
-        )}
-        {question.analysis_image && (
-          <img className={styles.questionImage} src={question.analysis_image} alt="参考解析" />
-        )}
-        {question.analysis_text && <MathText text={question.analysis_text} />}
-        {question.solution_note && (
-          <p>
-            <MathText text={question.solution_note} />
-          </p>
-        )}
-      </Fold>
-    )
-  return null
-}
-
+/**
+ * 已批改的练习。结论、问题与首错、建议一直显示；
+ * 做对的部分、参考思路、参考解析默认收起，需要时再展开，和题目页的分层保持一致。
+ */
 export function GradedCard({
   detail,
-  position,
-  group,
+  eyebrow,
+  next,
   note,
 }: {
   detail: PracticeResponse
-  position: { index: number; total: number }
-  group: PracticeGroup
+  eyebrow: string
+  next?: NextPractice
   /** 练习已停用时的说明 */
   note?: string
 }) {
@@ -139,23 +147,20 @@ export function GradedCard({
     (item) => item.status !== 'valid' && item.step !== assessment.first_error?.step,
   )
   const causes = assessment.possible_causes ?? []
-  const nextIndex = group.items.findIndex((item) => item.status === 'pending')
-  const next = nextIndex >= 0 ? group.items[nextIndex] : undefined
   const needsMaterial = assessment.needs_material ?? []
   const canSupplement = detail.actions.includes('supplement')
+  const [lead, ...rest] = paragraphs(assessment.feedback)
+  const hasProblems = Boolean(assessment.first_error || problems.length > 0 || causes.length > 0)
+  const hasFolds = valid.length > 0 || assessment.reference_reasoning || referenceParts(detail)
 
   return (
     <Card className={styles.card} aria-label="已批改的练习">
+      <PracticeHeading detail={detail} eyebrow={eyebrow}>
+        <CorrectnessChip value={correctness} />
+        <span className={styles.when}>{submittedTime(attempt.created_at)}</span>
+      </PracticeHeading>
       <div className={styles.split}>
         <div>
-          <div className={styles.gradedHead}>
-            <Chip>
-              第 {position.index} 道
-              {practiceSource(practice.access) && ` · ${practiceSource(practice.access)}`}
-            </Chip>
-            <CorrectnessChip value={correctness} />
-            <span className={styles.when}>{submittedTime(attempt.created_at)}</span>
-          </div>
           {note && <p className={styles.stopped}>{note}</p>}
           <QuestionContent question={detail.question} />
           <SubmittedAttempt attempt={attempt} />
@@ -205,28 +210,22 @@ export function GradedCard({
           <div className={cx('read', styles.feedbackBody)}>
             <section className={styles.feedbackSection} aria-label="结论">
               <h4>结论</h4>
-              {paragraphs(assessment.feedback).map((text, index) => (
-                <p key={index}>
-                  <MathText text={text} />
+              {lead && (
+                <p>
+                  <MathText text={lead} />
                 </p>
-              ))}
-            </section>
-            {valid.length > 0 && (
-              <section className={styles.feedbackSection} aria-label="做对的部分">
-                <h4>做对的部分</h4>
-                <ul className={styles.okList}>
-                  {valid.map((item, index) => (
-                    <li key={index}>
-                      <Check size={16} aria-hidden />
-                      <span>
-                        <MathText text={item.step} />
-                      </span>
-                    </li>
+              )}
+              {rest.length > 0 && (
+                <Fold title="完整结论" hint={`还有 ${rest.length} 段`}>
+                  {rest.map((text, index) => (
+                    <p key={index}>
+                      <MathText text={text} />
+                    </p>
                   ))}
-                </ul>
-              </section>
-            )}
-            {(assessment.first_error || problems.length > 0 || causes.length > 0) && (
+                </Fold>
+              )}
+            </section>
+            {hasProblems && (
               <section className={styles.feedbackSection} aria-label="问题与首错">
                 <h4>问题与首错</h4>
                 {assessment.first_error && (
@@ -273,18 +272,7 @@ export function GradedCard({
                 )}
               </section>
             )}
-            {(assessment.reference_reasoning || hasReference(detail)) && (
-              <section className={styles.feedbackSection} aria-label="参考思路">
-                <h4>参考思路</h4>
-                {assessment.reference_reasoning && (
-                  <p>
-                    <MathText text={assessment.reference_reasoning} />
-                  </p>
-                )}
-                <ReferenceAnalysis detail={detail} />
-              </section>
-            )}
-            {(assessment.next_step || needsMaterial.length > 0) && (
+            {(assessment.next_step || needsMaterial.length > 0 || next) && (
               <section className={styles.feedbackSection} aria-label="建议">
                 <h4>建议</h4>
                 {needsMaterial.length > 0 && (
@@ -299,19 +287,50 @@ export function GradedCard({
                     </ul>
                   </>
                 )}
-                {assessment.next_step && (
+                {(assessment.next_step || next) && (
                   <div className={styles.nextStep}>
                     <span>
-                      <MathText text={assessment.next_step} />
+                      {assessment.next_step ? (
+                        <MathText text={assessment.next_step} />
+                      ) : (
+                        '接着做下一道。'
+                      )}
                     </span>
-                    {next && next.id !== practice.id && (
-                      <ButtonLink size="sm" variant="soft" to={`/practice?item=${next.id}`}>
-                        去做第 {nextIndex + 1} 道
+                    {next && (
+                      <ButtonLink size="sm" variant="soft" to={next.to} title={next.label}>
+                        做下一道
+                        <ArrowRight size={14} aria-hidden />
                       </ButtonLink>
                     )}
                   </div>
                 )}
               </section>
+            )}
+            {hasFolds && (
+              <div className={styles.feedbackFolds}>
+                {valid.length > 0 && (
+                  <Fold title="做对的部分" hint={`${valid.length} 步`}>
+                    <ul className={styles.okList}>
+                      {valid.map((item, index) => (
+                        <li key={index}>
+                          <Check size={16} aria-hidden />
+                          <span>
+                            <MathText text={item.step} />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </Fold>
+                )}
+                {assessment.reference_reasoning && (
+                  <Fold title="参考思路">
+                    <p>
+                      <MathText text={assessment.reference_reasoning} />
+                    </p>
+                  </Fold>
+                )}
+                <ReferenceAnalysis detail={detail} />
+              </div>
             )}
           </div>
         </div>

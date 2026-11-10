@@ -4,7 +4,9 @@ import type { FreeAttempt, FreeReference } from '../../api/types'
 import { MathText } from '../../components/math/MathText'
 import { Button } from '../../components/ui/Button'
 import { Chip, CorrectnessChip } from '../../components/ui/Chip'
+import { ErrorState } from '../../components/ui/ErrorState'
 import { Fold } from '../../components/ui/Fold'
+import { Skeleton } from '../../components/ui/Skeleton'
 import { assessmentCorrectness } from '../../lib/labels'
 import { QuestionContent } from '../practice/AnswerCard'
 import { ErrataNote } from './Errata'
@@ -129,11 +131,19 @@ export function FreeAttemptView({
 /** 历史作答：分页，每条用它自己的题面和参考快照。 */
 export function FreeHistory({ bankId, total }: { bankId: string; total: number }) {
   const [page, setPage] = useState(0)
-  const { data } = useFreeAttempts(bankId, page * pageSize, pageSize)
+  const { data, isPending, isError, error, refetch } = useFreeAttempts(
+    bankId,
+    page * pageSize,
+    pageSize,
+  )
   const pages = Math.max(1, Math.ceil((data?.total ?? total) / pageSize))
   return (
     <section className={styles.card} aria-label="历史作答">
       <h2 className={styles.historyTitle}>历史作答 · 共 {data?.total ?? total} 次</h2>
+      {isPending && <Skeleton variant="rows" rows={3} />}
+      {isError && !data && (
+        <ErrorState error={error} title="历史作答没有读出来" onRetry={() => void refetch()} />
+      )}
       <ol className={styles.history}>
         {data?.items.map((attempt, index) => (
           <li key={attempt.id}>

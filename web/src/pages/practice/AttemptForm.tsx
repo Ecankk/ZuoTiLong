@@ -4,6 +4,7 @@ import { useAction } from '../../api/queries'
 import { Button } from '../../components/ui/Button'
 import { PhotoPicker, usePhotoUpload, type Photo } from './PhotoPicker'
 import styles from './PracticeCard.module.css'
+import { friendlyError } from '../../lib/errors'
 
 /**
  * 作答表单：文字加手写照片（选择、拖入或粘贴，每张标注内容）。
@@ -58,7 +59,7 @@ export function AttemptForm({
       },
     })
 
-  const error = uploadError ?? submit.error?.message
+  const error = uploadError ?? (submit.error && friendlyError(submit.error))
   return (
     <div className={styles.answer}>
       <label className={styles.label} htmlFor={`answer-${practiceId}`}>

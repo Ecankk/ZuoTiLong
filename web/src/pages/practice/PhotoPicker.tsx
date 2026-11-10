@@ -5,6 +5,7 @@ import { useAction } from '../../api/queries'
 import type { ImageRole, UploadedImage } from '../../api/types'
 import { cx } from '../../lib/cx'
 import styles from './PracticeCard.module.css'
+import { friendlyError } from '../../lib/errors'
 
 const maxPhotos = 4
 const maxBytes = 8 * 1024 * 1024
@@ -37,7 +38,11 @@ export function usePhotoUpload(
         ]),
     })
   }
-  return { add, uploading: upload.isPending, error: localError ?? upload.error?.message ?? null }
+  return {
+    add,
+    uploading: upload.isPending,
+    error: localError ?? (upload.error ? friendlyError(upload.error) : null),
+  }
 }
 
 export function PhotoPicker({

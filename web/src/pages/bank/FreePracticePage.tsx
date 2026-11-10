@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Clock, Eye } from 'lucide-react'
+import { ArrowLeft, Clock, Eye, EyeOff, Lock } from 'lucide-react'
 import { useEffect, useState, type ClipboardEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError } from '../../api/client'
@@ -16,9 +16,12 @@ import { cx } from '../../lib/cx'
 import { QuestionContent } from '../practice/AnswerCard'
 import { PhotoPicker, usePhotoUpload, type Photo } from '../practice/PhotoPicker'
 import practiceStyles from '../practice/PracticeCard.module.css'
+import { RevealButton } from '../practice/RevealButton'
 import { bankTitle } from './BankQuestion'
 import { FreeAttemptView, FreeHistory, ReferenceBlock } from './FreeAttempt'
 import styles from './FreePracticePage.module.css'
+import { friendlyError } from '../../lib/errors'
+import { Skeleton } from '../../components/ui/Skeleton'
 
 type Draft = { text: string; choice: string; photos: Photo[] }
 const emptyDraft: Draft = { text: '', choice: '', photos: [] }
@@ -48,6 +51,28 @@ function useElapsed() {
 const clock = (seconds: number) =>
   `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
+const timerKey = 'zuotilong:free-practice-show-timer'
+
+/** 用时默认不显示，免得一进来就有压力；想看时点一下，记住这个选择。计时本身一直在走，提交时照常记录。 */
+function useShowTimer() {
+  const [show, setShow] = useState(() => {
+    try {
+      return localStorage.getItem(timerKey) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggle = () => {
+    setShow(!show)
+    try {
+      localStorage.setItem(timerKey, show ? '0' : '1')
+    } catch {
+      /* 存不了就只在这次有效 */
+    }
+  }
+  return { show, toggle }
+}
+
 /** 作答区：选择题字母按钮，填空题一个输入框，解答题文字加照片。草稿用独立 key 自动保存。 */
 function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft }) {
   const client = useQueryClient()
@@ -63,6 +88,7 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
   // 已发出但还没成功的作答：内容不变时重试沿用同一个 request_id 和同一份请求
   const [pending, setPending] = useState<FreeAttemptBody | null>(null)
   const elapsed = useElapsed()
+  const timer = useShowTimer()
   const { add, uploading, error: uploadError } = usePhotoUpload(photos, setPhotos)
 
   useEffect(() => {
@@ -113,15 +139,22 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
       add(files)
     }
   }
-  const error = uploadError ?? submit.error?.message
+  const error = uploadError ?? (submit.error && friendlyError(submit.error))
 
   return (
     <Card padded className={styles.card} aria-label="作答">
       <div className={styles.answerHead}>
         <h2>你的作答</h2>
-        <span className={styles.timer} aria-label="已用时间">
-          <Clock size={14} aria-hidden /> {clock(elapsed.seconds)}
-        </span>
+        <button
+          type="button"
+          className={styles.timer}
+          aria-pressed={timer.show}
+          title={timer.show ? '隐藏用时' : '显示用时'}
+          onClick={timer.toggle}
+        >
+          <Clock size={14} aria-hidden />
+          {timer.show ? <span aria-label="已用时间">{clock(elapsed.seconds)}</span> : '显示用时'}
+        </button>
       </div>
       {isChoice ? (
         <div className={styles.choices} role="radiogroup" aria-label="选项">
@@ -205,7 +238,7 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
         title="先看答案和解析？"
         confirmLabel="确认查看"
         pending={reveal.isPending}
-        error={reveal.error?.message}
+        error={reveal.error ? friendlyError(reveal.error) : undefined}
         onConfirm={() =>
           reveal.mutate(undefined, {
             onSuccess: () => {
@@ -228,21 +261,105 @@ function AnswerArea({ detail }: { detail: FreePractice }) {
     queryFn: () => endpoints.draft<Draft>(draftKey(detail.bank_id)).catch(() => null),
     staleTime: Infinity,
   })
-  if (isPending) return null
+  if (isPending) return <Skeleton rows={4} />
   return <AnswerForm key={detail.bank_id} detail={detail} initial={{ ...emptyDraft, ...data }} />
 }
 
-function Blocked({ error }: { error: Error }) {
+type BlockReason = 'masked' | 'reserved' | 'unknown'
+
+/**
+ * 403 的原因。后端之后会给结构化的 reason（masked / reserved）；
+ * 现在只有一句“题目未允许查看或属于预留卷”，分不清时按 unknown 两种都说明。
+ */
+function blockReason(error: Error): BlockReason {
+  const reason = (error as Error & { reason?: unknown }).reason
+  if (reason === 'masked' || reason === 'reserved') return reason
+  return 'unknown'
+}
+
+/** 不能单独练的题：遮挡的题可以确认查看后再做；留作整卷自测的题说明原因。不留死路。 */
+function Blocked({
+  error,
+  bankId,
+  onRevealed,
+}: {
+  error: Error
+  bankId: string
+  onRevealed: () => void
+}) {
   const forbidden = error instanceof ApiError && error.status === 403
+  if (!forbidden)
+    return (
+      <Card padded className={styles.card}>
+        <h2>没有打开这道题</h2>
+        <p className={styles.muted}>{friendlyError(error)}</p>
+        <div className={styles.blockedActions}>
+          <ButtonLink to="/bank">回到题库</ButtonLink>
+        </div>
+      </Card>
+    )
+  const reason = blockReason(error)
+  const reveal = (
+    <RevealButton
+      bankId={bankId}
+      kind="question"
+      label="确认查看后再做"
+      variant="primary"
+      onRevealed={onRevealed}
+    >
+      查看后会记下“看过这道题”。以后用这套真题整卷自测时，这道题的结果会单独标出。
+    </RevealButton>
+  )
   return (
     <Card padded className={styles.card}>
-      <h2>{forbidden ? '这道题现在不能单独练习' : '没有打开这道题'}</h2>
-      <p className={styles.muted}>
-        {forbidden
-          ? '它可能属于你留作整卷自测的试卷，或者题目默认遮挡、还没确认查看。可以先在题库里查看题目，再回来做。'
-          : error.message}
-      </p>
-      <ButtonLink to="/bank">回到题库</ButtonLink>
+      <h2>这道题现在不能单独练习</h2>
+      {reason === 'masked' && (
+        <>
+          <p className={styles.muted}>
+            这是你备考类别的真题，默认遮挡，免得提前看到。确认查看后就可以在这里做。
+          </p>
+          <div className={styles.blockedActions}>
+            {reveal}
+            <ButtonLink variant="ghost" to="/bank">
+              回到题库
+            </ButtonLink>
+          </div>
+        </>
+      )}
+      {reason === 'reserved' && (
+        <>
+          <p className={styles.muted}>
+            这套卷你留作整卷自测，单独练会提前看到题目，所以这里不显示。等整卷自测时再做。
+          </p>
+          <div className={styles.blockedActions}>
+            <ButtonLink to="/bank">回到题库</ButtonLink>
+          </div>
+        </>
+      )}
+      {reason === 'unknown' && (
+        <ul className={styles.reasons}>
+          <li>
+            <EyeOff size={18} aria-hidden />
+            <div>
+              <strong>如果是默认遮挡的同类别真题</strong>
+              <p className={styles.muted}>确认查看后就可以在这里做。</p>
+              {reveal}
+            </div>
+          </li>
+          <li>
+            <Lock size={18} aria-hidden />
+            <div>
+              <strong>如果这套卷你留作整卷自测</strong>
+              <p className={styles.muted}>
+                单独练会提前看到题目，所以这里不显示，等整卷自测时再做。
+              </p>
+              <ButtonLink variant="ghost" size="sm" to="/bank">
+                回到题库
+              </ButtonLink>
+            </div>
+          </li>
+        </ul>
+      )}
     </Card>
   )
 }
@@ -251,7 +368,7 @@ function Blocked({ error }: { error: Error }) {
 export function FreePracticePage() {
   const { bankId = '' } = useParams()
   const client = useQueryClient()
-  const { data, error, isPending } = useFreePractice(bankId)
+  const { data, error, isPending, refetch } = useFreePractice(bankId)
   const { data: collections } = useBankCollections()
   const { data: tasks } = useTasks()
   const latest = data?.latest_attempt
@@ -282,12 +399,10 @@ export function FreePracticePage() {
         title="做这道题"
         subtitle={[collection?.name, title].filter(Boolean).join(' · ') || undefined}
       />
-      {isPending && (
-        <Card padded className={styles.muted}>
-          正在读取…
-        </Card>
+      {isPending && <Skeleton variant="question" />}
+      {error && !data && (
+        <Blocked error={error} bankId={bankId} onRevealed={() => void refetch()} />
       )}
-      {error && <Blocked error={error} />}
       {data && (
         <div className={styles.column}>
           <Card padded className={styles.card} aria-label="题目">

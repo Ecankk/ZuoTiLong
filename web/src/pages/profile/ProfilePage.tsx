@@ -87,14 +87,14 @@ function DistBar({ d, thin = false }: { d: Distribution; thin?: boolean }) {
   )
 }
 
+/** 行尾只写一个最要紧的数：有薄弱写薄弱数，否则写有记录的考点数；完整分布放在悬停提示里 */
 const distSummary = (d: Distribution) => {
-  const parts = [
-    d.weak && `${d.weak} 个薄弱`,
-    d.learning && `${d.learning} 个学习中`,
-    d.mastered && `${d.mastered} 个初步掌握`,
-  ].filter(Boolean)
-  return parts.length ? parts.join(' · ') : '还没有记录'
+  const observed = d.mastered + d.learning + d.weak
+  return d.weak > 0 ? `${d.weak} 个薄弱` : observed > 0 ? `${observed} 个有记录` : '还没有记录'
 }
+
+const distDetail = (d: Distribution) =>
+  `初步掌握 ${d.mastered} · 学习中 ${d.learning} · 薄弱 ${d.weak} · 无记录 ${d.no_record}`
 
 /* ---------- 第一屏：最该补的地方 ---------- */
 
@@ -224,6 +224,26 @@ function ConclusionCard({
 function Conclusions({ overview }: { overview: Overview }) {
   const { conclusions: c } = overview
   const comparison = c.independent_correct_comparison
+  // 三张卡都没有结论时只留一句，不摆三张空卡
+  if (!c.weakest_chapter && !c.strongest_chapter && !comparison) {
+    const reasons = [
+      ...new Set(
+        [
+          c.unavailable_reasons.weakest_chapter,
+          c.unavailable_reasons.strongest_chapter,
+          c.unavailable_reasons.independent_correct_comparison,
+        ].filter((r): r is string => Boolean(r)),
+      ),
+    ]
+    return (
+      <Card padded aria-label="结论">
+        <p className={styles.noConclusion}>
+          记录还不够，暂时不下“哪一章强、哪一章弱、有没有进步”的结论。
+          {reasons.length > 0 && ` ${reasons.join(' ')}`}
+        </p>
+      </Card>
+    )
+  }
   return (
     <div className={styles.conclusions}>
       <ConclusionCard
@@ -312,6 +332,7 @@ function SubjectTree({
               type="button"
               className={styles.line}
               aria-expanded={open}
+              title={distDetail(s.distribution)}
               onClick={() => setOpenSubject(open ? null : s.id)}
             >
               <ChevronRight
@@ -332,6 +353,7 @@ function SubjectTree({
                       type="button"
                       className={cx(styles.line, styles.chapterLine)}
                       aria-expanded={expanded}
+                      title={distDetail(c.distribution)}
                       onClick={() => setOpenChapter(expanded ? null : c.id)}
                     >
                       <ChevronRight

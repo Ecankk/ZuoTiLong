@@ -117,8 +117,10 @@ it('shows short empty states when evidence is not enough to conclude', async () 
   profileServer(insufficientOverview)
   renderAt('/profile')
   expect(await screen.findByText('还看不出明显的薄弱处')).toBeInTheDocument()
-  expect(screen.getByRole('region', { name: '哪一章相对稳' })).toHaveTextContent('至少 5 道')
-  expect(screen.getByRole('region', { name: '有没有进步' })).toHaveTextContent('没有可比较')
+  const conclusions = screen.getByRole('region', { name: '结论' })
+  expect(conclusions).toHaveTextContent('暂时不下')
+  expect(conclusions).toHaveTextContent('至少 5 道')
+  expect(conclusions).toHaveTextContent('没有可比较')
 })
 
 it('explains a brand-new workspace without inventing weak spots', async () => {

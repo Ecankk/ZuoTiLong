@@ -255,7 +255,7 @@
 
 .line {
   display: grid;
-  grid-template-columns: 16px minmax(7em, 12em) minmax(0, 1fr) minmax(8em, 13em);
+  grid-template-columns: 16px minmax(7em, 12em) minmax(0, 1fr) 6.5em;
   gap: var(--space-3);
   align-items: center;
   width: 100%;
@@ -293,6 +293,7 @@
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   text-align: right;
+  white-space: nowrap;
 }
 
 .caret {
@@ -419,11 +420,11 @@
   }
 
   .line {
-    grid-template-columns: 16px minmax(6em, 9em) minmax(0, 1fr);
+    grid-template-columns: 16px minmax(6em, 9em) minmax(0, 1fr) 6em;
   }
+}
 
-  .summary {
-    grid-column: 2 / -1;
-    text-align: left;
-  }
+.noConclusion {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
 }

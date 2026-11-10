@@ -64,6 +64,9 @@ export function applyServerEvent(
       for (const resource of event.data.resources) {
         void client.invalidateQueries({ queryKey: [resource] })
       }
+      // 画像由个人记录和通用库共同算出：任一变化都要重读（B26）
+      if (event.data.resources.some((r) => r === 'personal' || r === 'library'))
+        void client.invalidateQueries({ queryKey: ['profile'] })
       break
     case 'preparation.changed':
       // 原卷识别进度会改变试卷的分析状态

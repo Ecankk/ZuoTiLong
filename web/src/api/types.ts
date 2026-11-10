@@ -168,6 +168,11 @@ export type PracticeCard = {
   topics: TopicRef[]
   access: Access
   latest_attempt_id: string | null
+  /** B26：卡片来源、当前有效批改结论与画像批次；旧接口没有时缺失 */
+  origin?: 'paper' | 'profile' | 'free_practice'
+  latest_correctness?: 'correct' | 'wrong' | 'partial' | 'unknown' | null
+  batch_id?: string | null
+  batch_title?: string | null
 }
 
 export type PracticeGroup = {
@@ -568,3 +573,5 @@ export type TopicResponse = {
   collection_counts: { collection_id: string; bank: number; ready: number; completed: number }[]
   practice_counts: PracticeCounts
 }
+
+export * from './profileTypes'

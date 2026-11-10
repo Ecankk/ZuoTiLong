@@ -8,7 +8,13 @@ import type {
   AgentModels,
   AttemptBody,
   BankCard,
+  AtomsResponse,
   BackupList,
+  Overview,
+  ProfileBatch,
+  ProfileBatchCreated,
+  ProfileBatchRequest,
+  Trends,
   BankCollection,
   HealthResponse,
   CollectionPackReport,
@@ -86,6 +92,18 @@ export const endpoints = {
   preferences: () => request<Preferences>('/api/preferences'),
   agentModels: () => request<AgentModels>('/api/agent/models'),
   dataStatus: () => request<DataStatus>('/api/data/status'),
+  /* ---------- 画像（B26） ---------- */
+  profileOverview: () => request<Overview>('/api/profile/overview'),
+  profileTrends: (weeks = 12) => request<Trends>(`/api/profile/trends?weeks=${weeks}`),
+  profileAtoms: (nodeId: string, offset = 0, limit = 60) =>
+    request<AtomsResponse>(
+      `/api/profile/nodes/${enc(nodeId)}/atoms?offset=${offset}&limit=${limit}`,
+    ),
+  /** 按画像来一组：排一个 AI 选题任务，异步返回批次 */
+  createProfileBatch: (body: ProfileBatchRequest) =>
+    postJson<ProfileBatchCreated>('/api/practices/profile-batch', body),
+  profileBatch: (batchId: string) =>
+    request<ProfileBatch>(`/api/practices/profile-batches/${enc(batchId)}`),
   /** 服务健康和版本号（设置页“关于”用） */
   health: () => request<HealthResponse>('/api/health'),
   /** 已有的个人数据备份列表 */

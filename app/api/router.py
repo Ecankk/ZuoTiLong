@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter
 
-from app.api import collection_packs,agent, knowledge, library, maintenance, papers, practice, question_index, workspace, frontend_resources
+from app.api import collection_packs,agent, knowledge, library, maintenance, papers, practice, question_index, workspace, frontend_resources,profile
 
 router = APIRouter()
-for routes in (collection_packs,workspace, papers, practice, library, agent, maintenance, knowledge, question_index, frontend_resources):
+for routes in (collection_packs,workspace, papers, practice, library, agent, maintenance, knowledge, question_index, frontend_resources,profile):
     router.include_router(routes.router)

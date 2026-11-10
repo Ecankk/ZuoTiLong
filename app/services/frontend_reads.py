@@ -31,12 +31,15 @@ def practice_counts(items):
     return dict(counts, total=sum(counts.values()))
 
 
-def attempt(row):
+def attempt(row,conn=None):
     value = {k: row[k] for k in ('id', 'probe_id', 'response', 'elapsed_seconds', 'created_at')}
     value.update(image_ids=json.loads(row['images_json']), image_roles=json.loads(row['image_roles_json']),
                  answer_exposed=bool(row['answer_exposed']), assessment=json_load(row['assessment_json'], None))
     if value['assessment'] and value['assessment'].get('method') == 'explicit_answer_match':
         value['assessment'] = None
+    if conn is not None:
+        from app.learning.feedback import info
+        value.update(info(conn,'paper_practice',row['id'],value['assessment']))
     return value
 
 
@@ -271,14 +274,14 @@ class FrontendReads:
             goals = [json.loads(g['payload_json']) for g in plan_goals(conn, practice_state(conn, row['paper_id'])) if g['id'] in card['goal_ids']]
             return dict(practice=card, is_current=current, review_reason=None if current else '旧练习或材料待核，历史作答保留',
                         question=question, goals=goals, selection_reason=json.loads(row['payload_json']).get('selection_reason') if question is not None else None,
-                        latest_attempt=attempt(latest) if latest else None, actions=actions)
+                        latest_attempt=attempt(latest,conn) if latest else None, actions=actions)
 
     def attempts(self, practice_id, offset=0, limit=20):
         with self.rt.database.session() as conn:
             self._probe(conn, practice_id)
             values = rows(conn, 'SELECT * FROM probe_attempts WHERE probe_id=? ORDER BY created_at DESC,id DESC', (practice_id,))
             result = page(values, offset, limit)
-            result['items'] = [attempt(v) for v in result['items']]
+            result['items'] = [attempt(v,conn) for v in result['items']]
             return result
 
     def topic(self, topic_id):

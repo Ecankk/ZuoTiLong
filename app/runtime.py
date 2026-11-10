@@ -45,6 +45,8 @@ class AppRuntime:
         self.question_index = QuestionIndexService(config, self.database)
         self.agent = AgentController(self)
         self.frontend = FrontendReads(self)
+        from app.services.profile import ProfileService
+        self.profile=ProfileService(self)
         self.tasks = TaskSummary(self)
         self.events = EventStream(self)
 

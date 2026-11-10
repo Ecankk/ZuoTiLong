@@ -56,7 +56,8 @@ def public(conn,row):
         if item['image_file']:target[role+'_image']=f'/api/bank/{row["bank_id"]}/practice/attempts/{row["id"]}/materials/{role}'
     reference['errata']=snapshot.get('errata',[])
     job=conn.execute('SELECT id,status FROM workflow_jobs WHERE attempt_id=? ORDER BY rowid DESC LIMIT 1',(row['id'],)).fetchone()
-    return {**body,'id':row['id'],'bank_id':row['bank_id'],'source':'free_practice',
+    from app.learning.feedback import info
+    return {**body,**info(conn,'free_practice',row['id'],row['assessment_json']),'id':row['id'],'bank_id':row['bank_id'],'source':'free_practice',
         'question_type':snapshot['question_type'],'collection_id':snapshot['collection_id'],
         'materials':{'question':question,'reference':reference if row['assessment_json'] else None},
         'answer_exposed':bool(row['answer_exposed']),'created_at':row['created_at'],

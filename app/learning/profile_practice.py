@@ -155,7 +155,7 @@ def save_selection(conn,data,task,rid,result):
             (eid,batch,item['bank_id'],encode(item['goal_ids']),encode(topics),encode(payload),encode(binding),stamp()))
     limitations=[{'goal_id':g['id'],'reason':g['reason']} for g in result['goals'] if g['decision']!='practice']
     actual=len(result['exercises']);requested=inputs['profile_batch']['body']['size']
-    if actual<requested:limitations.append({'goal_id':None,'reason':f'本次符合目标、历史与保护规则且被选中的题目为{actual}题，少于期望{requested}题；未强行补题。'})
+    if actual<requested:limitations.append({'goal_id':None,'reason':f'这次找到{actual}道适合练的题，没凑满想要的{requested}道。做过、看过答案或留作整卷的题不会拿来凑数。'})
     conn.execute('UPDATE profile_practice_batches SET result_id=?,completed_at=?,limitations_json=? WHERE id=?',(rid,stamp(),encode(limitations),batch))
     return {'batch_id':batch,'source':'profile_practice'}
 

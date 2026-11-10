@@ -38,6 +38,12 @@ def distribution(nodes):
     for n in nodes:result[n['display_state']]+=1
     return result
 
+
+def state_reason(node):
+    return {'需要关注':'最近做的题还有出错，建议再练几道。','巩固中':'已经做对过，换几道题再试试。',
+            '初步掌握':'在不同试卷或不同日期做对过，继续练习保持。',
+            '未覆盖':'还没有这部分的做题记录。','证据不足':'记录还不够，再做几道才能判断。'}[node['state']]
+
 def _assessment_time(conn,assessment,fallback):
     rid=(assessment or {}).get('task_result_id')
     row=conn.execute('SELECT created_at FROM learning_results WHERE id=?',(rid,)).fetchone() if rid else None
@@ -134,10 +140,10 @@ class ProfileService:
             for tid,n in raw.items():
                 descendants[tid]=set()
                 nodes[tid]=dict(id=tid,parent_id=n['parent_id'],name=n['label'],kind=n['origin'].get('node_kind') or ('atom' if n['scope_level']=='concept' else n['scope_level']),
-                    math_types=n['origin'].get('math_types',[1,2,3]),state=n['state'],state_reason=n['state_reason'],display_state=STATES[n['state']],
+                    math_types=n['origin'].get('math_types',[1,2,3]),state=n['state'],state_reason=state_reason(n),display_state=STATES[n['state']],
                     successes=n['successes'],failures=n['failures'],assisted=n['assisted_successes'],pending=n['pending'],
                     last_attempt_at=max((e['created_at'] for e in n['events']),default=None),ready_question_count=0,study_ready_question_count=0,selectable_question_count=0)
-            applicable={tid for tid,n in nodes.items() if n['kind']=='atom' and (prefs['study_type'] is None or prefs['study_type'] in n['math_types'])}
+            applicable={tid for tid,n in nodes.items() if n['kind']=='atom' and (not n['math_types'] or prefs['study_type'] is None or prefs['study_type'] in n['math_types'])}
             for tid in applicable:
                 cursor=tid;seen=set()
                 while cursor in nodes and cursor not in seen:
@@ -190,9 +196,9 @@ class ProfileService:
 
     def limitations(self,d):
         values=[]
-        if not d['release']:values.append('暂无已发布知识目录；空白不代表薄弱。')
-        if d['snapshot']['pending_sources']:values.append('部分学习证据尚未整理，考点表现可能不完整。')
-        if any(f['source']=='exam' and f['independent'] is None for f in d['facts']):values.append('原卷独立性未知；原卷日期缺失时使用首次记录日期。')
+        if not d['release']:values.append('考点目录还没准备好，暂时看不到的部分不代表你不会。')
+        if d['snapshot']['pending_sources']:values.append('还有一些作答没整理到考点里，这里的统计还不完整。')
+        if any(f['source']=='exam' and f['independent'] is None for f in d['facts']):values.append('无法确认原卷是否独立完成，所以没计入独立做对。没填作答日期的卷子，目前按上传日期统计。')
         return values
 
     def targets(self,d,subject=None,chapter=None):
@@ -206,7 +212,7 @@ class ProfileService:
         result=[]
         for tid,n in nodes.items():
             if tid not in allowed or n['kind']!='atom' or not n['selectable_question_count']:continue
-            if d['prefs']['study_type'] and d['prefs']['study_type'] not in n['math_types']:continue
+            if n['math_types'] and d['prefs']['study_type'] and d['prefs']['study_type'] not in n['math_types']:continue
             observed=d['node_facts'][tid];dt=dated(n['last_attempt_at'],d['clock'].tzinfo)
             if n['display_state']=='weak':category='weak'
             elif n['assisted'] and not n['successes'] or dt and d['clock']-dt>=timedelta(days=14):category='review_due'
@@ -239,7 +245,7 @@ class ProfileService:
                 first_error_stage=(f['first_error'] or {}).get('stage'),first_error_evidence=(f['first_error'] or {}).get('evidence')) for f in failures[:3]]
             stage_names={'entry':'切入','modeling':'建模','formula':'公式','calculation':'计算','finalization':'最终处理'}
             stages=list(dict.fromkeys(stage_names[e['first_error_stage']] for e in evidence if e['first_error_stage'] in stage_names))
-            basis=('例：'+'、'.join(e['label'] for e in evidence)+('；已记录首错：'+'、'.join(stages) if stages else '')+'。') if evidence else None
+            basis=(f'近28天做了{len(recent)}道，错{len(failures)}道。例：'+'、'.join(e['label'] for e in evidence)+('；最先出错的环节：'+'、'.join(stages) if stages else '')+'。') if evidence else None
             spots.append(dict(node_id=n['id'],name=n['name'],kind=n['kind'],subject_id=n['parent_id'],weak_atom_count=n['distribution']['weak'],
                 observed_atom_count=sum(nodes[a]['display_state']!='no_record' for a in d['descendants'][n['id']]),total_atom_count=len(d['descendants'][n['id']]),
                 recent_failures=len(failures),recent_judged=len(recent),failure_ratio=len(failures)/len(recent),window={'from':window.isoformat(),'to':clock.isoformat()},
@@ -248,7 +254,7 @@ class ProfileService:
         spots.sort(key=lambda s:(-s['recent_failures'],-s['failure_ratio'],-s['weak_atom_count']))
         def conclusion(n):
             fs=d['node_facts'][n['id']];judged=[f for f in fs if f['correct'] is not None and f['independent'] is not False]
-            return dict(node_id=n['id'],name=n['name'],subject_id=n['parent_id'],basis='仅反映已有记录中的表现，不代表整章掌握。',judged_count=len(judged),successes=sum(f['correct'] is True for f in judged),failures=sum(f['correct'] is False for f in judged),
+            return dict(node_id=n['id'],name=n['name'],subject_id=n['parent_id'],basis=f'已批改的{len(judged)}道题里，做对{sum(f["correct"] is True for f in judged)}道、错{sum(f["correct"] is False for f in judged)}道；只说明这些做过的题，不能代表整章都会。',judged_count=len(judged),successes=sum(f['correct'] is True for f in judged),failures=sum(f['correct'] is False for f in judged),
                 independent_correct=sum(f['correct'] is True and f['independent'] is True for f in judged),observed_atom_count=sum(bool(d['node_facts'][a]) for a in d['descendants'][n['id']]),total_atom_count=len(d['descendants'][n['id']]),weak_atom_count=n['distribution']['weak'],last_attempt_at=n['last_attempt_at'])
         strong=[]
         for n in nodes.values():
@@ -261,7 +267,7 @@ class ProfileService:
         for a,b in ((monday-timedelta(weeks=8),monday-timedelta(weeks=4)),(monday-timedelta(weeks=4),monday)):
             fs=[f for f in d['facts'] if f['independent'] is True and f['correct'] is not None and dated(f['occurred_at'],clock.tzinfo) and a<=dated(f['occurred_at'],clock.tzinfo)<b]
             windows.append(dict(independent_judged=len(fs),independent_correct=sum(f['correct'] is True for f in fs),**{'from':a.isoformat(),'to':b.isoformat()}))
-        comparison=dict(previous=windows[0],current=windows[1],delta=windows[1]['independent_correct']-windows[0]['independent_correct'],basis='比较独立做对的次数，不据此推断能力变化。') if all(w['independent_judged'] for w in windows) else None
+        comparison=dict(previous=windows[0],current=windows[1],delta=windows[1]['independent_correct']-windows[0]['independent_correct'],basis='这里只比较独立做对了几道，不说明水平一定提高或下降。') if all(w['independent_judged'] for w in windows) else None
         targets=self.targets(d) if d['prefs']['study_type'] else [];counts={k:sum(t['category']==k for t in targets) for k in ('weak','review_due','uncovered')}
         unfinished=sum(c['status'] in ('pending','needs_supplement') for c in d['cards'])
         receipts=sorted(d['receipts'],key=lambda r:r['assessed_at'] or '',reverse=True);receipts.sort(key=lambda r:not r['unread'])
@@ -275,7 +281,7 @@ class ProfileService:
             totals=dict(pending_analysis_paper_count=d['pending_papers'],unfinished_practice_count=unfinished,unread_feedback_count=unread,needs_review_count=len(review)),
             distribution=distribution(n for n in nodes.values() if n['kind']=='atom' and n['id'] in visible_atoms),
             subjects=subjects,weak_spots=spots[:5],conclusions=dict(strongest_chapter=strong[0] if strong else None,weakest_chapter=weak,independent_correct_comparison=comparison,
-                unavailable_reasons=dict(strongest_chapter=None if strong else '有效记录不足',weakest_chapter=None if weak else '近期失败依据不足',independent_correct_comparison=None if comparison else '前后两个四周窗口缺少可确认独立性的判断记录')),
+                unavailable_reasons=dict(strongest_chapter=None if strong else '记录还不够，再做几道才能判断。',weakest_chapter=None if weak else '最近的错题还不够，暂时不能判断哪章最弱。',independent_correct_comparison=None if comparison else '前后各四周里，能确认独立完成并批改过的题还不够。')),
             feedback=dict(unread_count=unread,recent_items=receipts[:3]),review=dict(total=len(review),counts={k:sum(f['source']==s for f in review) for k,s in [('exam_questions','exam'),('practice_attempts','practice'),('free_practice_attempts','free_practice')]},paper_issue_count=d['issues'],items=[dict(**{k:f[k] for k in ('source','question_id','attempt_id','practice_id','paper_id','bank_id')},reason='已有判断不确定或需补材料') for f in review[:5]]),
             recent_mistakes=[{k:f[k] for k in ('source','practice_source','question_id','question_number','practice_id','attempt_id','paper_id','bank_id','batch_id','label','occurred_at','answer_exposed','topic_ids')} for f in sorted(d['facts'],key=lambda f:f['occurred_at'] or '',reverse=True) if f['correct'] is False][:3],
-            next_steps=next_steps,profile_batch_eligibility=dict(can_create=bool(targets),reason=None if targets else '请先选择备考类别或积累可选题目/证据',target_counts=counts),limitations=self.limitations(d))
+            next_steps=next_steps,profile_batch_eligibility=dict(can_create=bool(targets),reason=None if targets else '请先选择数一、数二或数三；如果已经选好，暂时没有适合你这次练的题。',target_counts=counts),limitations=self.limitations(d))

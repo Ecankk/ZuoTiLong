@@ -68,6 +68,29 @@ class ProfileOverviewTests(unittest.TestCase):
 
 
 class ProfileEvidenceTests(unittest.TestCase):
+    def test_unspecified_math_types_do_not_hide_atoms_or_chapter_distribution(self):
+        import copy
+        import test_knowledge_links as knowledge
+        from app.main import create_app
+        from fastapi.testclient import TestClient
+        from app.bank.access import save_preferences
+        f=knowledge.KnowledgeLinksTests();f.setUp();self.addCleanup(f.doCleanups)
+        save_preferences(f.conn,{'study_type':2});f.conn.commit()
+        with TestClient(create_app(f.config,agent_factory=None),base_url='http://127.0.0.1') as http:
+            rt=http.app.state.runtime;snapshot=copy.deepcopy(rt.frontend._knowledge())
+            atom=next(n for n in snapshot['nodes'] if n['origin'].get('node_kind')=='atom')
+            atom['origin']['math_types']=[]
+            by_id={n['skill_id']:n for n in snapshot['nodes']};chapter=by_id[atom['parent_id']]
+            while chapter['origin'].get('node_kind')!='chapter':chapter=by_id[chapter['parent_id']]
+            with patch.object(rt.frontend,'_knowledge',return_value=snapshot):
+                response=http.get('/api/profile/nodes/'+chapter['skill_id']+'/atoms')
+                self.assertEqual(response.status_code,200,response.text)
+                self.assertIn(atom['skill_id'],[n['id'] for n in response.json()['items']])
+                overview=http.get('/api/profile/overview').json()
+                c=next(c for s in overview['subjects'] for c in s['chapters'] if c['id']==chapter['skill_id'])
+                self.assertGreater(sum(c['distribution'].values()),0)
+                self.assertNotIn('有效记录',json.dumps(overview,ensure_ascii=False))
+
     def test_weak_ranking_cites_saved_questions_and_first_error_without_atom_payload(self):
         import test_execution_v2 as execution
         from app.main import create_app

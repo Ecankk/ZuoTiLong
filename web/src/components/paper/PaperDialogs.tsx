@@ -217,9 +217,10 @@ export function DuplicateDecisionDialog({
           <Dialog.Title className={dialogStyles.title}>这份卷之前传过</Dialog.Title>
           <div className={dialogStyles.body}>
             <p>
+              {`你已经有${currentCheck.matches.length > 1 ? ` ${currentCheck.matches.length} 份` : '一份'}`}
               {currentCheck.identity
-                ? `你已经有一份 ${currentCheck.identity.exam_year} 年数学${'一二三'[currentCheck.identity.math_type - 1]}：`
-                : '你已经有一份同年同卷：'}
+                ? ` ${currentCheck.identity.exam_year} 年数学${'一二三'[currentCheck.identity.math_type - 1]}：`
+                : '同年同卷：'}
             </p>
             <MatchList check={currentCheck} />
             <p className={styles.note}>

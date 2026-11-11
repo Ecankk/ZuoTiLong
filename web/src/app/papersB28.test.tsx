@@ -333,3 +333,24 @@ it('explains a date change refused because a paper was withdrawn', async () => {
     await within(dialog).findByText('选中的试卷里有已经撤回的，不能改日期。'),
   ).toBeInTheDocument()
 })
+
+it('counts the existing papers when more than one matches', async () => {
+  server({
+    importReply: () => ({
+      ...duplicateImport,
+      duplicate_check: {
+        ...duplicateImport.duplicate_check!,
+        matches: [
+          ...duplicateImport.duplicate_check!.matches,
+          { ...duplicateImport.duplicate_check!.matches[0], paper_id: 'p-x', has_report: false },
+        ],
+      },
+    }),
+  })
+  renderAt('/papers')
+  const upload = await screen.findByRole('region', { name: '上传试卷' })
+  await userEvent.upload(within(upload).getByLabelText('选择试卷 PDF'), pdf('再做.pdf'))
+  await userEvent.click(within(upload).getByRole('button', { name: '上传' }))
+  const dialog = await screen.findByRole('dialog', { name: '这份卷之前传过' })
+  expect(dialog).toHaveTextContent('你已经有 2 份 2023 年数学一：')
+})

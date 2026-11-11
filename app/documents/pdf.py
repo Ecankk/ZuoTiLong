@@ -10,7 +10,6 @@ import threading
 import unicodedata
 
 PIPELINE_VERSION = "regions-3-rapidocr-1.4.4"
-CACHE_ROOT = Path(__file__).resolve().parents[2] / ".mathlens" / "ocr-cache"
 OCR_LOCK = threading.Lock()
 QUESTION_START = re.compile(r"^\s*(?:[（(]\s*(?P<bracket>\d{1,2})\s*[)）]|(?P<plain>\d{1,2})\s*[．、.]\s+(?=\D))")
 SECTION_START = re.compile(r'^\s*[一二三四五六七八九十]+\s*[、.．]\s*(?:选择题|填空题|解答题|计算题|证明题)')
@@ -139,13 +138,15 @@ def segment_pages(pages: list[dict], expected_count: int | None = None) -> tuple
 
 
 def extract_pdf(pdf_path: Path, allow_ocr: bool = True, expected_count: int | None = None,
-                *, cache_root: Path | None = None, on_progress=None) -> dict:
+                *, cache_root: Path, on_progress=None) -> dict:
+    cache_root=Path(cache_root)
+    if not cache_root.is_absolute():raise ValueError('OCR缓存目录必须为显式绝对路径')
     try:
         import pymupdf as fitz
     except ImportError:
         return {"engine": "unavailable", "message": "请安装 requirements-ocr.txt", "pages": [], "questions": [], "warnings": ["pymupdf_not_installed"], "complete": False}
     digest = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
-    cache_file = (cache_root or CACHE_ROOT) / digest / f"{PIPELINE_VERSION}-{'ocr' if allow_ocr else 'text'}.json"
+    cache_file = cache_root / digest / f"{PIPELINE_VERSION}-{'ocr' if allow_ocr else 'text'}.json"
     if cache_file.is_file():
         pages = json.loads(cache_file.read_text(encoding="utf-8"))["pages"]
         if on_progress:on_progress(phase='reading',pages_done=len(pages),pages_total=len(pages),cached=True)

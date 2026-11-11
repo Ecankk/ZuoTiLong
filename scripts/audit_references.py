@@ -67,7 +67,7 @@ def probe_pipeline() -> dict:
                     if text:
                         page.insert_text((72, 72), text, fontsize=12)
                 document.save(path)
-            return extract_pdf(path, allow_ocr=allow_ocr)
+            return extract_pdf(path, allow_ocr=allow_ocr, cache_root=Path(directory)/'ocr-cache')
 
         for name, text in [
             ("decimal_numbers", "1. Evaluate 0.5 plus 0.25. Explain your result.\n2. Compute three plus four."),

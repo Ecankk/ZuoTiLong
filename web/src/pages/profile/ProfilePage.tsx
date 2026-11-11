@@ -25,6 +25,7 @@ import {
   stageLabel,
   weakSpotCounts,
   weakSpotLoss,
+  weakSpotsNote,
 } from '../../lib/profile'
 import { FirstErrorCard } from './FirstErrorCard'
 import styles from './ProfilePage.module.css'
@@ -153,18 +154,16 @@ function WeakSpots({
   const subjectName = (id: string) => overview.subjects.find((s) => s.id === id)?.name
   const d = overview.distribution
   const hasRecords = d.mastered + d.learning + d.weak > 0
-  const context = overview.weak_spots_context
-  // 近期记录不够时，后端会用更早的试卷补位，这里要说清楚
-  const fallback = overview.weak_spots.length > 0 && context && !context.recent_evidence_sufficient
+  const note = weakSpotsNote(overview)
   return (
     <Card padded className={styles.primary} aria-label="最该补的地方">
       <div className={styles.cardHead}>
         <h2>最该补的地方</h2>
-        {overview.weak_spots.length > 0 && !fallback && (
+        {overview.weak_spots.length > 0 && !note && (
           <span className={styles.faint}>按近 28 天的错题排序</span>
         )}
       </div>
-      {fallback && <p className={styles.fallback}>近期记录较少，以下包含历史卷依据</p>}
+      {note && <p className={styles.fallback}>{note}</p>}
       {overview.weak_spots.length > 0 ? (
         <ol className={styles.spots}>
           {overview.weak_spots.map((spot, i) => (

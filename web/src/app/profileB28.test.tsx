@@ -122,3 +122,19 @@ it('home weak spots use the same period wording and wrong counts', async () => {
   expect(rows[1]).toHaveTextContent('错 3 道')
   expect(screen.getByRole('region', { name: '最常错在哪一步' })).toBeInTheDocument()
 })
+
+it('says older papers fill in when recent records are enough but some chapters have none', async () => {
+  renderAt('/profile', {
+    ...periodOverview,
+    weak_spots_context: {
+      ...periodOverview.weak_spots_context!,
+      recent_evidence_sufficient: true,
+      uses_history_fallback: true,
+      explanation: '有些章节近期没有错题记录，下面用历史错题补充。',
+    },
+  })
+  const weak = await screen.findByRole('region', { name: '最该补的地方' })
+  expect(weak).toHaveTextContent('有些章节近期没有错题记录，下面用历史错题补充。')
+  expect(weak).not.toHaveTextContent('按近 28 天的错题排序')
+  expect(weak).not.toHaveTextContent('近期记录较少')
+})

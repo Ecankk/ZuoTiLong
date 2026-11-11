@@ -1,4 +1,4 @@
-import type { WeakSpot, WeakSpotEvidence } from '../api/types'
+import type { Overview, WeakSpot, WeakSpotEvidence } from '../api/types'
 import { examDateLabel, timestampDay } from './examDate'
 
 /** 后端保存的首错环节枚举 → 中文；已经是中文或不认识的原样显示，unknown 不显示 */
@@ -120,5 +120,18 @@ export function firstErrorLink(e: {
   if (e.paper_id && e.question_number)
     return `/papers/${encodeURIComponent(e.paper_id)}/questions/${encodeURIComponent(e.question_number)}`
   if (e.paper_id) return `/papers/${encodeURIComponent(e.paper_id)}`
+  return null
+}
+
+/**
+ * 排行上方的一句说明：近期记录不够 → 固定说法；近期够但有章节用更早的试卷补位 → 后端说明；
+ * 都是近期 → null（显示“按近 28 天的错题排序”）。
+ */
+export function weakSpotsNote(overview: Overview): string | null {
+  const context = overview.weak_spots_context
+  if (!context || overview.weak_spots.length === 0) return null
+  if (!context.recent_evidence_sufficient) return '近期记录较少，以下包含历史卷依据'
+  if (context.uses_history_fallback || overview.weak_spots.some(isHistorical))
+    return context.explanation ?? '有些章节近期没有错题，下面用更早的试卷补充。'
   return null
 }

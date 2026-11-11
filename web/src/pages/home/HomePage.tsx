@@ -21,7 +21,13 @@ import { Skeleton } from '../../components/ui/Skeleton'
 import { paperName } from '../../lib/labels'
 import { SETUP_GUIDE_PATH, setupMessage } from '../../lib/setup'
 import { ProfileBatchPanel } from '../profile/ProfileBatch'
-import { isHistorical, weakSpotFacts, weakSpotLoss, weakSpotWrong } from '../../lib/profile'
+import {
+  isHistorical,
+  weakSpotFacts,
+  weakSpotLoss,
+  weakSpotsNote,
+  weakSpotWrong,
+} from '../../lib/profile'
 import { FirstErrorCard } from '../profile/FirstErrorCard'
 import styles from './HomePage.module.css'
 
@@ -277,7 +283,7 @@ function FeedbackList({ items }: { items: FeedbackItem[] }) {
 
 /** 首页“最该补的地方”：画像排行的前 3 个，每个一句依据 */
 function WeakSpotsCard({ overview }: { overview: Overview }) {
-  const context = overview.weak_spots_context
+  const note = weakSpotsNote(overview)
   return (
     <Card padded className={styles.card} aria-label="最该补的地方">
       <div className={styles.cardHead}>
@@ -286,9 +292,7 @@ function WeakSpotsCard({ overview }: { overview: Overview }) {
           看完整画像 →
         </Link>
       </div>
-      {context && !context.recent_evidence_sufficient && (
-        <p className={styles.note}>近期记录较少，以下包含历史卷依据</p>
-      )}
+      {note && <p className={styles.note}>{note}</p>}
       <ul className={styles.rows}>
         {overview.weak_spots.slice(0, 3).map((spot) => (
           <Row

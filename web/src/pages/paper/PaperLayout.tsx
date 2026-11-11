@@ -1,17 +1,20 @@
-import { Archive, ArchiveRestore, X } from 'lucide-react'
+import { Archive, ArchiveRestore, CalendarDays, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate, Outlet, useParams } from 'react-router'
+import { Navigate, Outlet, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import { endpoints } from '../../api/endpoints'
 import { useAction, usePaper, usePaperQuestions } from '../../api/queries'
+import type { Paper, PaperResponse } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { ErrorState } from '../../components/ui/ErrorState'
+import { DuplicateDecisionDialog, EditDatesDialog } from '../../components/paper/PaperDialogs'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { SegmentedLinks } from '../../components/ui/Segmented'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { friendlyError } from '../../lib/errors'
-import { monthDay, paperName } from '../../lib/labels'
+import { choiceFrom, examDateLine } from '../../lib/examDate'
+import { paperName } from '../../lib/labels'
 import { PlaceholderPage } from '../Placeholder'
 import styles from './PaperOverview.module.css'
 
@@ -86,6 +89,55 @@ function ArchiveButton({ paperId, archived }: { paperId: string; archived: boole
   )
 }
 
+function DateButton({ paper }: { paper: Paper }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+        <CalendarDays size={16} aria-hidden />
+        改日期
+      </Button>
+      <EditDatesDialog
+        paperIds={[paper.id]}
+        initial={choiceFrom(paper)}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  )
+}
+
+/** 同卷重复上传还没决定：每个分页上方都提示，可以随时决定 */
+function DuplicateNotice({ data }: { data: PaperResponse }) {
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const check = data.duplicate_check
+  if (data.paper.import_decision !== 'pending_duplicate') return null
+  return (
+    <div className={styles.duplicate} role="region" aria-label="这份卷之前传过">
+      <div>
+        <strong>这份卷之前传过同一年同一卷</strong>
+        <span>先确认是重做还是传错了，确认前不会开始分析，题号可以先看。</span>
+      </div>
+      {check && check.status === 'same_exam_identity' && (
+        <>
+          <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
+            去决定
+          </Button>
+          <DuplicateDecisionDialog
+            paperId={data.paper.id}
+            check={check}
+            revision={data.decision_revision}
+            open={open}
+            onOpenChange={setOpen}
+            onDecided={(decision) => decision === 'withdraw' && navigate('/papers')}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
 export function PaperLayout() {
   const { paperId = '' } = useParams()
   const { data, isPending, error, refetch } = usePaper(paperId)
@@ -125,13 +177,14 @@ export function PaperLayout() {
         title={paperName(paper.title)}
         subtitle={
           <span className="tabular">
-            {paper.exam_date ? `${monthDay(paper.exam_date)}作答` : '作答日期未填'}
+            {examDateLine(paper)}
             {paper.score !== null && ` · 得分 ${paper.score} / ${paper.total_score}`}
             {archived && ' · 已归档'}
           </span>
         }
         actions={
           <div className={styles.headerActions}>
+            <DateButton paper={paper} />
             <ArchiveButton paperId={paper.id} archived={archived} />
             <SegmentedLinks
               label="试卷内容"
@@ -144,6 +197,7 @@ export function PaperLayout() {
           </div>
         }
       />
+      <DuplicateNotice data={data} />
       <Outlet />
     </>
   )

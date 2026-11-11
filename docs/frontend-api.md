@@ -102,6 +102,24 @@ ProfileNode：`{id,parent_id,name,kind,math_types,state,state_reason,display_sta
 - 画像练习沿用 GET /api/practices/{id}、/attempts、POST /api/probes/{id}/submit、/api/attempts/{id}/supplement；固定图片为 `GET /api/practices/{id}/materials/question|analysis|answer`（允许时返回，no-store）。GET /api/tasks 的画像任务项带 `source:'profile_practice'`、`batch_id`。
 - 题库补图（B27）：BankCard 与题面投影可带只读 `supplemental_figures`（重绘图的角色、说明“按题意重绘”与依据，不含本机路径）；题图 URL 返回的已是原图加重绘图的显示图，前端无需拼接。
 
+## 作答日期、重复上传与画像修正（B28，已确认，实现中）
+
+日期：PaperCard、GET /api/papers/{id}.paper、上传响应的 paper 增加 `exam_date:string|null`（YYYY-MM-DD 或 YYYY-MM）、`exam_date_precision:'day'|'month'|'unknown'`、`exam_date_unknown_reason:'not_provided'|'forgotten'|null`、`import_decision:'accepted'|'pending_duplicate'|'withdrawn'`。未填 → null/unknown/not_provided，“记不清” → null/unknown/forgotten，“约某月” → "YYYY-MM"/month；不再默认今天，拒绝未来日/月。旧数据里的完整日期按 day 保留，无法区分是否当年被自动填成上传日，靠用户批量修正。
+
+| 方法/路径 | 参数 | 响应 |
+| --- | --- | --- |
+| POST /api/papers/import | 原 multipart 加可选 `exam_date`、`exam_date_precision`、`exam_date_unknown_reason`；批量上传逐份传同一值，前端不得在未选择时传今天 | 原字段加 `duplicate_check{status:'clear'\|'same_pdf'\|'same_exam_identity'\|'unresolved',identity{exam_year,math_type}\|null,reason,matches[{paper_id,title,exam_date,exam_date_precision,archived,has_report}]}`、`import_decision`、`decision_revision`。相同PDF 200 复用且不改旧日期；不同PDF同年同卷别 201 保存为 pending_duplicate |
+| POST /api/papers/dates | `{confirmed:true,request_id:uuid,paper_ids[1–50],exam_date,exam_date_precision,exam_date_unknown_reason}` | 200 `{updated:[{paper_id,exam_date,exam_date_precision,exam_date_unknown_reason}],reused}`；整批原子写，相关卷有排队/运行中的任务时 409 |
+| POST /api/papers/{id}/import-decision | `{confirmed:true,request_id:uuid,decision:'retake'\|'withdraw',decision_revision}` | 200 `{paper_id,import_decision,reused}`；revision 过期、有学习历史时撤回均 409，刷新详情后重试 |
+
+- pending_duplicate 卷不给 analyze 动作，可只读核对切题；GET /api/papers/{id} 返回当前 duplicate_check，刷新后可继续决定。withdraw 是逻辑撤回，只限无分析/批改/练习历史的新上传，默认列表与画像排除。
+- 试卷列表已知日期新到旧，未知日期排在后面并显示“日期未知/记不清”；YYYY-MM 不能交给只认完整日期的格式化器。
+- 考点节点加 `last_attempt_date:{value,precision,unknown_reason}|null`；同一天、同为未知或月份区间重叠时有对有错 → learning（巩固中），state_reason 说明“同一时间范围内有对有错”。
+- trends 加 `unplaced_by_precision{month,unknown}`（不能放进某周的作答）；overview 加 `history_counts{month_dated_attempts,unknown_dated_attempts}`。周数与四周对比只计精确到日的作答。
+- overview 加 `weak_spots_context{recent_window,recent_judged_count,recent_evidence_sufficient,uses_history_fallback,explanation}`；weak_spot 加 `evidence_period:'recent'|'historical'`、`period_explanation`、`recent_lost_points|null`、`historical_lost_points|null`、各期已知/未知分数题数、`recent_exam_failure_count`、`recent_practice_failure_count`、`historical_failures`、`historical_exam_failure_count`、`historical_practice_failure_count`、`loss_attribution:'related_question_loss'`、`loss_basis:'saved_estimate'|'mixed'|null`。排序：近期在前、历史补位在后；组内按原卷已知失分 → 原卷错题数 → 练习错题数 → 错误比例 → 薄弱原子数。失分为“涉及的原卷失分（按已保存估分）”，null 显示“分数未知”不填 0，各章失分不能相加。
+- evidence 与 recent_mistakes 加 `exam_date`、`exam_date_precision`、`exam_date_unknown_reason`、`score_earned`、`max_score`、`lost_points`、`loss_basis`、`loss_unavailable_reason:'missing_score'|'invalid_score'|'score_conflict'|'not_exam'|null`。
+- overview 加 `first_error_summary|null`：`{period:'recent',window,wrong_count,attributed_count,unattributed_count,stages[{stage,count}],dominant_stage,dominant_count,statement,evidence[≤3]}`；近期≥5道错题、≥3道有首错记录、唯一最多的环节≥3道且占错题≥50% 才返回，否则 null，前端不显示该卡、不自行拼结论。
+
 ## 考点与题库
 
 | 方法/路径 | 参数 | 响应 |

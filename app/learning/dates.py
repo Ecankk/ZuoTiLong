@@ -20,8 +20,9 @@ def initialize(conn):
     columns={r[1] for r in conn.execute('PRAGMA table_info(papers)')}
     for name,definition in [('exam_date_precision','TEXT'),('exam_date_unknown_reason','TEXT'),('import_decision',"TEXT NOT NULL DEFAULT 'accepted'")]:
         if name not in columns:conn.execute('ALTER TABLE papers ADD COLUMN '+name+' '+definition)
-    conn.execute("UPDATE papers SET exam_date_precision=CASE WHEN exam_date IS NULL OR exam_date='' THEN 'unknown' WHEN length(exam_date)=7 THEN 'month' ELSE 'day' END WHERE exam_date_precision IS NULL")
-    conn.execute("UPDATE papers SET exam_date_unknown_reason='not_provided' WHERE exam_date_precision='unknown' AND exam_date_unknown_reason IS NULL")
+    conn.execute("UPDATE papers SET exam_date_precision=CASE WHEN exam_date IS NULL OR exam_date='' THEN 'unknown' WHEN length(exam_date)=7 THEN 'month' ELSE 'day' END WHERE exam_date_precision IS NULL OR exam_date_precision=''")
+    conn.execute("UPDATE papers SET exam_date_unknown_reason='not_provided' WHERE exam_date_precision='unknown' AND (exam_date_unknown_reason IS NULL OR exam_date_unknown_reason='')")
+    conn.execute("UPDATE papers SET import_decision='accepted' WHERE import_decision IS NULL OR import_decision=''")
     conn.execute("UPDATE papers SET exam_date=NULL WHERE exam_date=''")
 
 def descriptor(value=None,precision=None,reason=None):

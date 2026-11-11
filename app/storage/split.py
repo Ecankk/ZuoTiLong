@@ -73,6 +73,8 @@ def initialize_split(config):
                     for name,kind in (('updated_at','TEXT'),('archived_at','TEXT'),('score_confirmed_at','TEXT'),('math_type','INTEGER')):
                         if name not in columns:conn.execute('ALTER TABLE papers ADD COLUMN '+name+' '+kind)
                     conn.execute('UPDATE papers SET updated_at=created_at WHERE updated_at IS NULL')
+                    from app.learning.dates import initialize as initialize_dates
+                    initialize_dates(conn)
                 for name in ('preferences', 'knowledge_nodes'):
                     if name in names and not conn.execute('SELECT 1 FROM '+name+' LIMIT 1').fetchone():
                         copy_rows(schema, conn, name)

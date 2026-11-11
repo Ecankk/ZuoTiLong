@@ -64,7 +64,7 @@ def facts(conn):
         from app.services.profile_metrics import loss
         score=loss(diagnosis,row)
         values.append(dict(**score,exam_date=row['exam_date'],exam_date_precision=row['exam_date_precision'],exam_date_unknown_reason=row['exam_date_unknown_reason'],source='exam',practice_source=None,id=row['id'],question_id=row['id'],practice_id=None,
-            attempt_id=None,paper_id=row['paper_id'],question_number=str(row['number']),bank_id=row['match_bank_id'],batch_id=None,label=f"{paper_title(row['title'])} 第{row['number']}题",
+            attempt_id=None,paper_id=row['paper_id'],question_number=str(row['number']),bank_id=row['match_bank_id'],batch_id=None,label=f"{paper_title(row['title'])} · 第{row['number']}题",
             occurred_at=row['exam_date'],correct=(True if correctness=='correct' else False if correctness in ('wrong','partial') else None) if verified else None,
             independent=None,answer_exposed=None,pending=False,assessment=None,first_error=diagnosis.get('first_error'),
             counted=evidence.get('student_state')=='visible' and bool(evidence.get('student_work','').strip()),needs_review=correctness=='unknown'))

@@ -1,5 +1,5 @@
 import type { WeakSpot, WeakSpotEvidence } from '../api/types'
-import { examDateLabel } from './examDate'
+import { examDateLabel, timestampDay } from './examDate'
 
 /** 后端保存的首错环节枚举 → 中文；已经是中文或不认识的原样显示，unknown 不显示 */
 const stageText: Record<string, string> = {
@@ -98,9 +98,13 @@ export function weakSpotWrong(spot: WeakSpot): number {
   return exam + practice
 }
 
-/** 原卷错题的作答日期（按日 / 月 / 未知）；练习和自由练习不显示 */
+/** 错题日期：原卷按作答日期的精度（日 / 月 / 未知），练习和自由练习用作答时间 */
 export const evidenceDate = (e: WeakSpotEvidence) =>
-  e.source === 'exam' && e.exam_date_precision !== undefined ? examDateLabel(e) : null
+  e.source === 'exam'
+    ? e.exam_date_precision !== undefined
+      ? examDateLabel(e)
+      : null
+    : timestampDay(e.occurred_at)
 
 /** 全局首错汇总里的一条：去原卷题目或练习 */
 export function firstErrorLink(e: {

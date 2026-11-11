@@ -51,6 +51,10 @@ it('separates recent weak spots from older papers and states lost points honestl
   const evidence = within(older).getByRole('list', { name: '特征值与特征向量的错题' })
   expect(evidence).toHaveTextContent('约2026年3月')
   expect(evidence).toHaveTextContent('记不清')
+  // 练习错题用作答时间显示日期
+  expect(within(recent).getByRole('link', { name: /方差及其计算式/ })).toHaveTextContent(
+    '2026年11月6日',
+  )
 
   // 失分未知时不写 0 分
   const unknown = spot(weak, '重积分')
@@ -70,6 +74,21 @@ it('shows the first-error card only when the backend gives a summary', async () 
   expect(links[0]).toHaveAttribute('href', '/papers/paper-2021/questions/9')
   expect(links[1]).toHaveAttribute('href', '/practice?item=probe-var-2')
   expect(links[0]).toHaveTextContent('第 9 题先错在计算')
+})
+
+it('uses the evidence label in the first-error card when the backend gives one', async () => {
+  const summary = periodOverview.first_error_summary!
+  renderAt('/profile', {
+    ...periodOverview,
+    first_error_summary: {
+      ...summary,
+      evidence: summary.evidence.map((e, i) =>
+        i === 0 ? { ...e, label: '《2021数学一》第9题' } : e,
+      ),
+    },
+  })
+  const card = await screen.findByRole('region', { name: '最常错在哪一步' })
+  expect(within(card).getAllByRole('link')[0]).toHaveTextContent('《2021数学一》第9题先错在计算')
 })
 
 it('hides the first-error card when the summary is null', async () => {

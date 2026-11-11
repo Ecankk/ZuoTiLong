@@ -108,6 +108,8 @@ export type FirstErrorSummary = {
     attempt_id: string | null
     first_error_stage: string
     first_error_evidence: string
+    /** 后端补丁会加：出处名，如“《2021数学一》第9题” */
+    label?: string | null
   }[]
 }
 

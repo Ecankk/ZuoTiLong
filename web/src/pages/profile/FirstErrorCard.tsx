@@ -26,11 +26,13 @@ export function FirstErrorCard({
           {items.map((e, i) => {
             const to = firstErrorLink(e)
             const stage = stageLabel(e.first_error_stage)
-            const where = e.question_number
-              ? `第 ${e.question_number} 题`
-              : e.source === 'exam'
-                ? '原卷题目'
-                : '练习题'
+            const where = e.label
+              ? e.label
+              : e.question_number
+                ? `第 ${e.question_number} 题`
+                : e.source === 'exam'
+                  ? '原卷题目'
+                  : '练习题'
             const body = (
               <>
                 <span className={styles.where}>

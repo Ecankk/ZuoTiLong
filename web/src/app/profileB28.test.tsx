@@ -40,13 +40,17 @@ it('separates recent weak spots from older papers and states lost points honestl
 
   const recent = spot(weak, '随机变量的数字特征')
   expect(recent).toHaveTextContent('涉及原卷失分约 7 分（按已保存估分）')
-  expect(recent).toHaveTextContent('原卷错 1 道 · 练习错 3 道 · 3 个考点要补')
+  // 依据句已写了做几道、错几道，不再重复计数，只补考点数
+  expect(recent).toHaveTextContent('3 个考点要补')
+  expect(recent).not.toHaveTextContent('原卷错')
   expect(recent).not.toHaveTextContent('更早的试卷')
 
   const older = spot(weak, '特征值与特征向量')
   expect(older).toHaveTextContent('更早的试卷')
   expect(older).toHaveTextContent('涉及原卷失分约 14 分（按已保存估分，另有 1 道分数未知）')
   expect(older).toHaveTextContent('近 28 天没有这一章的错题')
+  // 没有依据句时显示原卷错题数
+  expect(older).toHaveTextContent('原卷错 3 道 · 3 个考点要补')
   // 错题按作答日期的精度显示
   const evidence = within(older).getByRole('list', { name: '特征值与特征向量的错题' })
   expect(evidence).toHaveTextContent('约2026年3月')

@@ -78,9 +78,12 @@ export function weakSpotLoss(spot: WeakSpot): string | null {
   )
 }
 
-/** “原卷错 2 道 · 练习错 1 道 · 3 个考点要补”；旧接口退回原来的说法 */
+/**
+ * “原卷错 2 道 · 练习错 1 道 · 3 个考点要补”。后端依据句已经写了“做了几道、错几道”时
+ * 不再重复计数，只补考点数（同一件事只说一次）；旧接口退回原来的说法。
+ */
 export function weakSpotCounts(spot: WeakSpot): string {
-  if (!hasPeriods(spot)) return weakSpotFactsBesideBasis(spot)
+  if (!hasPeriods(spot) || spot.basis) return weakSpotFactsBesideBasis(spot)
   const { exam, practice } = periodCounts(spot)
   return [
     exam > 0 && `原卷错 ${exam} 道`,

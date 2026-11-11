@@ -103,6 +103,15 @@ bank_id 由 source_id 和 source_uid 的 SHA256 稳定生成，不含 revision�
 - 旧 S01 没有标准输入：`agent_tasks.py apply-errata --collection zhenti --input <勘误JSON> --dry-run|--confirm <plan_sha256>`，source_id=S01、revision=legacy-db-export/v1、source_uid=原 bank_id，确认前自动备份。
 - 写入生成新材料版本，original 与历史保留，bank_id 不变；同一条勘误重放为未变。bank-record/v1 增加可选 errata 历史条目，不升格式。题卡、自由练习参考和 read_bank 带 `errata:[{role,reason,evidence}]`；旧固定材料不标新勘误。
 
+### 补图
+
+图能从题面和解析唯一推出时，按题意重绘后用补图清单 `mathlens.bank-figures/v1` 入库：`import-source ... --errata <完整勘误> --figures <清单JSON> [--figure-root <图片根>] --dry-run|--confirm <plan_sha256>`。清单按“题源 × 题集”累积，保存在 `<数据目录>/curation/figures/<题源>-<题集>.json`，每次传完整清单；本次 JSONL 必须覆盖清单里的全部 UID，遗漏已有条目、重复或跨题/跨角色挪用 figure_id 均拒绝。
+
+- 条目 `{figure_id,match:{source_uid},role:'stem'|'analysis',kind:'redrawn',caption:'按题意重绘',image:{path,sha256,media_type},reason,evidence}`；图片为 PNG/JPEG/WebP，≤8MB、≤4000万像素，SVG/PDF 先在库外转 PNG。图内角注由制图者画好，程序不改图。图片默认相对清单所在目录，`--figure-root` 另指；JSONL 原有图片仍按 `--asset-root`。
+- 预演不复制图片、不写版本，报告 `figures_sha256`、`figures_applied`（added/replaced/unchanged/metadata_only）、`invalidated_annotations`、`needs_annotation`；确认前重读图片字节校验，图片、清单或库有变化须重新预演。
+- bank-record/v1 增加可选 `supplemental_figures{entries,materialized_roles}`，不升格式；original 与原始资源不变。显示图为原图加重绘图，新增或替换图产生新材料版本，旧标注不再 current-ready，需按 needs_annotation 重标；只改理由/依据走纯元数据更新，不失效。暂不支持删除补图。
+- 题卡和 read_bank 带只读 `supplemental_figures` 审计（不含本机路径，无解析权限时不返回解析补图）；旧练习快照不拼新图。题集包导出原件、显示图与审计，`materialized_roles` 表示包内角色图已含补图，导入不重复拼接。
+
 ### 题集包
 
 按题集分发用 `mathlens.collection-pack/v1`（zip，仅数据）：manifest.json、records.jsonl、annotations.json（question-index/v2，无 ready 可省）、catalog.json（knowledge-package/v1）、errata.json 和 `assets/<sha256>.<ext>`。

@@ -156,6 +156,8 @@ export function DuplicateDecisionDialog({
   const client = useQueryClient()
   // 409 后重读的详情：之后用它的最新 revision 和核查结果（上传结果里的 revision 不会自己更新）
   const [latest, setLatest] = useState<PaperResponse | null>(null)
+  // 重读详情期间不能再点，免得又拿旧 revision 提交一次
+  const [refreshing, setRefreshing] = useState(false)
   const currentCheck = latest?.duplicate_check ?? check
   const currentRevision = latest ? latest.decision_revision : revision
   const settled = latest !== null && latest.paper.import_decision !== 'pending_duplicate'
@@ -177,6 +179,7 @@ export function DuplicateDecisionDialog({
       },
       onError: (error) => {
         if (error instanceof ApiError && error.status === 409) {
+          setRefreshing(true)
           void client
             .fetchQuery({
               queryKey: queryKeys.paper(paperId),
@@ -185,6 +188,7 @@ export function DuplicateDecisionDialog({
             })
             .then((fresh) => fresh && setLatest(fresh))
             .catch(() => undefined)
+            .finally(() => setRefreshing(false))
           void client.invalidateQueries({ queryKey: ['papers', 'list'] })
         }
       },
@@ -195,7 +199,9 @@ export function DuplicateDecisionDialog({
       ? '这份试卷已经撤回了。'
       : '这份试卷已经确定是重做，不用再选了。'
     : decide.error
-      ? conflictText(decide.error, decisionConflict, '这份试卷的情况刚刚有变化，请刷新后再试。')
+      ? refreshing
+        ? '情况有变化，正在重新读取…'
+        : conflictText(decide.error, decisionConflict, '这份试卷的情况刚刚有变化，请刷新后再试。')
       : null
   return (
     <Dialog.Root
@@ -229,10 +235,14 @@ export function DuplicateDecisionDialog({
             </Dialog.Close>
             {!settled && (
               <>
-                <Button disabled={decide.isPending} onClick={() => run('withdraw')}>
+                <Button disabled={decide.isPending || refreshing} onClick={() => run('withdraw')}>
                   传错了，撤回
                 </Button>
-                <Button variant="primary" disabled={decide.isPending} onClick={() => run('retake')}>
+                <Button
+                  variant="primary"
+                  disabled={decide.isPending || refreshing}
+                  onClick={() => run('retake')}
+                >
                   {decide.isPending && decide.variables === 'retake' ? '正在处理…' : '这是重做'}
                 </Button>
               </>

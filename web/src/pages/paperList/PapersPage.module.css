@@ -241,11 +241,13 @@
   flex: 1 1 auto;
 }
 
+/* 勾选框放右下角，不压住右上角的状态标签 */
 .selectCover {
   position: absolute;
   inset: 0;
   z-index: 2;
   display: flex;
+  align-items: flex-end;
   justify-content: flex-end;
   padding: var(--space-3);
   border-radius: var(--radius-md);

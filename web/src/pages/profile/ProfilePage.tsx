@@ -18,7 +18,15 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { cx } from '../../lib/cx'
 import { ProfileBatchPanel } from './ProfileBatch'
-import { evidenceLink, stageLabel, weakSpotFactsBesideBasis } from '../../lib/profile'
+import {
+  evidenceDate,
+  evidenceLink,
+  isHistorical,
+  stageLabel,
+  weakSpotCounts,
+  weakSpotLoss,
+} from '../../lib/profile'
+import { FirstErrorCard } from './FirstErrorCard'
 import styles from './ProfilePage.module.css'
 
 /* ---------- 共用：状态、阶段、出处链接 ---------- */
@@ -89,6 +97,8 @@ function WeakSpotItem({
   subjectName?: string
   onPractice: () => void
 }) {
+  const loss = weakSpotLoss(spot)
+  const counts = weakSpotCounts(spot)
   return (
     <li className={styles.spot}>
       <span className={styles.rank}>{index + 1}</span>
@@ -96,19 +106,24 @@ function WeakSpotItem({
         <div className={styles.spotHead}>
           <strong>{spot.name}</strong>
           {subjectName && <small>{subjectName}</small>}
+          {isHistorical(spot) && <span className={styles.olderTag}>更早的试卷</span>}
         </div>
-        {weakSpotFactsBesideBasis(spot) && (
-          <p className={styles.spotFacts}>{weakSpotFactsBesideBasis(spot)}</p>
-        )}
+        {loss && <p className={styles.spotLoss}>{loss}</p>}
+        {counts && <p className={styles.spotFacts}>{counts}</p>}
         {spot.basis && <p className={styles.basis}>{spot.basis}</p>}
+        {isHistorical(spot) && spot.period_explanation && (
+          <p className={styles.periodNote}>{spot.period_explanation}</p>
+        )}
         {spot.evidence.length > 0 && (
           <ul className={styles.evidence} aria-label={`${spot.name}的错题`}>
             {spot.evidence.map((e, i) => {
               const to = evidenceLink(e)
               const stage = stageLabel(e.first_error_stage)
+              const date = evidenceDate(e)
               const body = (
                 <>
                   <span>{e.label}</span>
+                  {date && <small>{date}</small>}
                   {stage && <em>首错：{stage}</em>}
                 </>
               )
@@ -138,14 +153,18 @@ function WeakSpots({
   const subjectName = (id: string) => overview.subjects.find((s) => s.id === id)?.name
   const d = overview.distribution
   const hasRecords = d.mastered + d.learning + d.weak > 0
+  const context = overview.weak_spots_context
+  // 近期记录不够时，后端会用更早的试卷补位，这里要说清楚
+  const fallback = overview.weak_spots.length > 0 && context && !context.recent_evidence_sufficient
   return (
     <Card padded className={styles.primary} aria-label="最该补的地方">
       <div className={styles.cardHead}>
         <h2>最该补的地方</h2>
-        {overview.weak_spots.length > 0 && (
+        {overview.weak_spots.length > 0 && !fallback && (
           <span className={styles.faint}>按近 28 天的错题排序</span>
         )}
       </div>
+      {fallback && <p className={styles.fallback}>近期记录较少，以下包含历史卷依据</p>}
       {overview.weak_spots.length > 0 ? (
         <ol className={styles.spots}>
           {overview.weak_spots.map((spot, i) => (
@@ -384,6 +403,9 @@ function TrendChart() {
   })
   const max = Math.max(1, ...weeks.map((w) => w.independent + w.other + w.wrong))
   const t = data.totals
+  const unplaced =
+    (data.unplaced_by_precision?.month.attempts ?? 0) +
+    (data.unplaced_by_precision?.unknown.attempts ?? 0)
   return (
     <div>
       <div
@@ -425,6 +447,11 @@ function TrendChart() {
         {t.independence_unknown_correct > 0 && `，独立性未知 ${t.independence_unknown_correct}`}
         ，做错 {t.wrong}。最后一周还没过完。
       </p>
+      {unplaced > 0 && (
+        <p className={styles.faint}>
+          另有 {unplaced} 次作答的日期只到月份或记不清，没算进每周统计。
+        </p>
+      )}
       {data.limitations.map((l, i) => (
         <p key={i} className={styles.faint}>
           {l}
@@ -467,6 +494,8 @@ export function ProfilePage() {
       {header}
       <div className={styles.stack}>
         <WeakSpots overview={overview} onPractice={(id) => setBatchChapter(id)} />
+
+        <FirstErrorCard summary={overview.first_error_summary} />
 
         {batchChapter && (
           <Card padded aria-label="按画像来一组">

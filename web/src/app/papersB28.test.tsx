@@ -212,3 +212,23 @@ it('changes the exam date of several papers at once', async () => {
   })
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })
+
+it('edits one paper date from its detail page, prefilled with the current value', async () => {
+  const state = server()
+  renderAt('/papers/p-dup')
+  await screen.findByRole('region', { name: '这份卷之前传过' })
+  expect(screen.getByText(/约2026年11月作答/)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: '改日期' }))
+  const dialog = await screen.findByRole('dialog', { name: '修改作答日期' })
+  expect(within(dialog).getByRole('combobox')).toHaveValue('month')
+  expect(within(dialog).getByLabelText(/大约哪个月/)).toHaveValue('2026-11')
+  await userEvent.selectOptions(within(dialog).getByRole('combobox'), 'forgotten')
+  await userEvent.click(within(dialog).getByRole('button', { name: '保存日期' }))
+  await vi.waitFor(() => expect(state.dates).toHaveLength(1))
+  expect(state.dates[0]).toMatchObject({
+    paper_ids: ['p-dup'],
+    exam_date: null,
+    exam_date_precision: 'unknown',
+    exam_date_unknown_reason: 'forgotten',
+  })
+})

@@ -93,10 +93,10 @@ function DateButton({ paper }: { paper: Paper }) {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
-        <CalendarDays size={16} aria-hidden />
+      <button type="button" className={styles.dateLink} onClick={() => setOpen(true)}>
+        <CalendarDays size={14} aria-hidden />
         改日期
-      </Button>
+      </button>
       <EditDatesDialog
         paperIds={[paper.id]}
         initial={choiceFrom(paper)}
@@ -178,13 +178,13 @@ export function PaperLayout() {
         subtitle={
           <span className="tabular">
             {examDateLine(paper)}
+            <DateButton paper={paper} />
             {paper.score !== null && ` · 得分 ${paper.score} / ${paper.total_score}`}
             {archived && ' · 已归档'}
           </span>
         }
         actions={
           <div className={styles.headerActions}>
-            <DateButton paper={paper} />
             <ArchiveButton paperId={paper.id} archived={archived} />
             <SegmentedLinks
               label="试卷内容"

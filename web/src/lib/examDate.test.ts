@@ -4,6 +4,7 @@ import {
   examDateLabel,
   examDateLine,
   sortByExamDate,
+  timestampDay,
   uploadDateFields,
 } from './examDate'
 
@@ -52,4 +53,14 @@ it('sorts known dates newest first and unknown dates last', () => {
     { id: 'old', exam_date: '2025-01-01', exam_date_precision: 'day' as const },
   ]).map((item) => item.id)
   expect(ids).toEqual(['d', 'm', 'old', 'u'])
+})
+
+it('reads UTC attempt timestamps as the local day', () => {
+  const iso = '2026-11-11T17:30:00+00:00'
+  const local = new Date(iso)
+  expect(timestampDay(iso)).toBe(
+    `${local.getFullYear()}年${local.getMonth() + 1}月${local.getDate()}日`,
+  )
+  expect(timestampDay(null)).toBeNull()
+  expect(timestampDay('bad')).toBeNull()
 })

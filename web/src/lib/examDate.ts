@@ -88,10 +88,12 @@ export function examDateLine(date: DateLike): string {
 /** 没能认出年份和卷别时，不能检查是否重复上传（不阻止分析） */
 export const UNRESOLVED_NOTE = '没能认出是哪一年哪一卷，无法检查是否重复上传'
 
-/** ISO 时间戳 → “2026年11月6日”（按时间戳自带的时区取日期） */
+/** ISO 时间戳（后端为 UTC）→ 本机日期“2026年11月6日”；不能直接截前 10 位，否则凌晨会差一天 */
 export function timestampDay(iso: string | null | undefined): string | null {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null
-  return examDateLabel({ exam_date: iso.slice(0, 10), exam_date_precision: 'day' })
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  return examDateLabel({ exam_date: todayDay(date), exam_date_precision: 'day' })
 }
 
 /** 修改时回填当前值 */

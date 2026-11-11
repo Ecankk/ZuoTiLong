@@ -31,9 +31,13 @@ type Server = {
 function server({
   importReply = (n: number) => clearImport(`new-${n}`),
   decisionStatus = 200,
+  decisionReason = 'has_history',
+  detail = () => duplicateDetail as unknown,
 }: {
   importReply?: (n: number) => unknown
-  decisionStatus?: number
+  decisionStatus?: number | ((call: number) => number)
+  decisionReason?: string
+  detail?: (reads: number) => unknown
 } = {}) {
   const state: Server = { imports: [], dates: [], decisions: [], detailReads: 0 }
   mockServer({
@@ -53,13 +57,17 @@ function server({
       }
       if (path === '/api/papers/p-dup/import-decision' && init?.method === 'POST') {
         state.decisions.push(JSON.parse(String(init.body)))
-        return decisionStatus === 200
+        const status =
+          typeof decisionStatus === 'function'
+            ? decisionStatus(state.decisions.length)
+            : decisionStatus
+        return status === 200
           ? json({ paper_id: 'p-dup', import_decision: 'accepted', reused: false })
-          : json({ error: '版本已过期' }, decisionStatus)
+          : json({ error: '上传状态已变化，请刷新后重试', reason: decisionReason }, status)
       }
       if (path === '/api/papers/p-dup') {
         state.detailReads += 1
-        return json(duplicateDetail)
+        return json(detail(state.detailReads))
       }
       return undefined
     },
@@ -281,4 +289,47 @@ it('notes when the exam year and type could not be recognised, without blocking'
     '/papers/new-1',
   )
   expect(router.state.location.pathname).toBe('/papers')
+})
+
+it('retries a decision with the fresh revision after a stale-revision conflict', async () => {
+  const state = server({
+    importReply: () => duplicateImport,
+    decisionStatus: (call) => (call === 1 ? 409 : 200),
+    decisionReason: 'revision_stale',
+    detail: () => ({ ...duplicateDetail, decision_revision: 'rev-2' }),
+  })
+  renderAt('/papers')
+  const upload = await screen.findByRole('region', { name: '上传试卷' })
+  await userEvent.upload(within(upload).getByLabelText('选择试卷 PDF'), pdf('2023再做.pdf'))
+  await userEvent.click(within(upload).getByRole('button', { name: '上传' }))
+  const dialog = await screen.findByRole('dialog', { name: '这份卷之前传过' })
+  await userEvent.click(within(dialog).getByRole('button', { name: '这是重做' }))
+  expect(await within(dialog).findByText(/情况刚刚有变化，已重新读取/)).toBeInTheDocument()
+  await vi.waitFor(() => expect(state.detailReads).toBeGreaterThan(0))
+  await userEvent.click(within(dialog).getByRole('button', { name: '这是重做' }))
+  await vi.waitFor(() => expect(state.decisions).toHaveLength(2))
+  expect(state.decisions[0].decision_revision).toBe('rev-1')
+  expect(state.decisions[1].decision_revision).toBe('rev-2')
+})
+
+it('explains a date change refused because a paper was withdrawn', async () => {
+  mockServer({
+    routes: (path, init) => {
+      if (path === '/api/papers') return json(datedList)
+      if (path === '/api/papers/dates' && init?.method === 'POST')
+        return json({ error: '已撤回', reason: 'withdrawn' }, 409)
+      return undefined
+    },
+  })
+  renderAt('/papers')
+  await screen.findAllByRole('article')
+  await userEvent.click(screen.getByRole('button', { name: '修改作答日期' }))
+  await userEvent.click(screen.getByRole('checkbox', { name: '选择 《2019 数学一》' }))
+  await userEvent.click(screen.getByRole('button', { name: '设置日期' }))
+  const dialog = await screen.findByRole('dialog')
+  await userEvent.selectOptions(within(dialog).getByRole('combobox'), 'forgotten')
+  await userEvent.click(within(dialog).getByRole('button', { name: '保存日期' }))
+  expect(
+    await within(dialog).findByText('选中的试卷里有已经撤回的，不能改日期。'),
+  ).toBeInTheDocument()
 })

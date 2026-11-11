@@ -3,8 +3,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import { endpoints, requestId } from '../../api/endpoints'
-import { useAction } from '../../api/queries'
-import type { DuplicateCheck } from '../../api/types'
+import { queryKeys, useAction } from '../../api/queries'
+import type { DuplicateCheck, PaperResponse } from '../../api/types'
 import { friendlyError } from '../../lib/errors'
 import {
   choiceIncomplete,
@@ -21,6 +21,25 @@ import { ExamDateInput } from './ExamDateInput'
 import styles from './PaperDialogs.module.css'
 
 export const MAX_DATE_BATCH = 50
+
+/** 409 的 reason（B28b）→ 学生能看懂的一句话；不认识的 reason 用后端原话 */
+const decisionConflict: Record<string, string> = {
+  revision_stale: '这份试卷的情况刚刚有变化，已重新读取，请再选一次。',
+  has_history: '这份试卷已经有分析或练习记录，不能撤回了；可以选“这是重做”保留它。',
+  task_active: '这份试卷还有任务没结束，等它结束后再决定。',
+  request_conflict: '这次操作和刚才的操作冲突了，已重新读取，请再选一次。',
+  withdrawn: '这份试卷已经撤回了。',
+}
+const datesConflict: Record<string, string> = {
+  task_active: '有试卷正在分析或排队，等它们完成后再改日期。',
+  withdrawn: '选中的试卷里有已经撤回的，不能改日期。',
+  request_conflict: '这次修改和刚才的操作冲突了，请关掉后重新打开再改。',
+  revision_stale: '试卷的情况刚刚有变化，请关掉后重新打开再改。',
+}
+const conflictText = (error: unknown, table: Record<string, string>, fallback: string) =>
+  error instanceof ApiError && error.status === 409
+    ? ((error.reason && table[error.reason]) ?? fallback)
+    : friendlyError(error)
 const dateKeys = [['papers'], ['profile']]
 
 /** 修改作答日期（单份或多选批量，一次最多 50 份） */
@@ -57,9 +76,7 @@ export function EditDatesDialog({
   const incomplete = choiceIncomplete(choice)
   const tooMany = paperIds.length > MAX_DATE_BATCH
   const error = save.error
-    ? save.error instanceof ApiError && save.error.status === 409
-      ? '有试卷正在分析或排队，等它们完成后再改日期。'
-      : friendlyError(save.error)
+    ? conflictText(save.error, datesConflict, '有试卷正在分析或排队，等它们完成后再改日期。')
     : null
   return (
     <ConfirmDialog
@@ -137,19 +154,22 @@ export function DuplicateDecisionDialog({
   onDecided?: (decision: 'retake' | 'withdraw') => void
 }) {
   const client = useQueryClient()
-  const [stale, setStale] = useState(false)
+  // 409 后重读的详情：之后用它的最新 revision 和核查结果（上传结果里的 revision 不会自己更新）
+  const [latest, setLatest] = useState<PaperResponse | null>(null)
+  const currentCheck = latest?.duplicate_check ?? check
+  const currentRevision = latest ? latest.decision_revision : revision
+  const settled = latest !== null && latest.paper.import_decision !== 'pending_duplicate'
   const decide = useAction(
     (decision: 'retake' | 'withdraw') =>
       endpoints.importDecision(paperId, {
         confirmed: true,
         request_id: requestId(),
         decision,
-        decision_revision: revision ?? '',
+        decision_revision: currentRevision ?? '',
       }),
     [['papers'], ['profile'], ['tasks']],
   )
   const run = (decision: 'retake' | 'withdraw') => {
-    setStale(false)
     decide.mutate(decision, {
       onSuccess: () => {
         onOpenChange(false)
@@ -157,19 +177,26 @@ export function DuplicateDecisionDialog({
       },
       onError: (error) => {
         if (error instanceof ApiError && error.status === 409) {
-          setStale(true)
-          void client.invalidateQueries({ queryKey: ['papers', paperId] })
+          void client
+            .fetchQuery({
+              queryKey: queryKeys.paper(paperId),
+              queryFn: () => endpoints.paper(paperId),
+              staleTime: 0,
+            })
+            .then((fresh) => fresh && setLatest(fresh))
+            .catch(() => undefined)
+          void client.invalidateQueries({ queryKey: ['papers', 'list'] })
         }
       },
     })
   }
-  const message = decide.error
-    ? stale
-      ? decide.variables === 'withdraw'
-        ? '这份试卷已经有分析或练习记录，不能撤回了；已重新读取最新情况。'
-        : '这份试卷的情况刚刚有变化，已重新读取，请再选一次。'
-      : friendlyError(decide.error)
-    : null
+  const message = settled
+    ? latest.paper.import_decision === 'withdrawn'
+      ? '这份试卷已经撤回了。'
+      : '这份试卷已经确定是重做，不用再选了。'
+    : decide.error
+      ? conflictText(decide.error, decisionConflict, '这份试卷的情况刚刚有变化，请刷新后再试。')
+      : null
   return (
     <Dialog.Root
       open={open}
@@ -184,11 +211,11 @@ export function DuplicateDecisionDialog({
           <Dialog.Title className={dialogStyles.title}>这份卷之前传过</Dialog.Title>
           <div className={dialogStyles.body}>
             <p>
-              {check.identity
-                ? `你已经有一份 ${check.identity.exam_year} 年数学${'一二三'[check.identity.math_type - 1]}：`
+              {currentCheck.identity
+                ? `你已经有一份 ${currentCheck.identity.exam_year} 年数学${'一二三'[currentCheck.identity.math_type - 1]}：`
                 : '你已经有一份同年同卷：'}
             </p>
-            <MatchList check={check} />
+            <MatchList check={currentCheck} />
             <p className={styles.note}>
               如果是隔一段时间又做了一遍，选“这是重做”，两次都会保留；如果是传错了文件，选“撤回”，这份不会进入试卷列表和画像。
             </p>
@@ -197,15 +224,19 @@ export function DuplicateDecisionDialog({
           <div className={styles.decisionActions}>
             <Dialog.Close asChild>
               <Button variant="ghost" disabled={decide.isPending}>
-                稍后再决定
+                {settled ? '知道了' : '稍后再决定'}
               </Button>
             </Dialog.Close>
-            <Button disabled={decide.isPending} onClick={() => run('withdraw')}>
-              传错了，撤回
-            </Button>
-            <Button variant="primary" disabled={decide.isPending} onClick={() => run('retake')}>
-              {decide.isPending && decide.variables === 'retake' ? '正在处理…' : '这是重做'}
-            </Button>
+            {!settled && (
+              <>
+                <Button disabled={decide.isPending} onClick={() => run('withdraw')}>
+                  传错了，撤回
+                </Button>
+                <Button variant="primary" disabled={decide.isPending} onClick={() => run('retake')}>
+                  {decide.isPending && decide.variables === 'retake' ? '正在处理…' : '这是重做'}
+                </Button>
+              </>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

@@ -4,6 +4,7 @@ Both directions use the same validated projection. The bank projection is
 cached by database content and material stat versions, not by an expiry timer.
 No reasoning, answers, paths, or personal ability judgments leave this service.
 """
+from app.titles import paper_title
 from copy import deepcopy
 import json
 from threading import RLock
@@ -109,7 +110,7 @@ class KnowledgeLinksService:
             bid = binding[0] if binding else None
             source = bank_by_id.get(bid)
             rows.append({'id':row['id'],'entity_id':source['entity_id'] if source else 'original:'+row['id'],
-                         'bank_id':bid,'collection_id':source['collection_id'] if source else None,'source_kind':'paper','paper_id':row['paper_id'],'paper_title':row['title'],
+                         'bank_id':bid,'collection_id':source['collection_id'] if source else None,'source_kind':'paper','paper_id':row['paper_id'],'paper_title':paper_title(row['title']),
                          'question_id':row['id'],'number':row['number'],'date':row['exam_date'],
                          'exam_date_precision':row['exam_date_precision'],'exam_date_unknown_reason':row['exam_date_unknown_reason'],
                          'state':q['correctness'],'report_id':row['report_id'],
@@ -129,7 +130,7 @@ class KnowledgeLinksService:
             source = bank_by_id.get(row['bank_id'])
             rows.append({'id':row['id'],'entity_id':source['entity_id'] if source else 'bank:'+row['bank_id'],
                          'bank_id':row['bank_id'],'collection_id':source['collection_id'] if source else None,'source_kind':'probe','paper_id':row['paper_id'],
-                         'paper_title':row['title'],'question_id':row['question_id'],'probe_id':row['probe_id'],
+                         'paper_title':paper_title(row['title']),'question_id':row['question_id'],'probe_id':row['probe_id'],
                          'attempt_id':row['id'],'number':source['number'] if source else None,
                          'date':row['created_at'],'state':'correct' if assessment['correct'] else 'wrong',
                          'assisted':bool(row['answer_exposed']),'topic_ids':sorted(tids),

@@ -1,4 +1,5 @@
 """Paper lifecycle and source preparation, independent of HTTP."""
+from app.titles import paper as display_paper
 from app.storage.paths import paper_path, relative_file, resolve_file, connection_data
 import hashlib,json,math,sqlite3,uuid
 from datetime import date
@@ -101,7 +102,7 @@ class PaperService:
             if hashlib.sha256(pdf_path.read_bytes()).hexdigest()!=saved['source_sha256']:
                 raise ValueError('原PDF已变化，不能继续使用已纠正切分')
             current=self._rematch_saved(conn,paper)
-            return dict(paper=paper,questions=current,engine=paper['analysis_engine'],message='保留已确认的人工切分',
+            return dict(paper=display_paper(paper),questions=current,engine=paper['analysis_engine'],message='保留已确认的人工切分',
                         warnings=[],created_questions=len(current),agent_task=None)
 
         write_progress(self.config.data,paper_id,status='running',phase='opening',pages_done=0,pages_total=None,
@@ -177,7 +178,7 @@ class PaperService:
         write_progress(self.config.data,paper_id,status='complete' if result.get('complete') else 'needs_review',
                        phase='ready',message=result['message'])
         return {
-            "paper": as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone()),
+            "paper": display_paper(as_json(conn.execute("SELECT * FROM papers WHERE id=?", (paper_id,)).fetchone())),
             "questions": rows(conn, "SELECT * FROM questions WHERE paper_id=? ORDER BY number", (paper_id,)),
             "engine": result["engine"],
             "message": result["message"],
@@ -201,7 +202,7 @@ class PaperService:
             from app.services.paper_metadata import presentation
             with self.database.session() as conn:extra=presentation(conn,previous)
             if previous['import_decision']=='accepted':extra['duplicate_check']['status']='same_pdf'
-            return dict(paper=previous,sha256=digest,reused=True,agent_queued=False,**extra),200
+            return dict(paper=display_paper(previous),sha256=digest,reused=True,agent_queued=False,**extra),200
         from app.learning.dates import normalize
         dates=normalize(fields.get('exam_date'),fields.get('exam_date_precision'),fields.get('exam_date_unknown_reason'))
         paper_id='paper-'+uuid.uuid4().hex[:10]
@@ -220,7 +221,7 @@ class PaperService:
             if extra['duplicate_check']['status']=='same_exam_identity':
                 conn.execute("UPDATE papers SET import_decision='pending_duplicate' WHERE id=?",(paper_id,));paper['import_decision']='pending_duplicate'
                 extra=presentation(conn,paper)
-        result=dict(paper=paper,sha256=digest,reused=False,**extra)
+        result=dict(paper=display_paper(paper),sha256=digest,reused=False,**extra)
         try:
             with self.database.session(write=True) as conn:
                 analysis=self.analyze(conn,paper_id)
@@ -255,7 +256,7 @@ class PaperService:
             conn.execute('INSERT INTO papers(id,title,exam_date,score,total_score,duration,source_name,import_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
                 (paper_id,body.get('title') or '未命名试卷',dates['exam_date'],float(body.get('score') or 0),float(body.get('total_score') or 150),int(body.get('duration') or 0),body.get('source_name'),'needs_review',created,created))
             conn.execute('UPDATE papers SET exam_date_precision=?,exam_date_unknown_reason=? WHERE id=?',(dates['exam_date_precision'],dates['exam_date_unknown_reason'],paper_id))
-            return {'paper':as_json(conn.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone())}
+            return {'paper':display_paper(as_json(conn.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()))}
     def confirm_numbers(self,paper_id,body):
         from app.errors import ServiceError
         numbers=[str(n).strip() for n in body.get('numbers',[]) if str(n).strip()];scores=body.get('scores',[])

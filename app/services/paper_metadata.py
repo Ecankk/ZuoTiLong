@@ -1,4 +1,5 @@
 """Explicit date corrections and duplicate-upload decisions, with receipts."""
+from app.titles import paper_title
 import json,uuid
 from app.errors import ServiceError
 from app.learning.tasks import digest,encode
@@ -28,7 +29,7 @@ def check(conn,paper):
         for r in conn.execute("SELECT * FROM papers WHERE id!=? AND source_path IS NOT NULL AND source_path!='' AND import_decision!='withdrawn'",(paper['id'],)):
             other=location(dict(r))
             if other['status']=='located' and other['year']==str(identity['exam_year']) and other['math_type']==identity['math_type']:
-                matches.append(dict(paper_id=r['id'],title=r['title'],exam_date=r['exam_date'],exam_date_precision=r['exam_date_precision'],archived=bool(r['archived_at']),has_report=bool(conn.execute('SELECT 1 FROM agent_reports WHERE paper_id=?',(r['id'],)).fetchone())))
+                matches.append(dict(paper_id=r['id'],title=paper_title(r['title']),exam_date=r['exam_date'],exam_date_precision=r['exam_date_precision'],archived=bool(r['archived_at']),has_report=bool(conn.execute('SELECT 1 FROM agent_reports WHERE paper_id=?',(r['id'],)).fetchone())))
     result=dict(status='unresolved' if identity is None else 'same_exam_identity' if matches else 'clear',identity=identity,reason='请核对卷名中的年份和数一、数二或数三' if identity is None else None,matches=sorted(matches,key=lambda v:v['paper_id']))
     revision=digest(dict(id=paper['id'],sha=paper.get('source_sha256'),state=paper['import_decision'],matches=[v['paper_id'] for v in result['matches']]))
     return result,revision

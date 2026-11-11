@@ -96,6 +96,8 @@ class ProfilePracticeTests(unittest.TestCase):
         self.assertEqual(self.http.get('/api/practices/'+eid+'/attempts').json()['total'],1)
         profile=self.http.get('/api/profile/overview');self.assertEqual(profile.status_code,200,profile.text)
         self.assertEqual(profile.json()['totals']['unread_feedback_count'],1)
+        title=profile.json()['feedback']['recent_items'][0]['title']
+        self.assertIn('第1题',title);self.assertNotEqual(title,'画像选题')
         topic=self.http.get('/api/knowledge/topics/'+prepared.TOPIC);self.assertEqual(topic.status_code,200,topic.text)
         self.assertEqual(topic.json()['performance']['source_counts']['profile_practice'],1)
         mark=dict(source='profile_practice',attempt_id=aid,request_id=str(uuid.uuid4()),feedback_revision=detail['latest_attempt']['feedback_revision'])

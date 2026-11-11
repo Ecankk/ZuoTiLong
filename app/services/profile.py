@@ -9,6 +9,8 @@ from app.bank.access import preferences,policy_group
 from app.bank.originals import uploaded_originals
 from app.knowledge import catalog
 from app.learning import feedback
+from app.learning.practice_presentation import practice_label
+from app.titles import paper_title
 
 STATES={'初步掌握':'mastered','巩固中':'learning','需要关注':'weak','证据不足':'no_record','未覆盖':'no_record'}
 FIELDS=('attempts','correct','independent_correct','assisted_correct','independence_unknown_correct','wrong','unjudged','pending_grading')
@@ -62,15 +64,17 @@ def facts(conn):
         from app.services.profile_metrics import loss
         score=loss(diagnosis,row)
         values.append(dict(**score,exam_date=row['exam_date'],exam_date_precision=row['exam_date_precision'],exam_date_unknown_reason=row['exam_date_unknown_reason'],source='exam',practice_source=None,id=row['id'],question_id=row['id'],practice_id=None,
-            attempt_id=None,paper_id=row['paper_id'],question_number=str(row['number']),bank_id=row['match_bank_id'],batch_id=None,label=f"{row['title']} 第{row['number']}题",
+            attempt_id=None,paper_id=row['paper_id'],question_number=str(row['number']),bank_id=row['match_bank_id'],batch_id=None,label=f"{paper_title(row['title'])} 第{row['number']}题",
             occurred_at=row['exam_date'],correct=(True if correctness=='correct' else False if correctness in ('wrong','partial') else None) if verified else None,
             independent=None,answer_exposed=None,pending=False,assessment=None,first_error=diagnosis.get('first_error'),
             counted=evidence.get('student_state')=='visible' and bool(evidence.get('student_work','').strip()),needs_review=correctness=='unknown'))
-    for row in conn.execute('''SELECT a.*,d.paper_id,d.question_id,d.bank_id,p.title FROM probe_attempts a
+    for row in conn.execute('''SELECT a.*,d.paper_id,d.question_id,d.bank_id,d.payload_json,p.title,
+        (SELECT count(*) FROM diagnostic_probes n WHERE n.paper_id=d.paper_id AND n.rowid<=d.rowid) practice_number FROM probe_attempts a
         JOIN diagnostic_probes d ON d.id=a.probe_id JOIN papers p ON p.id=d.paper_id WHERE p.archived_at IS NULL'''):
         assessment=feedback.effective(row['assessment_json'])
         values.append(dict(source='practice',practice_source='paper_practice',id=row['id'],attempt_id=row['id'],practice_id=row['probe_id'],
-            paper_id=row['paper_id'],question_id=row['question_id'],bank_id=row['bank_id'],batch_id=None,label=row['title']+' · 练习',
+            paper_id=row['paper_id'],question_id=row['question_id'],bank_id=row['bank_id'],batch_id=None,
+            label=practice_label(conn,row['bank_id'],payload=json.loads(row['payload_json']),paper_title=row['title'],number=row['practice_number']),
             occurred_at=row['created_at'],correct=(assessment or {}).get('correct'),independent=not bool(row['answer_exposed']),answer_exposed=bool(row['answer_exposed']),
             pending=assessment is None,assessment=assessment,assessed_at=_assessment_time(conn,assessment,row['created_at']),
             first_error=(assessment or {}).get('first_error'),needs_review=bool(assessment and assessment.get('correct') is None)))
@@ -79,16 +83,18 @@ def facts(conn):
         for row in conn.execute('SELECT * FROM free_practice_attempts'):
             assessment=feedback.effective(row['assessment_json']);snap=json.loads(row['snapshot_json'])
             values.append(dict(source='free_practice',practice_source=None,id=row['id'],attempt_id=row['id'],practice_id=None,
-                paper_id=None,question_id=None,bank_id=row['bank_id'],batch_id=None,label='自由练习',topic_ids=(assessment or {}).get('topic_ids',[]),
+                paper_id=None,question_id=None,bank_id=row['bank_id'],batch_id=None,label=practice_label(conn,row['bank_id'],snapshot=snap),topic_ids=(assessment or {}).get('topic_ids',[]),
                 occurred_at=row['created_at'],correct=(assessment or {}).get('correct'),independent=not bool(row['answer_exposed']),answer_exposed=bool(row['answer_exposed']),
                 pending=assessment is None,assessment=assessment,assessed_at=_assessment_time(conn,assessment,row['created_at']),
                 first_error=(assessment or {}).get('first_error'),needs_review=bool(assessment and assessment.get('correct') is None)))
     if 'profile_practice_attempts' in tables:
-        for row in conn.execute('''SELECT a.*,e.batch_id,e.bank_id,e.topic_ids_json FROM profile_practice_attempts a
+        for row in conn.execute('''SELECT a.*,e.batch_id,e.bank_id,e.topic_ids_json,e.binding_json,e.payload_json,
+            (SELECT count(*) FROM profile_practice_exercises n WHERE n.batch_id=e.batch_id AND n.rowid<=e.rowid) practice_number FROM profile_practice_attempts a
             JOIN profile_practice_exercises e ON e.id=a.exercise_id'''):
             assessment=feedback.effective(row['assessment_json'])
             values.append(dict(source='practice',practice_source='profile_practice',id=row['id'],attempt_id=row['id'],practice_id=row['exercise_id'],
-                paper_id=None,question_id=None,bank_id=row['bank_id'],batch_id=row['batch_id'],label='画像选题',topic_ids=(assessment or {}).get('topic_ids',[]),
+                paper_id=None,question_id=None,bank_id=row['bank_id'],batch_id=row['batch_id'],
+                label=practice_label(conn,row['bank_id'],snapshot=json.loads(row['binding_json']),payload=json.loads(row['payload_json']),number=row['practice_number']),topic_ids=(assessment or {}).get('topic_ids',[]),
                 occurred_at=row['created_at'],correct=(assessment or {}).get('correct'),independent=not bool(row['answer_exposed']),answer_exposed=bool(row['answer_exposed']),
                 pending=assessment is None,assessment=assessment,assessed_at=_assessment_time(conn,assessment,row['created_at']),first_error=(assessment or {}).get('first_error'),
                 needs_review=bool(assessment and assessment.get('correct') is None)))

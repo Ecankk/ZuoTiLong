@@ -12,6 +12,7 @@ from app.knowledge import index, catalog
 from app.learning.plans import practice_state, plan_goals
 from app.learning.loop import probe_payload
 from app.learning.report_contract import present_diagnosis
+from app.titles import paper_title
 
 PRACTICE_STATUSES = ('pending', 'grading', 'graded', 'needs_supplement', 'inactive')
 
@@ -95,6 +96,7 @@ class FrontendReads:
 
     def _paper_card(self, conn, item):
         result = {k: item[k] for k in ('id', 'title', 'exam_date','exam_date_precision','exam_date_unknown_reason','import_decision', 'total_score', 'archived_at', 'created_at', 'updated_at')}
+        result['title']=paper_title(result['title'])
         result.update(score=item['score'] if item['score_confirmed_at'] else None,
                       score_confirmed=bool(item['score_confirmed_at']), analysis_status=item['import_status'])
         counts = {s: 0 for s in ('correct', 'wrong', 'partial', 'unknown')}
@@ -227,7 +229,7 @@ class FrontendReads:
             from app.learning.practice_presentation import source_for,correctness
             student_access=access(conn,item['bank_id']) if include_access else None
             if include_access:student_access.update(source_for(conn,self.rt.config.data,item))
-            result.append(dict(id=item['id'],origin='paper',latest_correctness=correctness(assessed),batch_id=None,batch_title=None,paper_id=pid, paper_title=item['paper_title'], question_id=item['question_id'], bank_id=item['bank_id'],
+            result.append(dict(id=item['id'],origin='paper',latest_correctness=correctness(assessed),batch_id=None,batch_title=None,paper_id=pid, paper_title=paper_title(item['paper_title']), question_id=item['question_id'], bank_id=item['bank_id'],
                                created_at=item['created_at'], status=status, goal_ids=[g['id'] for g in goals],
                                topics=[{'topic_id': tid, 'name': nodes[tid]['name']} for tid in sorted(resolved) if tid in nodes],
                                access=student_access, latest_attempt_id=latest['id'] if latest else None))

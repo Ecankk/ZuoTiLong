@@ -102,11 +102,17 @@ it('hides the first-error card when the summary is null', async () => {
 })
 
 it('notes attempts whose date is only a month or unknown in the weekly trend', async () => {
-  renderAt('/profile', periodOverview)
+  renderAt('/profile', {
+    ...periodOverview,
+    limitations: ['原卷的作答日期按导入时间计算，独立性未知的原卷正确不算独立做对。'],
+  })
   await userEvent.click(await screen.findByRole('button', { name: /每周作答趋势/ }))
   expect(
     await screen.findByText('另有 13 次作答的日期只到月份或记不清，没算进每周统计。'),
   ).toBeInTheDocument()
+  // 趋势和页面底部的同一句说明只出现一次
+  const same = '原卷的作答日期按导入时间计算，独立性未知的原卷正确不算独立做对。'
+  expect(screen.getAllByText(same)).toHaveLength(1)
 })
 
 it('home weak spots use the same period wording and wrong counts', async () => {

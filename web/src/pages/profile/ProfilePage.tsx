@@ -384,7 +384,8 @@ function SubjectTree({
 
 /* ---------- 趋势：折叠，展开才请求 ---------- */
 
-function TrendChart() {
+/** shown：页面底部已经显示的说明，趋势里不再重复 */
+function TrendChart({ shown = [] }: { shown?: string[] }) {
   const { data, error, isPending, refetch } = useTrends(true, 12)
   if (isPending) return <p className={styles.faint}>正在读取…</p>
   if (error) return <ErrorState inline error={error} onRetry={() => void refetch()} />
@@ -451,11 +452,13 @@ function TrendChart() {
           另有 {unplaced} 次作答的日期只到月份或记不清，没算进每周统计。
         </p>
       )}
-      {data.limitations.map((l, i) => (
-        <p key={i} className={styles.faint}>
-          {l}
-        </p>
-      ))}
+      {data.limitations
+        .filter((l) => !shown.includes(l))
+        .map((l, i) => (
+          <p key={i} className={styles.faint}>
+            {l}
+          </p>
+        ))}
     </div>
   )
 }
@@ -549,7 +552,7 @@ export function ProfilePage() {
               {overview.home_stats.independent_correct_this_week} 道
             </span>
           </button>
-          {trendOpen && <TrendChart />}
+          {trendOpen && <TrendChart shown={overview.limitations} />}
         </Card>
 
         {overview.limitations.length > 0 && (

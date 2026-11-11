@@ -107,7 +107,8 @@ def sources(conn, paper_id=None):
     for row in conn.execute('''SELECT d.* FROM diagnostic_probes d JOIN papers p ON p.id=d.paper_id
         WHERE p.archived_at IS NULL AND d.id NOT IN (SELECT probe_id FROM retired_probes) ORDER BY d.id'''):
         pid = row['paper_id']
-        state = states.setdefault(pid, practice_state(conn, pid))
+        if pid not in states:states[pid]=practice_state(conn,pid)
+        state=states[pid]
         add(row['id'], 'probe', pid, {'probe_id': row['id'], 'question_id': row['question_id'],
              'bank_id': row['bank_id'], 'assignment': parsed(row['payload_json'], {}),
              'can_continue': state['is_current'] and row['id'] in state['probe_ids']}, [])

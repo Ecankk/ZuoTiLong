@@ -44,7 +44,7 @@ Access 沿用现有 access 对象（id、math_type、year、number、reserved、
 
 | 方法/路径 | 参数 | 响应 |
 | --- | --- | --- |
-| GET /api/practices | group_by:'topic'/'paper'/'source'/'batch'='topic'，source:'paper'/'profile'?（省略时合并两种来源），batch_id:string?，status:PracticeStatus?，paper_id:string?，topic_id:string?，include_inactive:boolean=false，分页参数（按组） | Page<PracticeGroup> + `{counts:PracticeCounts}`；groups 不截断既有布置；多考点练习可出现在不同组，总计按练习 ID 去重 |
+| GET /api/practices | group_by:'topic'/'paper'/'source'/'batch'='topic'，source:'paper'/'profile'?（省略时合并两种来源），batch_id:string?，status:PracticeStatus?，paper_id:string?，topic_id:string?，include_inactive:boolean=false，分页参数（按组，limit 最大100） | Page<PracticeGroup> + `{counts:PracticeCounts}`；groups 不截断既有布置；多考点练习可出现在不同组，总计按练习 ID 去重 |
 | GET /api/practices/{practice_id} | 无 | `{practice:PracticeCard,is_current:boolean,review_reason:string|null,question:object|null,goals:object[],selection_reason:string|null,latest_attempt:Attempt|null,actions:string[]}` |
 | GET /api/practices/{practice_id}/attempts | 分页参数 | Page<Attempt>；创建时间、ID 倒序；不带标准答案 |
 
@@ -90,7 +90,7 @@ reference 另含 `errata?:[{role,reason,evidence}]`（随该次快照捕获）�
 
 ProfileNode：`{id,parent_id,name,kind,math_types,state,state_reason,display_state,distribution{mastered,learning,weak,no_record},successes,failures,assisted,pending,last_attempt_at,ready_question_count,study_ready_question_count,selectable_question_count}`。WeakSpot：`{node_id,name,kind,subject_id,weak_atom_count,observed_atom_count,total_atom_count,recent_failures,recent_judged,failure_ratio,window,basis,evidence[≤3]}`，后端按近28天失败数、失败占比、薄弱原子数、最近失败时间排序；basis只摘录已保存的题目和首错环节，取不到为 null。
 
-按画像选题：目标分 weak（最新有效表现失败）、review_due（只有受提示正确或距上次满14天）、uncovered（当前备考类别有可选 ready 题但无记录），名额按 5:3:2 最大余数分配（5→3/1/1，8→4/2/2，10→5/3/2），不足按 weak→review_due→uncovered 补，不强凑。候选复用原卷选题规则，并排除工作区所有已上传试卷的原题（含同题身份）。任务 kind 仍为 prepare_practice，paper_id=null；完成后前端跳 `/practice?source=profile&view=topic&item=<首个practice_id>`。
+按画像选题：目标分 weak（最新有效表现失败）、review_due（只有受提示正确或距上次满14天）、uncovered（当前备考类别有可选 ready 题但无记录），名额按 5:3:2 最大余数分配（5→3/1/1，8→4/2/2，10→5/3/2），不足按 weak→review_due→uncovered 补，不强凑。候选复用原卷选题规则，并排除工作区所有已上传试卷的原题（含同题身份）。任务 kind 仍为 prepare_practice，paper_id=null；完成后前端跳 `/practice?source=profile&view=topic&item=<首个practice_id>&batch=<batch_id>`；练习页带 batch 时只请求并显示这一组（source=profile&batch_id=…），并提供“看全部练习”。
 
 练习卡新增 `origin:'paper'|'profile'|'free_practice'`、`latest_correctness:'correct'|'wrong'|'partial'|'unknown'|null`（与 latest_attempt 的有效批改一致，无有效批改为 null）、`batch_id`、`batch_title`；画像练习的 paper_id/paper_title/question_id 为 null。GET /api/practices 新增 `source=paper|profile`、`batch_id`，group_by 新增 source/batch。access 增加 `collection_label` 与 `book{part,chapter,number}`；参考材料中的“见原图”类占位投影为 null；自由练习403返回 `{error,reason:'masked'|'reserved',message}`（message 可直接展示）。
 
@@ -114,6 +114,7 @@ ProfileNode：`{id,parent_id,name,kind,math_types,state,state_reason,display_sta
 
 - pending_duplicate 卷不给 analyze 动作，可只读核对切题；GET /api/papers/{id} 返回当前 duplicate_check，刷新后可继续决定。withdraw 是逻辑撤回，只限无分析/批改/练习历史的新上传，默认列表与画像排除。
 - 试卷列表已知日期新到旧，未知日期排在后面并显示“日期未知/记不清”；YYYY-MM 不能交给只认完整日期的格式化器。
+- 考点详情的已做题列表 date 不再回退上传日期，可为 null，并带 exam_date_precision/exam_date_unknown_reason。
 - 考点节点加 `last_attempt_date:{value,precision,unknown_reason}|null`；同一天、同为未知或月份区间重叠时有对有错 → learning（巩固中），state_reason 说明“同一时间范围内有对有错”。
 - trends 加 `unplaced_by_precision{month,unknown}`（不能放进某周的作答）；overview 加 `history_counts{month_dated_attempts,unknown_dated_attempts}`。周数与四周对比只计精确到日的作答。
 - overview 加 `weak_spots_context{recent_window,recent_judged_count,recent_evidence_sufficient,uses_history_fallback,explanation}`；weak_spot 加 `evidence_period:'recent'|'historical'`、`period_explanation`、`recent_lost_points|null`、`historical_lost_points|null`、各期已知/未知分数题数、`recent_exam_failure_count`、`recent_practice_failure_count`、`historical_failures`、`historical_exam_failure_count`、`historical_practice_failure_count`、`loss_attribution:'related_question_loss'`、`loss_basis:'saved_estimate'|'mixed'|null`。排序：近期在前、历史补位在后；组内按原卷已知失分 → 原卷错题数 → 练习错题数 → 错误比例 → 薄弱原子数。失分为“涉及的原卷失分（按已保存估分）”，null 显示“分数未知”不填 0，各章失分不能相加。

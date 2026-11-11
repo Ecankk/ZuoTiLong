@@ -11,7 +11,7 @@ def receipt(conn,body):
     old=conn.execute('SELECT payload FROM record_versions WHERE id=?',(key,)).fetchone()
     if old:
         old=json.loads(old[0])
-        if old['request']!=body:raise ServiceError('request_id已用于不同操作',409)
+        if old['request']!=body:raise ServiceError('request_id已用于不同操作',409,reason='request_conflict')
         return key,dict(old['response'],reused=True)
     return key,None
 
@@ -53,7 +53,8 @@ class PaperMetadata:
             for pid in ids:
                 row=conn.execute('SELECT * FROM papers WHERE id=?',(pid,)).fetchone()
                 if not row:raise ServiceError('试卷不存在',404)
-                if row['import_decision']=='withdrawn' or busy(conn,pid):raise ServiceError('请先结束试卷任务；已撤回的上传不能修改日期',409)
+                if row['import_decision']=='withdrawn':raise ServiceError('已撤回的上传不能修改日期',409,reason='withdrawn')
+                if busy(conn,pid):raise ServiceError('请先结束试卷任务再修改日期',409,reason='task_active')
                 old.append(dict(row));conn.execute('UPDATE papers SET exam_date=?,exam_date_precision=?,exam_date_unknown_reason=?,updated_at=? WHERE id=?',(*values.values(),stamp(),pid))
             from app.learning.semantic_dependencies import record
             for pid in ids:
@@ -61,7 +62,7 @@ class PaperMetadata:
                     before=old_sources.get(s['source_id'])
                     if not before or before['source_revision']==s['source_revision']:continue
                     def stable(v):return {**{k:x for k,x in v.items() if k not in ('source_revision','events')},'events':[{k:x for k,x in e.items() if k!='created_at'} for e in v['events']]}
-                    if stable(before)!=stable(s):raise ServiceError('作答内容发生变化，不能只按日期沿用考点记录',409)
+                    if stable(before)!=stable(s):raise ServiceError('作答内容发生变化，不能只按日期沿用考点记录',409,reason='revision_stale')
                     record(conn,'knowledge_semantic_adoption',s['source_id'],dict(source_id=s['source_id'],from_revision=before['source_revision'],to_revision=s['source_revision'],signature=None,events={e['id']:e['id'] for e in s['events']}))
             response=dict(updated=[dict(paper_id=pid,**values) for pid in ids],reused=False)
             save(conn,key,'paper_dates',','.join(ids),body,old,response);return response
@@ -74,8 +75,10 @@ class PaperMetadata:
             p=conn.execute('SELECT * FROM papers WHERE id=?',(pid,)).fetchone()
             if not p:raise ServiceError('试卷不存在',404)
             p=dict(p);_,revision=check(conn,p)
-            if revision!=body['decision_revision'] or p['import_decision']=='accepted':raise ServiceError('上传状态已变化，请刷新后重试',409)
-            if busy(conn,pid) or any(conn.execute('SELECT 1 FROM '+t+' WHERE paper_id=?',(pid,)).fetchone() for t in ('agent_reports','diagnostic_probes','learning_tasks','learning_results')):raise ServiceError('已有分析或练习记录，不能撤回这次上传',409)
+            if revision!=body['decision_revision'] or p['import_decision']=='accepted':raise ServiceError('上传状态已变化，请刷新后重试',409,reason='revision_stale')
+            if p['import_decision']=='withdrawn' and body['decision']=='withdraw':raise ServiceError('这次上传已经撤回',409,reason='withdrawn')
+            if busy(conn,pid):raise ServiceError('请先结束试卷任务再处理这次上传',409,reason='task_active')
+            if any(conn.execute('SELECT 1 FROM '+t+' WHERE paper_id=?',(pid,)).fetchone() for t in ('agent_reports','diagnostic_probes','learning_tasks','learning_results')):raise ServiceError('已有分析或练习记录，不能撤回这次上传',409,reason='has_history')
             value='accepted' if body['decision']=='retake' else 'withdrawn'
             conn.execute('UPDATE papers SET import_decision=?,archived_at=?,updated_at=? WHERE id=?',(value,stamp() if value=='withdrawn' else None,stamp(),pid))
             response=dict(paper_id=pid,import_decision=value,reused=False);save(conn,key,'paper_import_decision',pid,intent,p,response);return response

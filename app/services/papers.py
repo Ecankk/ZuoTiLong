@@ -202,7 +202,16 @@ class PaperService:
             from app.services.paper_metadata import presentation
             with self.database.session() as conn:extra=presentation(conn,previous)
             if previous['import_decision']=='accepted':extra['duplicate_check']['status']='same_pdf'
-            return dict(paper=display_paper(previous),sha256=digest,reused=True,agent_queued=False,**extra),200
+            ignored=False
+            if any(fields.get(k) for k in ('exam_date','exam_date_precision','exam_date_unknown_reason')):
+                from app.learning.dates import normalize
+                try:
+                    requested=normalize(fields.get('exam_date'),fields.get('exam_date_precision'),fields.get('exam_date_unknown_reason'))
+                    ignored=any(previous[k]!=v for k,v in requested.items())
+                except ValueError:
+                    # Reuse never applies incoming dates, including invalid dates.
+                    ignored=True
+            return dict(paper=display_paper(previous),sha256=digest,reused=True,agent_queued=False,date_ignored=ignored,**extra),200
         from app.learning.dates import normalize
         dates=normalize(fields.get('exam_date'),fields.get('exam_date_precision'),fields.get('exam_date_unknown_reason'))
         paper_id='paper-'+uuid.uuid4().hex[:10]
@@ -221,7 +230,7 @@ class PaperService:
             if extra['duplicate_check']['status']=='same_exam_identity':
                 conn.execute("UPDATE papers SET import_decision='pending_duplicate' WHERE id=?",(paper_id,));paper['import_decision']='pending_duplicate'
                 extra=presentation(conn,paper)
-        result=dict(paper=display_paper(paper),sha256=digest,reused=False,**extra)
+        result=dict(paper=display_paper(paper),sha256=digest,reused=False,date_ignored=False,**extra)
         try:
             with self.database.session(write=True) as conn:
                 analysis=self.analyze(conn,paper_id)

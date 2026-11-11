@@ -25,6 +25,7 @@ class DateRuleTests(unittest.TestCase):
         facts=[dict(id=str(i),source='exam',question_id=str(i),question_number=str(i+1),paper_id='p',practice_source=None,practice_id=None,attempt_id=None,bank_id=None,batch_id=None,label='Synthetic',occurred_at=clock.date().isoformat(),correct=False,independent=None,first_error=dict(stage='calculation',evidence='保存的漏乘步骤')) for i in range(5)]
         d=dict(clock=clock,facts=facts);summary=first_error_summary(d)
         self.assertEqual(summary['dominant_count'],5);self.assertEqual(summary['wrong_count'],5)
+        self.assertEqual(summary['evidence'][0]['label'],facts[0]['label'])
         self.assertIn('from',summary['window']);self.assertIsNone(first_error_summary(dict(d,facts=facts[:4])))
         for f in facts:f['occurred_at']=None
         self.assertIsNone(first_error_summary(d))

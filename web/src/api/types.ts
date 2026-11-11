@@ -39,6 +39,8 @@ export type Paper = {
   exam_date_precision?: ExamDatePrecision | null
   exam_date_unknown_reason?: ExamDateUnknownReason | null
   import_decision?: ImportDecision
+  /** 列表若带上重复核查结果，用来提示“没能认出是哪一年哪一卷” */
+  duplicate_check?: DuplicateCheck
 }
 
 export type AnalysisState = {
@@ -387,6 +389,8 @@ export type ImportResult = {
   duplicate_check?: DuplicateCheck
   import_decision?: ImportDecision
   decision_revision?: string | null
+  /** 同一个 PDF 复用旧卷时，本次选的日期没有写入 */
+  date_ignored?: boolean
 }
 
 /* ---------- 写入（沿用现有后端接口，契约尚未统一） ---------- */

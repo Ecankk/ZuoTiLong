@@ -85,6 +85,15 @@ export function examDateLine(date: DateLike): string {
   return date.exam_date_unknown_reason === 'forgotten' ? '作答日期记不清' : '作答日期未知'
 }
 
+/** 没能认出年份和卷别时，不能检查是否重复上传（不阻止分析） */
+export const UNRESOLVED_NOTE = '没能认出是哪一年哪一卷，无法检查是否重复上传'
+
+/** ISO 时间戳 → “2026年11月6日”（按时间戳自带的时区取日期） */
+export function timestampDay(iso: string | null | undefined): string | null {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null
+  return examDateLabel({ exam_date: iso.slice(0, 10), exam_date_precision: 'day' })
+}
+
 /** 修改时回填当前值 */
 export function choiceFrom(date: DateLike): DateChoice {
   const precision = precisionOf(date)

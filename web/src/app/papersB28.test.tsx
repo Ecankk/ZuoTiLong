@@ -232,3 +232,53 @@ it('edits one paper date from its detail page, prefilled with the current value'
     exam_date_unknown_reason: 'forgotten',
   })
 })
+
+it('says the date was not changed when the same PDF was uploaded before', async () => {
+  const state = server({
+    importReply: () => ({ ...clearImport('p-day'), reused: true, date_ignored: true }),
+  })
+  const router = renderAt('/papers')
+  const upload = await screen.findByRole('region', { name: '上传试卷' })
+  await userEvent.upload(within(upload).getByLabelText('选择试卷 PDF'), pdf('2023数一.pdf'))
+  await userEvent.selectOptions(
+    within(upload).getByRole('combobox', { name: '作答日期' }),
+    'forgotten',
+  )
+  await userEvent.click(within(upload).getByRole('button', { name: '上传' }))
+  await vi.waitFor(() => expect(state.imports).toHaveLength(1))
+  expect(await within(upload).findByText(/这个文件之前传过，日期没改/)).toBeInTheDocument()
+  // 不跳走，给出到原卷改日期的入口
+  expect(router.state.location.pathname).toBe('/papers')
+  expect(within(upload).getByRole('link', { name: '改日期' })).toHaveAttribute(
+    'href',
+    '/papers/p-day?editDate=1',
+  )
+})
+
+it('opens the date dialog when arriving from the upload result', async () => {
+  server()
+  renderAt('/papers/p-dup?editDate=1')
+  expect(await screen.findByRole('dialog', { name: '修改作答日期' })).toBeInTheDocument()
+})
+
+it('notes when the exam year and type could not be recognised, without blocking', async () => {
+  const unresolved = {
+    status: 'unresolved' as const,
+    identity: null,
+    reason: null,
+    matches: [],
+  }
+  server({ importReply: (n) => ({ ...clearImport(`new-${n}`), duplicate_check: unresolved }) })
+  const router = renderAt('/papers')
+  const upload = await screen.findByRole('region', { name: '上传试卷' })
+  await userEvent.upload(within(upload).getByLabelText('选择试卷 PDF'), pdf('扫描件.pdf'))
+  await userEvent.click(within(upload).getByRole('button', { name: '上传' }))
+  expect(
+    await within(upload).findByText('没能认出是哪一年哪一卷，无法检查是否重复上传'),
+  ).toBeInTheDocument()
+  expect(within(upload).getByRole('link', { name: '已上传，去核对题号' })).toHaveAttribute(
+    'href',
+    '/papers/new-1',
+  )
+  expect(router.state.location.pathname).toBe('/papers')
+})

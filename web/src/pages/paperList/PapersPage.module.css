@@ -390,3 +390,15 @@
   max-width: var(--read-max);
   color: var(--text-regular);
 }
+
+.doneCol {
+  display: flex;
+  flex-direction: column;
+}
+
+.unresolved {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+}

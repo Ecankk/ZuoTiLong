@@ -26,6 +26,7 @@ import {
   examDateLine,
   NO_DATE,
   sortByExamDate,
+  UNRESOLVED_NOTE,
   uploadDateFields,
   type DateChoice,
 } from '../../lib/examDate'
@@ -109,10 +110,20 @@ function UploadRow({
               <button type="button" className={styles.linkButton} onClick={onDecide}>
                 之前传过同卷，去决定
               </button>
+            ) : result.reused && result.date_ignored ? (
+              <span>
+                这个文件之前传过，日期没改；需要的话在原卷上
+                <Link to={`/papers/${result.paper.id}?editDate=1`}>改日期</Link>
+              </span>
             ) : result.reused ? (
               <Link to={`/papers/${result.paper.id}`}>这个文件之前传过，打开原来那份</Link>
             ) : (
-              <Link to={`/papers/${result.paper.id}`}>已上传，去核对题号</Link>
+              <span className={styles.doneCol}>
+                <Link to={`/papers/${result.paper.id}`}>已上传，去核对题号</Link>
+                {result.duplicate_check?.status === 'unresolved' && (
+                  <small className={styles.muted}>{UNRESOLVED_NOTE}</small>
+                )}
+              </span>
             )}
           </>
         )}
@@ -173,7 +184,13 @@ function UploadCard() {
     void client.invalidateQueries({ queryKey: queryKeys.tasks })
     const duplicate = results.find(({ result }) => isDuplicate(result))
     if (duplicate) setDeciding(duplicate.key)
-    else if (items.length === 1 && results.length === 1)
+    // 有话要说（日期没写入、认不出卷别）时留在上传结果里，不直接跳走
+    else if (
+      items.length === 1 &&
+      results.length === 1 &&
+      !results[0].result.date_ignored &&
+      results[0].result.duplicate_check?.status !== 'unresolved'
+    )
       navigate(`/papers/${results[0].result.paper.id}`)
   }
 
@@ -338,6 +355,9 @@ function PaperCard({
             </Link>
           </h3>
           <span className={styles.meta}>{examDateLine(paper)}</span>
+          {paper.duplicate_check?.status === 'unresolved' && (
+            <small className={styles.unresolved}>{UNRESOLVED_NOTE}</small>
+          )}
         </div>
         {status && <Chip tone={status.tone}>{status.label}</Chip>}
       </div>

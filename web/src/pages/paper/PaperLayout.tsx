@@ -1,6 +1,6 @@
 import { Archive, ArchiveRestore, CalendarDays, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate, Outlet, useNavigate, useParams } from 'react-router'
+import { Navigate, Outlet, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import { endpoints } from '../../api/endpoints'
 import { useAction, usePaper, usePaperQuestions } from '../../api/queries'
@@ -13,7 +13,7 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { SegmentedLinks } from '../../components/ui/Segmented'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { friendlyError } from '../../lib/errors'
-import { choiceFrom, examDateLine } from '../../lib/examDate'
+import { choiceFrom, examDateLine, UNRESOLVED_NOTE } from '../../lib/examDate'
 import { paperName } from '../../lib/labels'
 import { PlaceholderPage } from '../Placeholder'
 import styles from './PaperOverview.module.css'
@@ -90,7 +90,16 @@ function ArchiveButton({ paperId, archived }: { paperId: string; archived: boole
 }
 
 function DateButton({ paper }: { paper: Paper }) {
-  const [open, setOpen] = useState(false)
+  // 上传结果里“在原卷上改日期”的入口带 ?editDate=1，进来直接打开
+  const [params, setParams] = useSearchParams()
+  const [open, setOpen] = useState(() => params.get('editDate') === '1')
+  const change = (next: boolean) => {
+    setOpen(next)
+    if (!next && params.has('editDate')) {
+      params.delete('editDate')
+      setParams(params, { replace: true })
+    }
+  }
   return (
     <>
       <button type="button" className={styles.dateLink} onClick={() => setOpen(true)}>
@@ -101,7 +110,7 @@ function DateButton({ paper }: { paper: Paper }) {
         paperIds={[paper.id]}
         initial={choiceFrom(paper)}
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={change}
       />
     </>
   )
@@ -112,6 +121,8 @@ function DuplicateNotice({ data }: { data: PaperResponse }) {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const check = data.duplicate_check
+  if (check?.status === 'unresolved' && data.paper.import_decision !== 'pending_duplicate')
+    return <p className={styles.unresolved}>{UNRESOLVED_NOTE}</p>
   if (data.paper.import_decision !== 'pending_duplicate') return null
   return (
     <div className={styles.duplicate} role="region" aria-label="这份卷之前传过">

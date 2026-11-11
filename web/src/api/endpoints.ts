@@ -10,6 +10,11 @@ import type {
   BankCard,
   AtomsResponse,
   BackupList,
+  ExamDateFields,
+  ImportDecisionRequest,
+  ImportDecisionResponse,
+  PaperDatesRequest,
+  PaperDatesResponse,
   FeedbackReadRequest,
   Overview,
   ProfileBatch,
@@ -169,13 +174,25 @@ export const endpoints = {
   backup: () => postJson<{ path: string; files: number }>('/api/maintenance/backup', {}),
 
   /* ---------- 试卷 ---------- */
-  importPaper: (file: File, title: string, examDate: string) => {
+  /** 作答日期只在用户选择后才传；未选择时三个字段都不传（不默认今天） */
+  importPaper: (file: File, title: string, date?: ExamDateFields) => {
     const form = new FormData()
     form.append('file', file)
     form.append('title', title)
-    form.append('exam_date', examDate)
+    if (date) {
+      if (date.exam_date) form.append('exam_date', date.exam_date)
+      if (date.exam_date_precision) form.append('exam_date_precision', date.exam_date_precision)
+      if (date.exam_date_unknown_reason)
+        form.append('exam_date_unknown_reason', date.exam_date_unknown_reason)
+    }
     return request<ImportResult>('/api/papers/import', { method: 'POST', body: form })
   },
+  /** 批量修改作答日期（1–50 张） */
+  updatePaperDates: (body: PaperDatesRequest) =>
+    postJson<PaperDatesResponse>('/api/papers/dates', body),
+  /** 重复上传的决定：这是重做 / 传错了撤回 */
+  importDecision: (paperId: string, body: ImportDecisionRequest) =>
+    postJson<ImportDecisionResponse>(`/api/papers/${enc(paperId)}/import-decision`, body),
   /** 已有分析时需要 confirmed=true（重新分析，旧报告保留） */
   analyzePaper: (paperId: string, confirmed: boolean) =>
     postJson<{ job_id: string }>(`/api/papers/${enc(paperId)}/analyze`, { confirmed }),

@@ -35,6 +35,10 @@ export type Paper = {
   updated_at: string | null
   analysis_status: string
   counts: Counts
+  /** B28：作答日期精度与导入决定；旧接口没有这些字段时按完整日期 / accepted 处理 */
+  exam_date_precision?: ExamDatePrecision | null
+  exam_date_unknown_reason?: ExamDateUnknownReason | null
+  import_decision?: ImportDecision
 }
 
 export type AnalysisState = {
@@ -61,6 +65,9 @@ export type PaperResponse = {
   practice_counts: PracticeCounts
   summary_status: 'missing' | 'available'
   actions: string[]
+  /** B28：重复上传的当前核查结果与决定用的版本号（文档未写明 revision 在详情中的字段名，按上传响应同名处理） */
+  duplicate_check?: DuplicateCheck
+  decision_revision?: string | null
 }
 
 export type QuestionSummary = {
@@ -371,7 +378,16 @@ export type AgentModels = {
 }
 
 /** POST /api/papers/import 的返回中前端用到的部分 */
-export type ImportResult = { paper: { id: string }; analysis_warning?: string }
+export type ImportResult = {
+  paper: { id: string } & Partial<Paper>
+  analysis_warning?: string
+  /** B28 */
+  sha256?: string
+  reused?: boolean
+  duplicate_check?: DuplicateCheck
+  import_decision?: ImportDecision
+  decision_revision?: string | null
+}
 
 /* ---------- 写入（沿用现有后端接口，契约尚未统一） ---------- */
 
@@ -407,6 +423,13 @@ export type HealthResponse = { ok: boolean; app: string; version: string; data_i
 
 /** GET /api/maintenance/backups：已有的个人数据备份，新的在前 */
 export type BackupList = { backups: { name: string; bytes: number }[] }
+
+import type {
+  DuplicateCheck,
+  ExamDatePrecision,
+  ExamDateUnknownReason,
+  ImportDecision,
+} from './paperDateTypes'
 
 /** GET /api/data/status */
 export type DataStatus = {
@@ -579,3 +602,4 @@ export type TopicResponse = {
 }
 
 export * from './profileTypes'
+export * from './paperDateTypes'

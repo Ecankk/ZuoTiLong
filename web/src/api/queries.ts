@@ -6,7 +6,7 @@ import {
   type PaperScope,
   type PracticeGrouping,
 } from './endpoints'
-import type { PreferencesChange } from './types'
+import type { ExamDateFields, PreferencesChange } from './types'
 
 /**
  * query key 第一段对应 SSE resources.changed 的资源名（papers/questions/practices/preferences），
@@ -116,8 +116,8 @@ export const useSavePreferences = () =>
 
 export const useImportPaper = () =>
   useAction(
-    ({ file, title, examDate }: { file: File; title: string; examDate: string }) =>
-      endpoints.importPaper(file, title, examDate),
+    ({ file, title, date }: { file: File; title: string; date?: ExamDateFields }) =>
+      endpoints.importPaper(file, title, date),
     [['papers'], queryKeys.tasks],
   )
 

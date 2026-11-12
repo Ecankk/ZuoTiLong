@@ -46,6 +46,8 @@ class Score(Confirmation):
 class PaperDraft(RequestModel):
     title:str=''
     exam_date:str|None=None
+    exam_date_precision:Literal['day','month','unknown']|None=None
+    exam_date_unknown_reason:Literal['not_provided','forgotten']|None=None
     score:float=0
     total_score:float=150
     duration:int=0

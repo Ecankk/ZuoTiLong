@@ -1,4 +1,5 @@
 """Small task projection; never copy chat messages, tool outputs or write tickets."""
+from app.titles import paper_title
 from app.common import rows
 from app.agent.errors import BridgeConflict
 from app.errors import ServiceError
@@ -79,11 +80,11 @@ class TaskSummary:
                 actions.append('retry')
             label = LABELS.get(job['kind'], '处理学习任务')
             if job.get('batch_id') and job['kind']=='prepare_practice':label='按画像选择练习'
-            title = '《'+job['paper_title']+'》' if job['paper_title'] else ''
+            title = '《'+paper_title(job['paper_title'])+'》' if job['paper_title'] else ''
             message = ('正在'+label+title if value == 'running' else '等待'+label+title if value == 'queued' else
                        label+title+('已完成' if value == 'completed' else '已取消' if value == 'cancelled' else '需要处理'))
             if job['task_status'] == 'result_saved' and value == 'running':message = label+title+'结果已保存，正在核对完成状态'
-            items.append(dict(id=job['id'], kind=job['kind'], paper_id=job['paper_id'], paper_title=job['paper_title'],
+            items.append(dict(id=job['id'], kind=job['kind'], paper_id=job['paper_id'], paper_title=paper_title(job['paper_title']) if job['paper_title'] else None,
                               attempt_id=job['attempt_id'], source='profile_practice' if job.get('batch_id') else None,batch_id=job.get('batch_id'),status=value, progress={'message': message}, error=job['error'],
                               created_at=job['created_at'], updated_at=job['updated_at'], allowed_actions=actions))
         rank = {'running':0, 'queued':1, 'blocked':2, 'failed':2, 'completed':3, 'cancelled':3}

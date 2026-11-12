@@ -1,4 +1,5 @@
 """Read models for the workspace; this module has no web-framework dependency."""
+from app.titles import paper as display_paper
 import sqlite3
 from copy import deepcopy
 from threading import Lock
@@ -87,7 +88,7 @@ class WorkspaceService:
 
     def _build_bootstrap(self):
         with self.database.session() as conn:
-            papers=rows(conn,'SELECT * FROM papers ORDER BY COALESCE(exam_date,created_at) DESC,created_at DESC')
+            papers=[display_paper(p) for p in rows(conn,'SELECT * FROM papers ORDER BY CASE WHEN exam_date IS NULL OR length(exam_date)=0 THEN 1 ELSE 0 END,exam_date DESC,created_at DESC')]
             questions=[enrich_question(q) for q in rows(conn,'SELECT * FROM questions ORDER BY created_at DESC')]
             bank=[public_bank(conn,r[0],view='library') for r in conn.execute("SELECT id FROM bank_questions WHERE source!='本地示例题库' ORDER BY id")]
             settings=preferences(conn);profile=build_profile(conn);loop=loop_snapshot(conn)
@@ -97,8 +98,8 @@ class WorkspaceService:
         return dict(papers=papers,questions=questions,bank=bank,profile=profile,loop=loop,preferences=settings)
     def papers(self,archived='0'):
         where=' WHERE archived_at IS NOT NULL' if archived=='1' else '' if archived=='all' else ' WHERE archived_at IS NULL'
-        order='archived_at DESC' if archived=='1' else 'COALESCE(exam_date,created_at) DESC,created_at DESC'
-        with self.database.session() as conn:return {'papers':rows(conn,'SELECT * FROM papers'+where+' ORDER BY '+order)}
+        order='archived_at DESC' if archived=='1' else 'CASE WHEN exam_date IS NULL OR length(exam_date)=0 THEN 1 ELSE 0 END,exam_date DESC,created_at DESC'
+        with self.database.session() as conn:return {'papers':[display_paper(p) for p in rows(conn,'SELECT * FROM papers'+where+' ORDER BY '+order)]}
     def loop(self):
         with self.database.session() as conn:return loop_snapshot(conn)
     def profile(self):

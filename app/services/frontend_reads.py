@@ -12,6 +12,7 @@ from app.knowledge import index, catalog
 from app.learning.plans import practice_state, plan_goals
 from app.learning.loop import probe_payload
 from app.learning.report_contract import present_diagnosis
+from app.titles import paper_title
 
 PRACTICE_STATUSES = ('pending', 'grading', 'graded', 'needs_supplement', 'inactive')
 
@@ -94,7 +95,8 @@ class FrontendReads:
         return dict(row)
 
     def _paper_card(self, conn, item):
-        result = {k: item[k] for k in ('id', 'title', 'exam_date', 'total_score', 'archived_at', 'created_at', 'updated_at')}
+        result = {k: item[k] for k in ('id', 'title', 'exam_date','exam_date_precision','exam_date_unknown_reason','import_decision', 'total_score', 'archived_at', 'created_at', 'updated_at')}
+        result['title']=paper_title(result['title'])
         result.update(score=item['score'] if item['score_confirmed_at'] else None,
                       score_confirmed=bool(item['score_confirmed_at']), analysis_status=item['import_status'])
         counts = {s: 0 for s in ('correct', 'wrong', 'partial', 'unknown')}
@@ -107,7 +109,7 @@ class FrontendReads:
         if archived not in ('0', '1', 'all'):
             raise ValueError('归档筛选不合法')
         with self.rt.database.session() as conn:
-            values = rows(conn, 'SELECT * FROM papers ORDER BY COALESCE(exam_date,created_at) DESC,created_at DESC,id DESC')
+            values = rows(conn, 'SELECT * FROM papers ORDER BY CASE WHEN exam_date IS NULL OR length(exam_date)=0 THEN 1 ELSE 0 END,exam_date DESC,created_at DESC,id DESC')
             selected = [v for v in values if (self.rt.config.demo or not v['id'].startswith('paper-demo-'))
                         and (archived == 'all' or bool(v['archived_at']) == (archived == '1'))]
             result = page(selected, offset, limit)
@@ -126,6 +128,9 @@ class FrontendReads:
                                         limitations=report.get('limitations', [])),
                           summary_status='available' if summary else 'missing',
                           actions=['restore'] if item['archived_at'] else ['analyze', 'archive'])
+            from app.services.paper_metadata import presentation
+            result.update(presentation(conn,item))
+            if item['import_decision']!='accepted':result['actions']=[]
             cards = self._cards(conn, paper_id)
         result['practice_counts'] = practice_counts(cards)
         result['weak_topics'] = [{'topic_id': n['skill_id'], 'name': n['label']} for n in self._knowledge()['nodes']
@@ -224,7 +229,7 @@ class FrontendReads:
             from app.learning.practice_presentation import source_for,correctness
             student_access=access(conn,item['bank_id']) if include_access else None
             if include_access:student_access.update(source_for(conn,self.rt.config.data,item))
-            result.append(dict(id=item['id'],origin='paper',latest_correctness=correctness(assessed),batch_id=None,batch_title=None,paper_id=pid, paper_title=item['paper_title'], question_id=item['question_id'], bank_id=item['bank_id'],
+            result.append(dict(id=item['id'],origin='paper',latest_correctness=correctness(assessed),batch_id=None,batch_title=None,paper_id=pid, paper_title=paper_title(item['paper_title']), question_id=item['question_id'], bank_id=item['bank_id'],
                                created_at=item['created_at'], status=status, goal_ids=[g['id'] for g in goals],
                                topics=[{'topic_id': tid, 'name': nodes[tid]['name']} for tid in sorted(resolved) if tid in nodes],
                                access=student_access, latest_attempt_id=latest['id'] if latest else None))

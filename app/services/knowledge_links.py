@@ -4,6 +4,7 @@ Both directions use the same validated projection. The bank projection is
 cached by database content and material stat versions, not by an expiry timer.
 No reasoning, answers, paths, or personal ability judgments leave this service.
 """
+from app.titles import paper_title
 from copy import deepcopy
 import json
 from threading import RLock
@@ -93,7 +94,7 @@ class KnowledgeLinksService:
         bank_by_id = {b['bank_id']:b for b in bank}
         rows = []
         for row in conn.execute('''SELECT q.id,q.paper_id,q.number,d.report_id,d.diagnosis_json,
-            p.title,p.exam_date,p.created_at,p.source_sha256,r.source_sha256 AS report_sha,r.report_json
+            p.title,p.exam_date,p.exam_date_precision,p.exam_date_unknown_reason,p.created_at,p.source_sha256,r.source_sha256 AS report_sha,r.report_json
             FROM questions q JOIN question_diagnoses d ON d.question_id=q.id
             JOIN papers p ON p.id=q.paper_id JOIN agent_reports r ON r.id=d.report_id
             WHERE p.archived_at IS NULL ORDER BY q.id'''):
@@ -109,8 +110,9 @@ class KnowledgeLinksService:
             bid = binding[0] if binding else None
             source = bank_by_id.get(bid)
             rows.append({'id':row['id'],'entity_id':source['entity_id'] if source else 'original:'+row['id'],
-                         'bank_id':bid,'collection_id':source['collection_id'] if source else None,'source_kind':'paper','paper_id':row['paper_id'],'paper_title':row['title'],
-                         'question_id':row['id'],'number':row['number'],'date':row['exam_date'] or row['created_at'],
+                         'bank_id':bid,'collection_id':source['collection_id'] if source else None,'source_kind':'paper','paper_id':row['paper_id'],'paper_title':paper_title(row['title']),
+                         'question_id':row['id'],'number':row['number'],'date':row['exam_date'],
+                         'exam_date_precision':row['exam_date_precision'],'exam_date_unknown_reason':row['exam_date_unknown_reason'],
                          'state':q['correctness'],'report_id':row['report_id'],
                          'topic_ids':sorted(by_source.get(row['id'],set())),'protected':False})
         for row in conn.execute('''SELECT a.*,d.paper_id,d.question_id,d.bank_id,p.title,p.exam_date
@@ -128,7 +130,7 @@ class KnowledgeLinksService:
             source = bank_by_id.get(row['bank_id'])
             rows.append({'id':row['id'],'entity_id':source['entity_id'] if source else 'bank:'+row['bank_id'],
                          'bank_id':row['bank_id'],'collection_id':source['collection_id'] if source else None,'source_kind':'probe','paper_id':row['paper_id'],
-                         'paper_title':row['title'],'question_id':row['question_id'],'probe_id':row['probe_id'],
+                         'paper_title':paper_title(row['title']),'question_id':row['question_id'],'probe_id':row['probe_id'],
                          'attempt_id':row['id'],'number':source['number'] if source else None,
                          'date':row['created_at'],'state':'correct' if assessment['correct'] else 'wrong',
                          'assisted':bool(row['answer_exposed']),'topic_ids':sorted(tids),

@@ -70,7 +70,9 @@ function AnalysisCard({ data }: { data: PaperResponse }) {
       (t.status === 'queued' || t.status === 'running'),
   )
   const unavailable = tasks?.availability.status === 'unavailable'
-  const canAnalyze = data.actions.includes('analyze')
+  // 同卷重复上传还没决定时不开始分析（后端也不给 analyze 动作）
+  const canAnalyze =
+    data.actions.includes('analyze') && paper.import_decision !== 'pending_duplicate'
 
   return (
     <Card padded className={styles.card} aria-label="分析">

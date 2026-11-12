@@ -1,17 +1,20 @@
-import { Archive, ArchiveRestore, X } from 'lucide-react'
+import { Archive, ArchiveRestore, CalendarDays, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate, Outlet, useParams } from 'react-router'
+import { Navigate, Outlet, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ApiError } from '../../api/client'
 import { endpoints } from '../../api/endpoints'
 import { useAction, usePaper, usePaperQuestions } from '../../api/queries'
+import type { Paper, PaperResponse } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { ErrorState } from '../../components/ui/ErrorState'
+import { DuplicateDecisionDialog, EditDatesDialog } from '../../components/paper/PaperDialogs'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { SegmentedLinks } from '../../components/ui/Segmented'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { friendlyError } from '../../lib/errors'
-import { monthDay, paperName } from '../../lib/labels'
+import { choiceFrom, examDateLine, UNRESOLVED_NOTE } from '../../lib/examDate'
+import { paperName } from '../../lib/labels'
 import { PlaceholderPage } from '../Placeholder'
 import styles from './PaperOverview.module.css'
 
@@ -86,6 +89,66 @@ function ArchiveButton({ paperId, archived }: { paperId: string; archived: boole
   )
 }
 
+function DateButton({ paper }: { paper: Paper }) {
+  // 上传结果里“在原卷上改日期”的入口带 ?editDate=1，进来直接打开
+  const [params, setParams] = useSearchParams()
+  const [open, setOpen] = useState(() => params.get('editDate') === '1')
+  const change = (next: boolean) => {
+    setOpen(next)
+    if (!next && params.has('editDate')) {
+      params.delete('editDate')
+      setParams(params, { replace: true })
+    }
+  }
+  return (
+    <>
+      <button type="button" className={styles.dateLink} onClick={() => setOpen(true)}>
+        <CalendarDays size={14} aria-hidden />
+        改日期
+      </button>
+      <EditDatesDialog
+        paperIds={[paper.id]}
+        initial={choiceFrom(paper)}
+        open={open}
+        onOpenChange={change}
+      />
+    </>
+  )
+}
+
+/** 同卷重复上传还没决定：每个分页上方都提示，可以随时决定 */
+function DuplicateNotice({ data }: { data: PaperResponse }) {
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const check = data.duplicate_check
+  if (check?.status === 'unresolved' && data.paper.import_decision !== 'pending_duplicate')
+    return <p className={styles.unresolved}>{UNRESOLVED_NOTE}</p>
+  if (data.paper.import_decision !== 'pending_duplicate') return null
+  return (
+    <div className={styles.duplicate} role="region" aria-label="这份卷之前传过">
+      <div>
+        <strong>这份卷之前传过同一年同一卷</strong>
+        <span>先确认是重做还是传错了，确认前不会开始分析，题号可以先看。</span>
+      </div>
+      {check && check.status === 'same_exam_identity' && (
+        <>
+          <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
+            去决定
+          </Button>
+          <DuplicateDecisionDialog
+            paperId={data.paper.id}
+            check={check}
+            revision={data.decision_revision}
+            open={open}
+            onOpenChange={setOpen}
+            onDecided={(decision) => decision === 'withdraw' && navigate('/papers')}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
 export function PaperLayout() {
   const { paperId = '' } = useParams()
   const { data, isPending, error, refetch } = usePaper(paperId)
@@ -125,7 +188,8 @@ export function PaperLayout() {
         title={paperName(paper.title)}
         subtitle={
           <span className="tabular">
-            {paper.exam_date ? `${monthDay(paper.exam_date)}作答` : '作答日期未填'}
+            {examDateLine(paper)}
+            <DateButton paper={paper} />
             {paper.score !== null && ` · 得分 ${paper.score} / ${paper.total_score}`}
             {archived && ' · 已归档'}
           </span>
@@ -144,6 +208,7 @@ export function PaperLayout() {
           </div>
         }
       />
+      <DuplicateNotice data={data} />
       <Outlet />
     </>
   )

@@ -10,6 +10,11 @@ import type {
   BankCard,
   AtomsResponse,
   BackupList,
+  ExamDateFields,
+  ImportDecisionRequest,
+  ImportDecisionResponse,
+  PaperDatesRequest,
+  PaperDatesResponse,
   FeedbackReadRequest,
   Overview,
   ProfileBatch,
@@ -45,7 +50,18 @@ import type {
   UploadedImage,
 } from './types'
 
-export type PracticeGrouping = 'topic' | 'paper'
+/** group_by：按考点 / 按试卷（画像题按批次成组） / 按来源 / 按画像批次 */
+export type PracticeGrouping = 'topic' | 'paper' | 'source' | 'batch'
+
+/** GET /api/practices 的可选筛选（app/api/frontend_resources.py 的实际参数） */
+export type PracticeFilter = {
+  /** paper：原卷练习；profile：画像选题；省略为两者合并 */
+  source?: 'paper' | 'profile'
+  batchId?: string
+  status?: string
+  paperId?: string
+  topicId?: string
+}
 export type PaperScope = '0' | '1'
 /** collection 必填：不同题集不混在一起浏览 */
 export type BankFilter = {
@@ -84,10 +100,20 @@ export const endpoints = {
     request<PaperSummaryResponse>(`/api/papers/${enc(paperId)}/summary`),
   question: (questionId: string) =>
     orNull(request<QuestionResponse>(`/api/questions/${enc(questionId)}`)),
-  practices: (groupBy: PracticeGrouping, includeInactive: boolean) =>
-    request<PracticesResponse>(
-      `/api/practices?group_by=${groupBy}&include_inactive=${includeInactive}&offset=0&limit=100`,
-    ),
+  practices: (groupBy: PracticeGrouping, includeInactive: boolean, filter: PracticeFilter = {}) => {
+    const query = new URLSearchParams({
+      group_by: groupBy,
+      include_inactive: String(includeInactive),
+      offset: '0',
+      limit: '100',
+    })
+    if (filter.source) query.set('source', filter.source)
+    if (filter.batchId) query.set('batch_id', filter.batchId)
+    if (filter.status) query.set('status', filter.status)
+    if (filter.paperId) query.set('paper_id', filter.paperId)
+    if (filter.topicId) query.set('topic_id', filter.topicId)
+    return request<PracticesResponse>(`/api/practices?${query}`)
+  },
   practice: (practiceId: string) =>
     orNull(request<PracticeResponse>(`/api/practices/${enc(practiceId)}`)),
   preferences: () => request<Preferences>('/api/preferences'),
@@ -148,13 +174,25 @@ export const endpoints = {
   backup: () => postJson<{ path: string; files: number }>('/api/maintenance/backup', {}),
 
   /* ---------- 试卷 ---------- */
-  importPaper: (file: File, title: string, examDate: string) => {
+  /** 作答日期只在用户选择后才传；未选择时三个字段都不传（不默认今天） */
+  importPaper: (file: File, title: string, date?: ExamDateFields) => {
     const form = new FormData()
     form.append('file', file)
     form.append('title', title)
-    form.append('exam_date', examDate)
+    if (date) {
+      if (date.exam_date) form.append('exam_date', date.exam_date)
+      if (date.exam_date_precision) form.append('exam_date_precision', date.exam_date_precision)
+      if (date.exam_date_unknown_reason)
+        form.append('exam_date_unknown_reason', date.exam_date_unknown_reason)
+    }
     return request<ImportResult>('/api/papers/import', { method: 'POST', body: form })
   },
+  /** 批量修改作答日期（1–50 张） */
+  updatePaperDates: (body: PaperDatesRequest) =>
+    postJson<PaperDatesResponse>('/api/papers/dates', body),
+  /** 重复上传的决定：这是重做 / 传错了撤回 */
+  importDecision: (paperId: string, body: ImportDecisionRequest) =>
+    postJson<ImportDecisionResponse>(`/api/papers/${enc(paperId)}/import-decision`, body),
   /** 已有分析时需要 confirmed=true（重新分析，旧报告保留） */
   analyzePaper: (paperId: string, confirmed: boolean) =>
     postJson<{ job_id: string }>(`/api/papers/${enc(paperId)}/analyze`, { confirmed }),

@@ -467,7 +467,13 @@ export function PracticePage() {
   const [query, setQuery] = useState('')
   // 窄窗口的题目列表：记下打开时选中的是哪道，换了题自然就收起
   const [openedAt, setOpenedAt] = useState<string | null>(null)
-  const { data, isError, error, refetch } = usePractices(grouping, includeInactive)
+  // ?batch=<画像批次>：只看这一组画像选题（后端 source=profile&batch_id 筛选）
+  const batchId = params.get('batch') ?? undefined
+  const { data, isError, error, refetch } = usePractices(
+    grouping,
+    includeInactive,
+    batchId ? { source: 'profile', batchId } : {},
+  )
   const listRef = useRef<HTMLElement>(null)
   const workRef = useRef<HTMLDivElement>(null)
 
@@ -556,6 +562,7 @@ export function PracticePage() {
     if (includeInactive) value.set('inactive', '1')
     if (status) value.set('status', status)
     if (source) value.set('source', source)
+    if (batchId) value.set('batch', batchId)
     for (const [key, item] of Object.entries(next)) {
       if (item) value.set(key, item)
       else value.delete(key)
@@ -615,6 +622,15 @@ export function PracticePage() {
           </div>
         }
       />
+      {batchId && (
+        <div className={styles.batchBanner} role="status">
+          <span>
+            只看这一组按画像选的题
+            {unique[0]?.batch_title ? `：${unique[0].batch_title}` : ''}
+          </span>
+          <Link to={`/practice?${link({ batch: undefined, item: selected })}`}>看全部练习</Link>
+        </div>
+      )}
       {isError && (
         <div className={styles.staleNotice}>
           <ErrorState error={error} title="练习列表没有更新" onRetry={() => void refetch()} />

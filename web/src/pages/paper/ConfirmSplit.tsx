@@ -25,6 +25,7 @@ export function awaitingSplitConfirm(data: PaperResponse, tasks: Task[] | undefi
     !data.paper.archived_at &&
     data.analysis.report_id === null &&
     data.actions.includes('analyze') &&
+    data.paper.import_decision !== 'pending_duplicate' &&
     data.paper.counts.total > 0 &&
     !busy
   )

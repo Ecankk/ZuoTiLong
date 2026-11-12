@@ -22,6 +22,8 @@ export type ProfileNode = {
   ready_question_count: number
   study_ready_question_count: number
   selectable_question_count: number
+  /** B28：最近一次作答的日期（只到月或未知时 last_attempt_at 为 null） */
+  last_attempt_date?: DateValue | null
 }
 
 export type ProfileSubject = ProfileNode & {
@@ -31,7 +33,13 @@ export type ProfileSubject = ProfileNode & {
 
 export type EvidenceSource = 'exam' | 'practice' | 'free_practice'
 
-export type WeakSpotEvidence = {
+import type {
+  EvidenceDateAndLoss,
+  ExamDatePrecision,
+  ExamDateUnknownReason,
+} from './paperDateTypes'
+
+export type WeakSpotEvidence = EvidenceDateAndLoss & {
   source: EvidenceSource
   paper_id: string | null
   question_id: string | null
@@ -60,6 +68,55 @@ export type WeakSpot = {
   window: { from: string; to: string }
   basis: string | null
   evidence: WeakSpotEvidence[]
+  /** B28：近期依据还是历史卷补位，以及涉及的原卷失分（按已保存估分，null 为分数未知） */
+  evidence_period?: 'recent' | 'historical'
+  period_explanation?: string
+  recent_lost_points?: number | null
+  recent_loss_known_question_count?: number
+  recent_loss_unknown_question_count?: number
+  historical_lost_points?: number | null
+  historical_loss_known_question_count?: number
+  historical_loss_unknown_question_count?: number
+  recent_exam_failure_count?: number
+  recent_practice_failure_count?: number
+  historical_failures?: number
+  historical_exam_failure_count?: number
+  historical_practice_failure_count?: number
+  loss_attribution?: 'related_question_loss'
+  loss_basis?: 'saved_estimate' | 'mixed' | null
+}
+
+export type StageKey = 'entry' | 'modeling' | 'formula' | 'calculation' | 'finalization'
+
+/** overview.first_error_summary：满门槛才返回，否则 null（前端不自己拼结论） */
+export type FirstErrorSummary = {
+  period: 'recent'
+  window: { from: string; to: string }
+  wrong_count: number
+  attributed_count: number
+  unattributed_count: number
+  stages: { stage: StageKey; count: number }[]
+  dominant_stage: string
+  dominant_count: number
+  statement: string
+  evidence: {
+    source: string
+    paper_id: string | null
+    question_id: string | null
+    question_number: string | null
+    practice_id: string | null
+    attempt_id: string | null
+    first_error_stage: string
+    first_error_evidence: string
+    /** 后端补丁会加：出处名，如“《2021数学一》第9题” */
+    label?: string | null
+  }[]
+}
+
+export type DateValue = {
+  value: string | null
+  precision: ExamDatePrecision
+  unknown_reason: ExamDateUnknownReason | null
 }
 
 export type ChapterConclusion = {
@@ -145,6 +202,16 @@ export type Overview = {
     needs_review_count?: number
   }
   feedback?: { unread_count: number; recent_items: FeedbackItem[] }
+  /** B28：薄弱排行的近期/历史说明、只到月或未知日期的作答数、全局首错环节汇总 */
+  weak_spots_context?: {
+    recent_window: { from: string; to: string }
+    recent_judged_count: number
+    recent_evidence_sufficient: boolean
+    uses_history_fallback: boolean
+    explanation: string | null
+  }
+  history_counts?: { month_dated_attempts: number; unknown_dated_attempts: number }
+  first_error_summary?: FirstErrorSummary | null
   review?: {
     total: number
     counts: { exam_questions: number; practice_attempts: number; free_practice_attempts: number }
@@ -164,7 +231,7 @@ export type Overview = {
       independent_correct_comparison: string | null
     }
   }
-  recent_mistakes: {
+  recent_mistakes: (EvidenceDateAndLoss & {
     source: EvidenceSource
     practice_source: 'paper_practice' | 'profile_practice' | null
     question_id: string | null
@@ -178,7 +245,7 @@ export type Overview = {
     occurred_at: string | null
     answer_exposed: boolean | null
     topic_ids: string[]
-  }[]
+  })[]
   next_steps: NextStep[]
   profile_batch_eligibility: {
     can_create: boolean
@@ -213,6 +280,8 @@ export type Trends = {
   }[]
   totals: ActivityCounts
   undated: ActivityCounts
+  /** B28：日期只到月份或未知、没放进任何一周的作答 */
+  unplaced_by_precision?: { month: ActivityCounts; unknown: ActivityCounts }
   limitations: string[]
 }
 

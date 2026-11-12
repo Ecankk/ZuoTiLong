@@ -102,7 +102,7 @@ ProfileNode：`{id,parent_id,name,kind,math_types,state,state_reason,display_sta
 - 画像练习沿用 GET /api/practices/{id}、/attempts、POST /api/probes/{id}/submit、/api/attempts/{id}/supplement；固定图片为 `GET /api/practices/{id}/materials/question|analysis|answer`（允许时返回，no-store）。GET /api/tasks 的画像任务项带 `source:'profile_practice'`、`batch_id`。
 - 题库补图（B27）：BankCard 与题面投影可带只读 `supplemental_figures`（重绘图的角色、说明“按题意重绘”与依据，不含本机路径）；题图 URL 返回的已是原图加重绘图的显示图，前端无需拼接。
 
-## 作答日期、重复上传与画像修正（B28，已确认，实现中）
+## 作答日期、重复上传与画像修正（B28，已实现）
 
 日期：PaperCard、GET /api/papers/{id}.paper、上传响应的 paper 增加 `exam_date:string|null`（YYYY-MM-DD 或 YYYY-MM）、`exam_date_precision:'day'|'month'|'unknown'`、`exam_date_unknown_reason:'not_provided'|'forgotten'|null`、`import_decision:'accepted'|'pending_duplicate'|'withdrawn'`。未填 → null/unknown/not_provided，“记不清” → null/unknown/forgotten，“约某月” → "YYYY-MM"/month；不再默认今天，拒绝未来日/月。旧数据里的完整日期按 day 保留，无法区分是否当年被自动填成上传日，靠用户批量修正。
 

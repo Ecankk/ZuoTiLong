@@ -1,0 +1,301 @@
+{
+  "schema": "mathlens.build-wheels/v1",
+  "python": "3.12.10",
+  "platform": "win_amd64",
+  "wheels": [
+    {
+      "name": "altgraph",
+      "version": "0.17.5",
+      "filename": "altgraph-0.17.5-py2.py3-none-any.whl",
+      "sha256": "f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597",
+      "size": 21228
+    },
+    {
+      "name": "annotated-doc",
+      "version": "0.0.6",
+      "filename": "annotated_doc-0.0.6-py3-none-any.whl",
+      "sha256": "361ca0950cc7082f53fa69e9328409f40a62c61e57e0a47e1825a08078a58a53",
+      "size": 5293
+    },
+    {
+      "name": "annotated-types",
+      "version": "0.8.0",
+      "filename": "annotated_types-0.8.0-py3-none-any.whl",
+      "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+      "size": 13427
+    },
+    {
+      "name": "anyio",
+      "version": "4.16.0",
+      "filename": "anyio-4.16.0-py3-none-any.whl",
+      "sha256": "c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026",
+      "size": 134521
+    },
+    {
+      "name": "attrs",
+      "version": "26.1.0",
+      "filename": "attrs-26.1.0-py3-none-any.whl",
+      "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+      "size": 67548
+    },
+    {
+      "name": "click",
+      "version": "8.5.1",
+      "filename": "click-8.5.1-py3-none-any.whl",
+      "sha256": "8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37",
+      "size": 126163
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "filename": "colorama-0.4.6-py2.py3-none-any.whl",
+      "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+      "size": 25335
+    },
+    {
+      "name": "fastapi",
+      "version": "0.162.6",
+      "filename": "fastapi-0.162.6-py3-none-any.whl",
+      "sha256": "df12575573c26a49083f690c43496b6dafa483dca72ca66de4b50d1db5940787",
+      "size": 151939
+    },
+    {
+      "name": "flatbuffers",
+      "version": "25.12.19",
+      "filename": "flatbuffers-25.12.19-py2.py3-none-any.whl",
+      "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+      "size": 26661
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0",
+      "filename": "h11-0.16.0-py3-none-any.whl",
+      "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+      "size": 37515
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "filename": "idna-3.20-py3-none-any.whl",
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+      "size": 69583
+    },
+    {
+      "name": "jsonschema",
+      "version": "4.26.0",
+      "filename": "jsonschema-4.26.0-py3-none-any.whl",
+      "sha256": "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce",
+      "size": 90630
+    },
+    {
+      "name": "jsonschema-specifications",
+      "version": "2025.9.1",
+      "filename": "jsonschema_specifications-2025.9.1-py3-none-any.whl",
+      "sha256": "98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe",
+      "size": 18437
+    },
+    {
+      "name": "numpy",
+      "version": "2.5.4",
+      "filename": "numpy-2.5.4-cp312-cp312-win_amd64.whl",
+      "sha256": "a7b1b6353e36a7e50de2973a38d705c88ee93adcf120673cee7f45a4a3fa223a",
+      "size": 12573091
+    },
+    {
+      "name": "onnxruntime",
+      "version": "1.32.0",
+      "filename": "onnxruntime-1.32.0-cp312-cp312-win_amd64.whl",
+      "sha256": "efe7456952c243a05a53d5b8732953625144642c2f3989094277f6217f0c0c40",
+      "size": 16698767
+    },
+    {
+      "name": "opencv-python",
+      "version": "5.0.0.93",
+      "filename": "opencv_python-5.0.0.93-cp37-abi3-win_amd64.whl",
+      "sha256": "f90ba04b8f73bc5c3814037699739f0156f597338a98f05956c684e7c3ca10d2",
+      "size": 44000345
+    },
+    {
+      "name": "opentelemetry-api",
+      "version": "1.45.2",
+      "filename": "opentelemetry_api-1.45.2-py3-none-any.whl",
+      "sha256": "2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34",
+      "size": 60335
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "filename": "packaging-26.3-py3-none-any.whl",
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "size": 129956
+    },
+    {
+      "name": "pefile",
+      "version": "2024.8.26",
+      "filename": "pefile-2024.8.26-py3-none-any.whl",
+      "sha256": "76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f",
+      "size": 74766
+    },
+    {
+      "name": "pillow",
+      "version": "12.3.0",
+      "filename": "pillow-12.3.0-cp312-cp312-win_amd64.whl",
+      "sha256": "a2b55dd6b2a4c4b7d87ffa56bdb33fdc5fdb9a462173861a7bc097f17d91cb09",
+      "size": 7227137
+    },
+    {
+      "name": "pip",
+      "version": "25.0.1",
+      "filename": "pip-25.0.1-py3-none-any.whl",
+      "sha256": "c46efd13b6aa8279f33f2864459c8ce587ea6a1a59ee20de055868d8f7688f7f",
+      "size": 1841526
+    },
+    {
+      "name": "protobuf",
+      "version": "7.36.2",
+      "filename": "protobuf-7.36.2-cp310-abi3-win_amd64.whl",
+      "sha256": "a300819d441e078a5608c0d3c709796bb548136058fda017ae51d425b44fd353",
+      "size": 456514
+    },
+    {
+      "name": "pyclipper",
+      "version": "1.4.0",
+      "filename": "pyclipper-1.4.0-cp312-cp312-win_amd64.whl",
+      "sha256": "d1e5498d883b706a4ce636247f0d830c6eb34a25b843a1b78e2c969754ca9037",
+      "size": 104619
+    },
+    {
+      "name": "pydantic",
+      "version": "2.14.3",
+      "filename": "pydantic-2.14.3-py3-none-any.whl",
+      "sha256": "3f7b347782ab7e4cf4c798496ae3a82787d9f21ec12676a9c564355eeef8daa8",
+      "size": 494071
+    },
+    {
+      "name": "pydantic-core",
+      "version": "2.50.4",
+      "filename": "pydantic_core-2.50.4-cp312-cp312-win_amd64.whl",
+      "sha256": "ea2f61b0bc12f3592288503961b764579dea0658852d96a0b3d823614d808821",
+      "size": 2264064
+    },
+    {
+      "name": "pyinstaller",
+      "version": "6.22.3",
+      "filename": "pyinstaller-6.22.3-py3-none-win_amd64.whl",
+      "sha256": "500bd58c7bf7e584a8435adccbd763a0b918d5c12b08d74ff50fd79b2915458b",
+      "size": 1454907
+    },
+    {
+      "name": "pyinstaller-hooks-contrib",
+      "version": "2026.10",
+      "filename": "pyinstaller_hooks_contrib-2026.10-py3-none-any.whl",
+      "sha256": "dfc3cde20a7ce6c92e803016e66eed4b7050467e2c5f886a3745d89b258c6d6d",
+      "size": 463652
+    },
+    {
+      "name": "pymupdf",
+      "version": "1.28.2",
+      "filename": "pymupdf-1.28.2-cp310-abi3-win_amd64.whl",
+      "sha256": "ebd244918798502d7b4504c90410d1711a4d7675a32584ca30f1bab419ecbffe",
+      "size": 19826532
+    },
+    {
+      "name": "python-multipart",
+      "version": "0.0.33",
+      "filename": "python_multipart-0.0.33-py3-none-any.whl",
+      "sha256": "8f16c07b36add9da6b2ee87d3efcaf0a45a6de9c3d0a5dd94e9ccf7675a7bc45",
+      "size": 32253
+    },
+    {
+      "name": "pywin32-ctypes",
+      "version": "0.2.3",
+      "filename": "pywin32_ctypes-0.2.3-py3-none-any.whl",
+      "sha256": "8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8",
+      "size": 30756
+    },
+    {
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "filename": "pyyaml-6.0.3-cp312-cp312-win_amd64.whl",
+      "sha256": "5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b",
+      "size": 154003
+    },
+    {
+      "name": "rapidocr-onnxruntime",
+      "version": "1.4.4",
+      "filename": "rapidocr_onnxruntime-1.4.4-py3-none-any.whl",
+      "sha256": "971d7d5f223a7a808662229df1ef69893809d8457d834e6373d3854bc1782cbf",
+      "size": 14915192
+    },
+    {
+      "name": "referencing",
+      "version": "0.37.0",
+      "filename": "referencing-0.37.0-py3-none-any.whl",
+      "sha256": "381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231",
+      "size": 26766
+    },
+    {
+      "name": "rpds-py",
+      "version": "2026.9.1",
+      "filename": "rpds_py-2026.9.1-cp312-cp312-win_amd64.whl",
+      "sha256": "5ce8943f79c2210f7abcc28e86367b03b28d95027fd01c46d2472373ae70c86f",
+      "size": 222923
+    },
+    {
+      "name": "setuptools",
+      "version": "84.2.1",
+      "filename": "setuptools-84.2.1-py3-none-any.whl",
+      "sha256": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2",
+      "size": 876263
+    },
+    {
+      "name": "shapely",
+      "version": "2.2.0",
+      "filename": "shapely-2.2.0-cp312-cp312-win_amd64.whl",
+      "sha256": "90895df6542ae039fc6557dec6194e3509e883fbd6f5788e3c3e7a38fe46b257",
+      "size": 1791280
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "filename": "six-1.17.0-py2.py3-none-any.whl",
+      "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+      "size": 11050
+    },
+    {
+      "name": "starlette",
+      "version": "1.10.0",
+      "filename": "starlette-1.10.0-py3-none-any.whl",
+      "sha256": "478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4",
+      "size": 80571
+    },
+    {
+      "name": "tqdm",
+      "version": "4.70.1",
+      "filename": "tqdm-4.70.1-py3-none-any.whl",
+      "sha256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73",
+      "size": 80199
+    },
+    {
+      "name": "typing-extensions",
+      "version": "4.16.0",
+      "filename": "typing_extensions-4.16.0-py3-none-any.whl",
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+      "size": 45571
+    },
+    {
+      "name": "typing-inspection",
+      "version": "0.4.5",
+      "filename": "typing_inspection-0.4.5-py3-none-any.whl",
+      "sha256": "bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39",
+      "size": 14874
+    },
+    {
+      "name": "uvicorn",
+      "version": "0.54.0",
+      "filename": "uvicorn-0.54.0-py3-none-any.whl",
+      "sha256": "505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf",
+      "size": 87427
+    }
+  ]
+}

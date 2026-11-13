@@ -1,0 +1,42 @@
+[workspace]
+members = [".", "core"]
+resolver = "2"
+
+[package]
+name = "zuotilong-desktop"
+version = "0.10.0"
+description = "做题龙 Windows 桌面外壳"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+name = "zuotilong_desktop"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "ZuoTiLong"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+desktop-core = { path = "core" }
+tauri = { version = "=2.12.5", features = [] }
+tauri-plugin-single-instance = "=2.5.5"
+tauri-plugin-dialog = "=2.8.4"
+tauri-plugin-opener = "=2.7.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "unwind"
+strip = true

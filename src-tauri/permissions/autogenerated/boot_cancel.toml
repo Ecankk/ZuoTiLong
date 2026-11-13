@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-boot-cancel"
+description = "Enables the boot_cancel command without any pre-configured scope."
+commands.allow = ["boot_cancel"]
+
+[[permission]]
+identifier = "deny-boot-cancel"
+description = "Denies the boot_cancel command without any pre-configured scope."
+commands.deny = ["boot_cancel"]

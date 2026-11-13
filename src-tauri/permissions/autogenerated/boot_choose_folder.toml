@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-boot-choose-folder"
+description = "Enables the boot_choose_folder command without any pre-configured scope."
+commands.allow = ["boot_choose_folder"]
+
+[[permission]]
+identifier = "deny-boot-choose-folder"
+description = "Denies the boot_choose_folder command without any pre-configured scope."
+commands.deny = ["boot_choose_folder"]

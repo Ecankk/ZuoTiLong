@@ -15,7 +15,7 @@ def listing(rt=Depends(runtime)):
 @router.get('/export')
 def export(collection:str|None=None,rt=Depends(runtime)):
     package = rt.question_index.export(collection)
-    return JSONResponse(package, headers={'Content-Disposition': 'attachment; filename="question-index-' + package['sha256'][:12] + '.json"'})
+    return JSONResponse(package, headers={'X-Content-Type-Options':'nosniff','Content-Disposition': 'attachment; filename="question-index-' + package['sha256'][:12] + '.json"'})
 
 
 @router.post('/preview')

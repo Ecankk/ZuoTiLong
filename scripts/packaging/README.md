@@ -74,3 +74,19 @@ build/desktop-venv/Scripts/python.exe scripts/packaging/smoke_frozen.py --stage 
 无管理员测试时使用 `MATHLENS_PACKAGING_OFFLINE_SMOKE=1`：仅冻结入口提供的**收紧**模式，拒绝Python外部socket连接、保留回环给ASGI，关闭ORT遥测；正常桌面启动不设置该变量。该烟测验证冻结模型本地可用，不增加HTTP调试路由，也不放宽任何能力。它不等于系统防火墙封网/无网VM；原生组件的系统级网络隔离仍需干净Windows验收。若不能设置测试ACL，烟测失败而不是冒充只读通过。
 
 不通过源码unittest替代上述真实exe烟测；也不把在开发主机上移除Python路径当作“已在无Python新Windows测试”。无Python/Node/Rust新用户、VC运行库、CPU指令集、SmartScreen、Tauri Job Object及NSIS留给D/最终VM关卡。
+
+## E：从维护库生成发行种子
+
+标注会话在用户批准、备份并完成基础篇导入后，从题库维护副本运行：
+
+```powershell
+build/desktop-venv/Scripts/python.exe scripts/packaging/build_seed.py `
+  --library '<维护库目录>' `
+  --output '<临时目录>/library-seed' `
+  --release-id 'zhenti-zhangyu-20261115' `
+  --report '<临时目录>/library-seed.report.json'
+```
+
+命令以 SQLite `mode=ro` 读取并用 backup API 快照 `library.db`；存在 `library.db-wal/.shm/-journal` 时停止，避免封存半成品。它按 `bank_resources`、来源/目录 JSON 的实际相对引用复制 `bank-assets/**` 与 `knowledge-sources/**`，不复制整目录，并在报告中列出未引用文件数和字节数。源库存在不在 `LIBRARY_TABLES` 白名单内的表、缺失/越界引用时报告后停止，不静默删除或裁剪。构建到同卷 staging，写入真实 release/min-app/library identity/revision/题数/ready/题集及每个文件 hash/size；最后调用 A 的 manifest、文件 hash、SQLite、引用和 ready 计数校验器，成功后才原子发布输出目录。`library.db` 不带 sidecar。`--force` 只允许替换指定输出目录，绝不修改源库。
+
+工具不会扫描或复制个人工作区、题库备份、导航缓存或日志；源库表/行的发行取舍由报告交给协调会话。输出 manifest 和报告不含题目正文。

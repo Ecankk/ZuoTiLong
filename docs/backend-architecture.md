@@ -73,6 +73,8 @@ Agent参与过程：
 | app/bank/ | 题目材料、身份、标注、访问/曝光与程序召回 |
 | app/documents/ | PDF/OCR、切题与识别进度 |
 | app/storage/ | 数据库、文件材料、共享资料、备份恢复及只读快照 |
+| app/desktop/ | 桌面模式（`--desktop`/`--prepare-desktop`）：只用CLI给定的资源/数据/题库路径并覆盖本进程环境；题库种子（mathlens.library-seed/v1）校验、同卷staging后原子发布；stdout `mathlens.desktop/v1` JSONL进度、stdin shutdown/EOF关闭、server.json与health附nonce |
+| scripts/packaging/、src-tauri/ | 发行构建：Windows wheel哈希锁、PyInstaller onedir冻结后端、题库种子构建（只收实际引用的资源）；Tauri外壳（单实例、prepare/serve生命周期、Job Object、固定桥接命令、NSIS）。产物在被忽略的build/ |
 
 默认入口是`python -m app`，BAT也走这一入口。main.py只组装服务生命周期、HTTP边界和路由；路由调用services，服务组织领域操作和存储。配置由AppConfig传入，AppRuntime持有每个应用实例的数据库与服务；请求经依赖注入取用。
 

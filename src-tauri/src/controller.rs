@@ -186,6 +186,7 @@ impl Shared {
 
     /// 子进程环境：当前环境去掉 MATHLENS_*，PATH 从注册表重读，必要时注入 Codex 路径。
     pub fn child_env(&self, codex: Option<&Path>) -> Vec<(OsString, OsString)> {
+        let codex = codex.or(self.env.dev_codex.as_deref());
         let mut env = envpath::child_env(std::env::vars_os(), envpath::registry_path(), codex);
         env.extend(self.env.backend.extra_env.iter().cloned());
         env

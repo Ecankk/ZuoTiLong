@@ -7,7 +7,7 @@
     build/desktop-stage/backend/mathlens-backend.exe   （这里是 fake-sidecar）
     build/desktop-stage/backend/_internal/...          （占位，验证 onedir 层级）
     build/desktop-stage/resources/...                  （-Resources 指定的合成资源，或最小占位）
-    build/desktop-stage/resources/licenses/            （仓库 LICENSE、THIRD_PARTY_NOTICES.md、licenses/）
+    build/desktop-stage/backend/LICENSE-MathLens.txt、THIRD-PARTY-NOTICES.txt（与 B 包相同位置）
   build/ 已在 .gitignore 中，产物不入库。
 
 .PARAMETER Resources
@@ -44,13 +44,9 @@ if ($Resources) {
     Set-Content -Encoding utf8 (Join-Path $resourcesOut 'dist\index.html') '<!doctype html><meta charset="utf-8"><title>做题龙</title>'
 }
 
-$licenses = Join-Path $resourcesOut 'licenses'
-New-Item -ItemType Directory -Force $licenses | Out-Null
-Copy-Item (Join-Path $repo 'LICENSE') $licenses
-Copy-Item (Join-Path $repo 'THIRD_PARTY_NOTICES.md') $licenses
-if (Test-Path (Join-Path $repo 'licenses')) {
-    Copy-Item -Recurse -Force (Join-Path $repo 'licenses\*') $licenses
-}
+# 与 B 包实际布局一致：声明文件放在 backend\ 下
+Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $backend 'LICENSE-MathLens.txt')
+Copy-Item (Join-Path $repo 'THIRD_PARTY_NOTICES.md') (Join-Path $backend 'THIRD-PARTY-NOTICES.txt')
 
 Write-Host "已摆好 $stage"
 Get-ChildItem -Recurse $stage | Measure-Object -Property Length -Sum | ForEach-Object {

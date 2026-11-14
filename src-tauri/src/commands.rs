@@ -227,7 +227,7 @@ pub fn desktop_open_folder(
     require_backend(&webview, &ctl)?;
     let cfg = ctl.config.lock().ok().and_then(|c| c.clone());
     let path: PathBuf = match (target, cfg) {
-        (FolderTarget::Licenses, _) => ctl.env.licenses_dir.clone(),
+        (FolderTarget::Licenses, _) => ctl.env.licenses_dir(),
         (_, None) => return Err(error("missing", "读不到数据位置")),
         (FolderTarget::DataRoot, Some(c)) => c.data_root,
         (FolderTarget::Workspace | FolderTarget::Logs, Some(c)) => c.workspace_dir,

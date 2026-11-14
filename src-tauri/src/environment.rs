@@ -5,6 +5,7 @@
 //! - `ZUOTILONG_DEV_LOCATOR_DIR`：定位文件、外壳日志与默认数据根都改到这里（放 TEMP）。
 //! - `ZUOTILONG_DEV_RESOURCE_DIR`：含 `backend\` 与 `resources\` 的目录（假 sidecar 或合成资源）。
 //! - `ZUOTILONG_DEV_SIDECAR` + `ZUOTILONG_DEV_PYTHONPATH`：用 `python.exe -m app` 跑源码后端。
+//! - `ZUOTILONG_DEV_CODEX_BIN`：desktop.json 没配 Codex 时注入的路径（联调用假路径）。
 
 use desktop_core::paths;
 use std::ffi::OsString;
@@ -28,10 +29,11 @@ pub struct Environment {
     pub local_app_data: PathBuf,
     pub resource_dir: PathBuf,
     pub resources_root: PathBuf,
-    pub licenses_dir: PathBuf,
     pub backend: Backend,
     /// 数据根不能落在这些目录内（安装目录、资源目录）。
     pub forbidden: Vec<PathBuf>,
+    /// Debug 专用：未配置 Codex 时注入的路径（联调时指向假路径，避免连到本机真实 Codex）。
+    pub dev_codex: Option<PathBuf>,
 }
 
 #[cfg(debug_assertions)]
@@ -82,12 +84,24 @@ pub fn discover(app: &AppHandle) -> Result<Environment, String> {
     Ok(Environment {
         locator_file: locator_dir.join(desktop_core::config::FILE_NAME),
         shell_logs: locator_dir.join(paths::SHELL_LOG_DIR),
-        licenses_dir: resources_root.join("licenses"),
         default_root,
         local_app_data,
         resource_dir,
         resources_root,
         backend,
         forbidden,
+        dev_codex: dev("ZUOTILONG_DEV_CODEX_BIN"),
     })
+}
+
+impl Environment {
+    /// 第三方声明所在文件夹：优先 resources\licenses；B 包实际把 LICENSE-MathLens.txt 与
+    /// THIRD-PARTY-NOTICES.txt 放在 backend\ 下，没有前者时用后者。
+    pub fn licenses_dir(&self) -> PathBuf {
+        let preferred = self.resources_root.join("licenses");
+        if preferred.is_dir() {
+            return preferred;
+        }
+        self.resource_dir.join("backend")
+    }
 }

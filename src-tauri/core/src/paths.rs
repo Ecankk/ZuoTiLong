@@ -118,8 +118,12 @@ const OWN_ENTRIES: &[&str] = &[
     SHELL_LOG_DIR,
 ];
 
+/// 后端 prepare 的并发锁文件（准备完成后仍会留在数据根下）。
+pub const PREPARE_LOCK: &str = ".mathlens-prepare.lock";
+
 fn is_own_entry(name: &str) -> bool {
     OWN_ENTRIES.iter().any(|e| e.eq_ignore_ascii_case(name))
+        || name.eq_ignore_ascii_case(PREPARE_LOCK)
         || name.starts_with("desktop.json.")
         || name.starts_with("library.staging-")
 }
@@ -231,6 +235,10 @@ mod tests {
         fs::write(root.join("desktop.json"), "{}").unwrap();
         assert_eq!(inspect_root(&root, &none), Ok(RootKind::Fresh));
         fs::create_dir_all(root.join("workspaces").join("default")).unwrap();
+        assert_eq!(inspect_root(&root, &none), Ok(RootKind::Partial));
+        // 真实后端 prepare 后留下的锁文件、中断留下的 staging 不算“其他文件”
+        fs::write(root.join(PREPARE_LOCK), "").unwrap();
+        fs::create_dir_all(root.join("library.staging-abc")).unwrap();
         assert_eq!(inspect_root(&root, &none), Ok(RootKind::Partial));
         fs::write(
             root.join("workspaces")

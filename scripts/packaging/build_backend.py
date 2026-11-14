@@ -31,6 +31,12 @@ def run(args):
     stage.mkdir();backend=stage/'backend';resources=stage/'resources'
     shutil.copytree(build/'pyinstaller-dist/mathlens-backend',backend)
     shutil.copytree(ROOT/'dist',resources/'dist')
+    # copy_metadata keeps runtime METADATA but its license payload belongs in
+    # the contract's resources/licenses tree, not beside the executable.
+    runtime_licenses=resources/'licenses'/'runtime-dist-info';runtime_licenses.mkdir(parents=True,exist_ok=True)
+    for path in list((backend/'_internal').rglob('*')):
+        if not path.is_file() or not re.search(r'^(license|licence|copying|notice)([^/]*)(\.[^/]*)?$',path.name,re.I):continue
+        target=runtime_licenses/path.relative_to(backend/'_internal');target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(path,target);path.unlink()
     sys.path.insert(0,str(ROOT));from app.agent.methods import SKILLS
     for name in SKILLS:
         relative=Path('.agents/skills')/('mathlens-'+name)/'SKILL.md';target=resources/relative

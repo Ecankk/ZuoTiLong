@@ -43,7 +43,7 @@ def run(args):
     else:
         from synthetic_seed import create
         create(resources/'library-seed');synthetic=True
-    licenses=backend/'third-party-licenses';licenses.mkdir();notices=[]
+    licenses=resources/'licenses';licenses.mkdir();notices=[]
     for w in wheels:
         with zipfile.ZipFile(args.wheelhouse/w['filename']) as archive:
             metadata=BytesParser().parsebytes(archive.read(next(n for n in archive.namelist() if n.endswith('.dist-info/METADATA') and len(n.split('/'))==2)))
@@ -59,14 +59,14 @@ def run(args):
     python_license=Path(sys.base_prefix)/'LICENSE.txt'
     if python_license.is_file():shutil.copyfile(python_license,licenses/'Python-LICENSE.txt')
     if (ROOT/'licenses').is_dir():shutil.copytree(ROOT/'licenses',licenses/'MathLens-notices')
-    (backend/'THIRD-PARTY-NOTICES.txt').write_text('\n'.join(notices),encoding='utf8')
-    if (ROOT/'LICENSE').is_file():shutil.copyfile(ROOT/'LICENSE',backend/'LICENSE-MathLens.txt')
+    (licenses/'THIRD-PARTY-NOTICES.txt').write_text('\n'.join(notices),encoding='utf8')
+    if (ROOT/'LICENSE').is_file():shutil.copyfile(ROOT/'LICENSE',licenses/'LICENSE-MathLens.txt')
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip())
     if not dirty:
-        source=backend/'source';source.mkdir()
+        source=licenses/'source';source.mkdir()
         subprocess.run(['git','archive','--format=zip','--output',str(source/('mathlens-'+commit+'.zip')),commit],cwd=ROOT,check=True)
-        with (backend/'THIRD-PARTY-NOTICES.txt').open('a',encoding='utf8') as notice:notice.write('\nCorresponding MathLens source for this build: source/mathlens-'+commit+'.zip\n')
+        with (licenses/'THIRD-PARTY-NOTICES.txt').open('a',encoding='utf8') as notice:notice.write('\nCorresponding MathLens source for this build: source/mathlens-'+commit+'.zip\n')
     summary=dict(schema='mathlens.desktop-build/v1',commit=commit,python=platform.python_version(),pyinstaller=version('pyinstaller'),pillow=version('pillow'),
         lock_sha256=hashlib.sha256(Path(__file__).with_name('requirements-win-x64-py312.lock').read_bytes()).hexdigest(),synthetic_seed=synthetic,dirty_source=dirty,
         backend_bytes=sum(p.stat().st_size for p in backend.rglob('*') if p.is_file()),resource_bytes=sum(p.stat().st_size for p in resources.rglob('*') if p.is_file()))

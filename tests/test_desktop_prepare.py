@@ -26,6 +26,7 @@ class DesktopPrepareTests(unittest.TestCase):
     def test_explicit_paths_verified_publish_empty_workspace_and_reuse(self):
         before={p.relative_to(self.root):p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
         config,result,events=self.run_prepare();self.assertFalse(config.demo);self.assertFalse(result['reused_library'])
+        self.assertFalse((Path(self.args.library_dir).parent/'.mathlens-prepare.lock').exists())
         self.assertEqual(events[-1]['event'],'prepared');self.assertEqual([e['seq'] for e in events],list(range(1,len(events)+1)))
         self.assertTrue(all(e['nonce']==self.args.launch_nonce for e in events))
         self.assertEqual({p.relative_to(self.root):p.read_bytes() for p in self.root.rglob('*') if p.is_file()},before)
@@ -54,12 +55,14 @@ class DesktopPrepareTests(unittest.TestCase):
                 with self.assertRaises(Cancelled):self.run_prepare()
         finally:CANCEL.reset(token)
         self.assertFalse(Path(self.args.library_dir).exists());self.assertFalse(list(self.base.rglob('library.staging-*')))
+        self.assertFalse((Path(self.args.library_dir).parent/'.mathlens-prepare.lock').exists())
 
     def test_failed_workspace_initialization_retains_published_library_and_retry(self):
         from app.storage.database import Database
         with patch.object(Database,'initialize',side_effect=RuntimeError('synthetic failure')):
             with self.assertRaises(RuntimeError):self.run_prepare()
         self.assertTrue((Path(self.args.library_dir)/'library.db').is_file())
+        self.assertFalse((Path(self.args.library_dir).parent/'.mathlens-prepare.lock').exists())
         self.assertTrue(self.run_prepare()[1]['reused_library'])
 
     def test_invalid_paths_existing_incomplete_and_seed_allowlist(self):
@@ -102,3 +105,8 @@ class DesktopPrepareTests(unittest.TestCase):
         value['files']['library.db']=dict(size=len(raw),sha256=hashlib.sha256(raw).hexdigest());manifest.write_text(json.dumps(value),encoding='utf8')
         with self.assertRaises(DesktopError) as caught:self.run_prepare()
         self.assertEqual(caught.exception.code,'seed_db_invalid')
+
+    def test_stale_unheld_lock_is_reclaimed_and_deleted(self):
+        parent=Path(self.args.library_dir).parent;parent.mkdir(parents=True,exist_ok=True)
+        lock=parent/'.mathlens-prepare.lock';lock.write_bytes(b'stale')
+        self.assertTrue(self.run_prepare()[1]['workspace_ready']);self.assertFalse(lock.exists())

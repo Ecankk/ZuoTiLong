@@ -19,7 +19,9 @@ from app.version import VERSION
 @contextmanager
 def prepare_lock(parent):
     parent.mkdir(parents=True,exist_ok=True)
-    with (parent/'.mathlens-prepare.lock').open('a+b') as stream:
+    lock_path=parent/'.mathlens-prepare.lock';stream=lock_path.open('a+b')
+    acquired=False
+    try:
         stream.seek(0);stream.write(b'0');stream.flush();stream.seek(0)
         try:
             if os.name=='nt':
@@ -29,11 +31,19 @@ def prepare_lock(parent):
                 import fcntl
                 fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except OSError:raise DesktopError('library_busy','另一个进程正在准备题库',13) from None
-        try:yield
-        finally:
-            stream.seek(0)
-            if os.name=='nt':msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
-            else:fcntl.flock(stream,fcntl.LOCK_UN)
+        acquired=True
+        yield
+    finally:
+        if acquired:
+            try:
+                stream.seek(0)
+                if os.name=='nt':msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
+                else:fcntl.flock(stream,fcntl.LOCK_UN)
+            finally:
+                stream.close()
+                try:lock_path.unlink()
+                except FileNotFoundError:pass
+        else:stream.close()
 
 
 def manifest(root):

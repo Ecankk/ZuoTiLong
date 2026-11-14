@@ -91,7 +91,9 @@ describe('app shell', () => {
     renderAt('/settings')
     await userEvent.click(await screen.findByRole('radio', { name: '数学二' }))
     expect(await screen.findByText('已保存')).toBeInTheDocument()
-    const post = fetch.mock.calls.find(([, init]) => init?.method === 'POST')
+    const post = fetch.mock.calls.find(
+      ([url, init]) => init?.method === 'POST' && String(url).includes('/api/preferences'),
+    )
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ study_type: 2 })
   })
 })
@@ -99,7 +101,7 @@ describe('app shell', () => {
 describe('onboarding', () => {
   it('opens on first visit and shows the live AI service state', async () => {
     localStorage.clear()
-    mockServer({
+    const fetch = mockServer({
       tasks: {
         ...tasks,
         active: null,
@@ -113,6 +115,17 @@ describe('onboarding', () => {
     expect(await within(dialog).findByText('未安装')).toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: '跳过引导' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(localStorage.getItem('zuotilong:onboarding-seen')).toBe('1')
+    await vi.waitFor(() =>
+      expect(
+        fetch.mock.calls.some(
+          ([url, init]) =>
+            String(url).includes('/api/drafts') &&
+            init?.method === 'POST' &&
+            JSON.parse(String(init.body)).key === 'zuotilong:onboarding-seen' &&
+            JSON.parse(String(init.body)).value === true,
+        ),
+      ).toBe(true),
+    )
+    expect(localStorage.getItem('zuotilong:onboarding-seen')).toBeNull()
   })
 })

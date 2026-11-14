@@ -75,12 +75,26 @@ it('shows a friendly sentence instead of an English error when the server is gon
 })
 
 it('keeps the timer out of sight until asked, and remembers the choice', async () => {
-  mockServer({ routes: (path) => (path === '/api/bank/q1/practice' ? json(view) : undefined) })
+  const fetch = mockServer({
+    routes: (path) => (path === '/api/bank/q1/practice' ? json(view) : undefined),
+  })
   renderAt('/bank/q1/practice')
   const card = await screen.findByRole('region', { name: '作答' })
   const toggle = within(card).getByRole('button', { name: /显示用时/ })
   expect(within(card).queryByLabelText('已用时间')).not.toBeInTheDocument()
   await userEvent.click(toggle)
   expect(within(card).getByLabelText('已用时间')).toHaveTextContent(/^\d{2}:\d{2}$/)
-  expect(localStorage.getItem('zuotilong:free-practice-show-timer')).toBe('1')
+  // 记在后端草稿里（桌面版每次启动 origin 都变，浏览器存储留不住）
+  await vi.waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url, init]) =>
+          String(url).includes('/api/drafts') &&
+          init?.method === 'POST' &&
+          JSON.parse(String(init.body)).key === 'zuotilong:free-practice-show-timer' &&
+          JSON.parse(String(init.body)).value === true,
+      ),
+    ).toBe(true),
+  )
+  expect(localStorage.getItem('zuotilong:free-practice-show-timer')).toBeNull()
 })

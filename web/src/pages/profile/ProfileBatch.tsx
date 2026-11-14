@@ -9,31 +9,19 @@ import { Button, ButtonLink } from '../../components/ui/Button'
 import { ButtonRow } from '../../components/ui/ButtonRow'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Segmented } from '../../components/ui/Segmented'
+import { clientStateKeys, useClientState } from '../../lib/clientState'
 import { friendlyError } from '../../lib/errors'
 import styles from './ProfileBatch.module.css'
 
-const storageKey = 'zuotilong:profile-batch'
 const sizes: ProfileBatchSize[] = [5, 8, 10]
 
-/** 进行中的批次记在本机，离开页面再回来还能看到进度 */
+/** 进行中的批次记在后端草稿里，离开页面或重开做题龙后还能看到进度 */
 function useActiveBatch() {
-  const [batchId, setBatchId] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(storageKey)
-    } catch {
-      return null
-    }
+  const state = useClientState<string | null>(clientStateKeys.profileBatch, {
+    fallback: null,
+    fromLegacy: (raw) => raw || undefined,
   })
-  const save = (id: string | null) => {
-    try {
-      if (id) localStorage.setItem(storageKey, id)
-      else localStorage.removeItem(storageKey)
-    } catch {
-      /* 本机存储不可用时只在本次打开时记住 */
-    }
-    setBatchId(id)
-  }
-  return [batchId, save] as const
+  return [state.value, state.set] as const
 }
 
 /** 文档约定的跳转（source=profile&view=topic&item=首个练习）；带上 batch 只看这一组 */

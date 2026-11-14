@@ -20,12 +20,16 @@ def create_app(
     bridge=None,
     agent_factory=CodexBridge,
     manage_agent: bool = True,
+    startup_progress=None,
+    cancel_event=None,
+    launch_nonce=None,
 ) -> FastAPI:
     runtime = AppRuntime(
         config or AppConfig.from_env(),
         bridge=bridge,
         agent_factory=agent_factory,
         manage_agent=manage_agent,
+        startup_progress=startup_progress,cancel_event=cancel_event,launch_nonce=launch_nonce,
     )
 
     @asynccontextmanager

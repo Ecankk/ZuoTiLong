@@ -1,5 +1,7 @@
 """Codex JSON-RPC process transport, independent of study state."""
 import json,os,queue,shutil,subprocess,threading
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from app.agent.errors import AgentUnavailable
 
@@ -18,18 +20,30 @@ class CodexProcess:
         executable = codex_executable()
         if not executable:
             raise AgentUnavailable('not_installed', '未安装学习服务，请先完成安装。')
+        if os.name=='nt' and Path(executable).suffix.lower() in ('.cmd','.bat'):
+            raise AgentUnavailable('other','已找到学习服务，但不能可靠启动此批处理安装。请选择原生 codex.exe。')
         self.notify, self.disconnected = notify, disconnected
         self.pending, self.serial = {}, 0
         self.lock = threading.Lock()
         self.closed = False
-        self.log = (data / "codex.stderr.log").open("a", encoding="utf-8")
+        self.log = RotatingFileHandler(data/'codex.stderr.log',maxBytes=5*1024*1024,backupCount=2,encoding='utf8',delay=True)
         env = os.environ.copy()
         env["MATHLENS_DATA_DIR"] = str(data)
-        self.process = subprocess.Popen([executable, "app-server", "--listen", "stdio://"],
-            cwd=root, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=self.log, text=True, encoding="utf-8", errors="replace", bufsize=1,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-        threading.Thread(target=self._read, daemon=True).start()
+        try:
+            self.process = subprocess.Popen([executable, "app-server", "--listen", "stdio://"],
+                cwd=root, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        except OSError as exc:
+            self.log.close()
+            raise AgentUnavailable('other','已找到学习服务，但不能启动。请确认权限并选择原生 codex.exe。'+str(exc)) from exc
+        self.reader=threading.Thread(target=self._read,daemon=True,name='codex-rpc-reader')
+        self.stderr_reader=threading.Thread(target=self._stderr,daemon=True,name='codex-stderr-reader')
+        self.reader.start();self.stderr_reader.start()
+
+    def _stderr(self):
+        for line in iter(lambda:self.process.stderr.readline(4096),''):
+            self.log.emit(logging.makeLogRecord(dict(msg=line.rstrip('\r\n'),levelno=logging.WARNING,levelname='WARNING')))
 
     def _read(self):
         try:
@@ -77,12 +91,20 @@ class CodexProcess:
                 self.pending.pop(request_id, None)
 
     def close(self):
+        if self.closed:return
         self.closed = True
+        with self.lock:
+            try:self.process.stdin.close()
+            except OSError:pass
         if self.process.poll() is None:
-            self.process.terminate()
             try:
-                self.process.wait(timeout=5)
+                self.process.wait(timeout=1)
             except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
+                self.process.terminate()
+                try:self.process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    self.process.kill();self.process.wait(timeout=2)
+        self.reader.join(timeout=2);self.stderr_reader.join(timeout=2)
+        for stream,thread in ((self.process.stdout,self.reader),(self.process.stderr,self.stderr_reader)):
+            if not thread.is_alive():stream.close()
         self.log.close()

@@ -38,7 +38,7 @@ def bind_socket(host, port, auto_port=False, factory=socket.socket):
     raise RuntimeError(f'Cannot bind local port {port}. Run start_mathlens.bat to choose an available port automatically.')
 
 
-def publish_address(data, sock):
+def publish_address(data, sock,nonce=None):
     host, port = sock.getsockname()[:2]
     host_url = f'[{host}]' if ':' in host else host
     address = {
@@ -47,16 +47,18 @@ def publish_address(data, sock):
         'version': VERSION,
         'data_id': data_identity(data),
     }
+    if nonce is not None:address['nonce']=nonce
     temporary = data / f'server-{os.getpid()}.tmp'
     temporary.write_text(json.dumps(address), encoding='utf-8')
     temporary.replace(data / 'server.json')
     return address
 
 
-def clear_address(data, pid):
+def clear_address(data, pid,nonce=None):
     path = data / 'server.json'
     try:
-        if json.loads(path.read_text(encoding='utf-8')).get('pid') == pid:
+        value=json.loads(path.read_text(encoding='utf-8'))
+        if value.get('pid') == pid and (nonce is None or value.get('nonce')==nonce):
             path.unlink()
     except (OSError, ValueError):
         pass

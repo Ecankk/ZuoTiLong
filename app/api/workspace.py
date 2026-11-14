@@ -5,7 +5,12 @@ from app.hosting import data_identity
 from app.version import VERSION
 router=APIRouter(prefix='/api',tags=['workspace'])
 @router.get('/health')
-def health(rt=Depends(runtime)):return {'ok':True,'app':'mathlens','version':VERSION,'data_id':data_identity(rt.config.data)}
+def health(rt=Depends(runtime)):
+    value={'ok':True,'app':'mathlens','version':VERSION,'data_id':data_identity(rt.config.data)}
+    if rt.launch_nonce is not None:
+        import os
+        value.update(pid=os.getpid(),nonce=rt.launch_nonce)
+    return value
 @router.get('/bootstrap')
 def bootstrap(rt=Depends(runtime)):return rt.workspace.bootstrap()
 @router.get('/loop')

@@ -237,7 +237,7 @@ class LearningLoopTests(unittest.TestCase):
             for text in texts:
                 page=d.new_page();page.insert_text((72,72),text)
             d.save(str(p))
-        result=extract_pdf(p,allow_ocr=False)
+        result=extract_pdf(p,allow_ocr=False,cache_root=self.root/'ocr-cache')
         self.assertEqual([q['number'] for q in result['questions']],['1','2','3'])
         self.assertIn('Second main question',result['questions'][1]['stem'])
         self.assertNotIn('Another subpart',result['questions'][1]['stem'])

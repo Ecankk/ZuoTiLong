@@ -1,7 +1,8 @@
 """Profile assignments reuse student submission URLs, with their own source."""
 from typing import Literal
 from fastapi import APIRouter,Depends,Request
-from starlette.responses import JSONResponse,FileResponse
+from starlette.responses import JSONResponse
+from app.api.responses import file_response
 from app.api.dependencies import runtime
 from app.api.schemas import RequestModel,Confirmation
 from app.api.conditional import conditional
@@ -28,4 +29,4 @@ def batch(batch_id:str,request:Request,rt=Depends(runtime)):
 
 @router.get('/{practice_id}/materials/{role}')
 def image(practice_id:str,role:Literal['question','analysis','answer'],rt=Depends(runtime)):
-    return FileResponse(rt.profile_practice.image(practice_id,role),headers={'Cache-Control':'no-store'})
+    return file_response(rt.profile_practice.image(practice_id,role),headers={'Cache-Control':'no-store'})

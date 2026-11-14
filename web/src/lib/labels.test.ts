@@ -46,3 +46,24 @@ it('names the book and chapter for collection questions once the backend sends t
   )
   expect(practiceSource(collection({ book: { part: null, chapter: null, number: null } }))).toBe('')
 })
+
+it('does not repeat the part when the collection name already contains it', () => {
+  const collection = (extra: Record<string, unknown>) =>
+    ({ ...access({ math_type: 0, year: '', number: 0 }), ...extra }) as Access
+  expect(
+    practiceSource(
+      collection({
+        collection_label: '张宇1000题基础篇',
+        book: { part: '基础篇', chapter: '第1章 函数极限与连续', number: '7' },
+      }),
+    ),
+  ).toBe('张宇1000题基础篇 · 第1章 · 第 7 题')
+  expect(
+    practiceSource(
+      collection({
+        collection_label: '张宇1000题测试卷',
+        book: { part: '测试卷', chapter: null, number: '2' },
+      }),
+    ),
+  ).toBe('张宇1000题测试卷 · 第 2 题')
+})

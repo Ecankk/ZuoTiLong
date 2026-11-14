@@ -118,6 +118,8 @@ export const endpoints = {
     orNull(request<PracticeResponse>(`/api/practices/${enc(practiceId)}`)),
   preferences: () => request<Preferences>('/api/preferences'),
   agentModels: () => request<AgentModels>('/api/agent/models'),
+  /** 重新检查 AI 服务（只探测是否已安装、已登录，不创建任务） */
+  connectAgent: () => postJson<unknown>('/api/agent/connect', {}),
   dataStatus: () => request<DataStatus>('/api/data/status'),
   /* ---------- 画像（B26） ---------- */
   profileOverview: () => request<Overview>('/api/profile/overview'),

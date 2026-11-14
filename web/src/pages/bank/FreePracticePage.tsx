@@ -21,6 +21,7 @@ import { bankTitle } from './BankQuestion'
 import { FreeAttemptView, FreeHistory, ReferenceBlock } from './FreeAttempt'
 import styles from './FreePracticePage.module.css'
 import { friendlyError } from '../../lib/errors'
+import { clientStateKeys, useClientState } from '../../lib/clientState'
 import { Skeleton } from '../../components/ui/Skeleton'
 
 type Draft = { text: string; choice: string; photos: Photo[] }
@@ -51,26 +52,13 @@ function useElapsed() {
 const clock = (seconds: number) =>
   `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
-const timerKey = 'zuotilong:free-practice-show-timer'
-
 /** 用时默认不显示，免得一进来就有压力；想看时点一下，记住这个选择。计时本身一直在走，提交时照常记录。 */
 function useShowTimer() {
-  const [show, setShow] = useState(() => {
-    try {
-      return localStorage.getItem(timerKey) === '1'
-    } catch {
-      return false
-    }
+  const state = useClientState<boolean>(clientStateKeys.freePracticeTimer, {
+    fallback: false,
+    fromLegacy: (raw) => (raw === '1' ? true : raw === '0' ? false : undefined),
   })
-  const toggle = () => {
-    setShow(!show)
-    try {
-      localStorage.setItem(timerKey, show ? '0' : '1')
-    } catch {
-      /* 存不了就只在这次有效 */
-    }
-  }
-  return { show, toggle }
+  return { show: state.value, toggle: () => state.set(!state.value) }
 }
 
 /** 作答区：选择题字母按钮，填空题一个输入框，解答题文字加照片。草稿用独立 key 自动保存。 */

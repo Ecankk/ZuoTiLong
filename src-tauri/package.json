@@ -1,0 +1,12 @@
+{
+  "name": "zuotilong-desktop-tooling",
+  "private": true,
+  "description": "只用于锁定 Tauri CLI 版本；外壳代码在 Rust 里。",
+  "scripts": {
+    "tauri": "tauri",
+    "build:nsis": "tauri build --bundles nsis --config tauri.nsis.conf.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}

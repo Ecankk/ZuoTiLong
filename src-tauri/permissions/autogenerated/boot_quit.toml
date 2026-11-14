@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-boot-quit"
+description = "Enables the boot_quit command without any pre-configured scope."
+commands.allow = ["boot_quit"]
+
+[[permission]]
+identifier = "deny-boot-quit"
+description = "Denies the boot_quit command without any pre-configured scope."
+commands.deny = ["boot_quit"]

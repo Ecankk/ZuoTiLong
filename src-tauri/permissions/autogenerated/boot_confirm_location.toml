@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-boot-confirm-location"
+description = "Enables the boot_confirm_location command without any pre-configured scope."
+commands.allow = ["boot_confirm_location"]
+
+[[permission]]
+identifier = "deny-boot-confirm-location"
+description = "Denies the boot_confirm_location command without any pre-configured scope."
+commands.deny = ["boot_confirm_location"]

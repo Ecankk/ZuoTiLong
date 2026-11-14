@@ -49,7 +49,7 @@ def run(args):
     else:
         from synthetic_seed import create
         create(resources/'library-seed');synthetic=True
-    licenses=resources/'licenses';licenses.mkdir();notices=[]
+    licenses=resources/'licenses';licenses.mkdir(exist_ok=True);notices=[]
     for w in wheels:
         with zipfile.ZipFile(args.wheelhouse/w['filename']) as archive:
             metadata=BytesParser().parsebytes(archive.read(next(n for n in archive.namelist() if n.endswith('.dist-info/METADATA') and len(n.split('/'))==2)))

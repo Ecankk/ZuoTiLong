@@ -26,7 +26,8 @@ def run(args):
     subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--distpath',str(build/'pyinstaller-dist'),
         '--workpath',str(build/'pyinstaller-work'),str(Path(__file__).with_name('mathlens-backend.spec'))],cwd=ROOT,check=True)
     if stage.exists():
-        if stage.is_symlink() or stage.resolve().parent!=build.resolve() or not (stage/'build-manifest.json').is_file():raise ValueError('Refuse to replace an unowned stage directory')
+        owned=(stage/'build-manifest.json').is_file() or ({p.name for p in stage.iterdir()} <= {'backend','resources'} and (stage/'backend').is_dir() and (stage/'resources').is_dir())
+        if stage.is_symlink() or stage.resolve().parent!=build.resolve() or not owned:raise ValueError('Refuse to replace an unowned stage directory')
         shutil.rmtree(stage)
     stage.mkdir();backend=stage/'backend';resources=stage/'resources'
     shutil.copytree(build/'pyinstaller-dist/mathlens-backend',backend)

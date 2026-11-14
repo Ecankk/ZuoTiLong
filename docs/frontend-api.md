@@ -185,6 +185,38 @@ GET `/api/events`：`Content-Type:text/event-stream`，no-store，禁代理缓�
 旧 bootstrap、loop、profile、agent/state、preparation 与所有写入口继续可用；新增读取不改变学习记录、不自动 reveal、不触发新学习任务。资源接口只读取已保存结果，后台自动连接独立于读取。
 本批不更新学习结果 schema/Skill，不回填旧报告，不做计时图表。客户端不应把缺失摘要、未知题型、未关联考点或未核定分数显示为 0/错误/已掌握。
 
+## 桌面外壳桥接（D，已确认；C按此实现）
+
+桌面版由Tauri外壳启动后端（127.0.0.1随机端口），React业务数据仍只走HTTP；后端版本与data_id取`GET /api/health`，Codex可用性取`GET /api/tasks`的availability与`POST /api/agent/connect`。只有原生动作走桥接：判断`'__TAURI_INTERNALS__' in window`，web精确依赖`@tauri-apps/api@2.12.4`且只用`invoke`；不在桌面里（浏览器开发、vitest）时隐藏这些入口。外壳只给当前后端确切origin授权下表六个命令，不授予任何插件权限。
+
+失败时reject `{code,message}`（message为中文可直接显示）；对话框被取消返回`null`，不是错误。
+
+| 命令 | 入参 | 成功返回 | 错误code |
+| --- | --- | --- | --- |
+| `desktop_info` | 无 | DesktopInfo | `io_error` |
+| `desktop_open_folder` | `{target:'data_root'\|'workspace'\|'library'\|'logs'\|'licenses'}` | `null` | `missing`、`io_error` |
+| `desktop_pick_codex` | 无 | CodexPick\|null | `dialog_failed` |
+| `desktop_save_codex` | `{pick_id}`或`{auto:true}` | `{status:'restarting'}` | `stale_pick`、`busy`、`io_error` |
+| `desktop_restart_backend` | 无 | `{status:'restarting'}` | `busy` |
+| `desktop_relocate` | 无 | `{status:'stopping'}` | `busy` |
+
+- 页面不能传任意路径：打开文件夹只收枚举；保存Codex只收外壳刚通过对话框选出且`probe='ok'`的`pick_id`（5分钟内、一次有效），`{auto:true}`清除自定义路径回到自动查找。首版只收`.exe`（批处理安装无法可靠启动）。
+- `busy`：外壳在重启/停止前查同源`GET /api/tasks`，`active!=null`即拒绝。C在界面上先查一次给提示，以外壳判断为准。
+- `restarting`/`stopping`：命令先返回，随后窗口切到外壳加载页、重启后端（新端口=新origin），核对后导航回原路由；React不轮询。
+
+```ts
+type DesktopInfo = {
+  schema: 'zuotilong.desktop-info/v1'
+  app: { name: '做题龙'; version: string; commit: string|null; tauri: string; webview2: string|null; os: string }
+  data: { root: string; workspace: string; library: string; is_default_root: boolean; logs: string; locator: string }
+  codex: { configured_path: string|null }   // null=自动查找（PATH→官方安装位置）
+}
+type CodexPick = { pick_id: string; path: string; version: string|null; probe: 'ok'|'failed'; message: string|null }
+```
+
+- 第三方声明与AGPL文本：`desktop_open_folder({target:'licenses'})`，安装目录`resources\licenses`。
+- origin每次启动都变，WebView2的localStorage每次为空：客户端偏好与进度（首次引导已看过、按画像一组的进度、自由练习计时显示）改存`GET/POST /api/drafts?key=`，浏览器开发模式同样适用。
+
 ## 数据状态与备份
 
 GET `/api/data/status`：只读，不启动任务，不自动迁移。响应 `{data_dir:string,library_dir:string,library_exists:boolean,library_env_override:boolean,databases:{learning|library|session:{bytes:integer,exists:boolean}},invalid_file_references:{count:integer,examples:FileReference[]},last_backup_at:string|null,path_migration:{pending:boolean,ready_count:integer,unresolved_count:integer,historical_reference_count:integer,plan_sha256:string}}`。FileReference 包含 store/table/id/field/old/relative/exists/verified 等定位元数据，不含题目正文。该接口读取当前文件状态，不使用 ETag/304；缺库以 exists=false 表示，不创建数据库。待迁移及缺文件不是普通网络错误。library_dir 是解析后的实际通用库位置；library_exists 表示该目录存在（数据库是否存在另看 databases.library.exists）；library_env_override 表示 MATHLENS_LIBRARY_DIR 覆盖规则正在此工作区生效，即使环境变量与文件配置的值相同也为 true。环境变量指向其他工作区时为 false。

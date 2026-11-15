@@ -6,7 +6,7 @@ import {
   type PaperScope,
   type PracticeGrouping,
 } from './endpoints'
-import type { ExamDateFields, PreferencesChange } from './types'
+import type { BankCollection, ExamDateFields, PreferencesChange } from './types'
 
 /**
  * query key 第一段对应 SSE resources.changed 的资源名（papers/questions/practices/preferences），
@@ -185,8 +185,15 @@ export const useProfileBatch = (batchId: string | null) =>
 
 export const useProfile = () => useQuery({ queryKey: ['profile'], queryFn: endpoints.profile })
 
+/** 题集列表：不显示 0 题的题集（发行库里默认的“其他”“示例”都是空的） */
+export const nonEmptyCollections = (items: BankCollection[]) => items.filter((c) => c.total > 0)
+
 export const useBankCollections = () =>
-  useQuery({ queryKey: ['bank', 'collections'], queryFn: endpoints.bankCollections })
+  useQuery({
+    queryKey: ['bank', 'collections'],
+    queryFn: endpoints.bankCollections,
+    select: nonEmptyCollections,
+  })
 
 export const useBankTopics = (ids: string[]) =>
   useQuery({

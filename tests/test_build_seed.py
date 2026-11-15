@@ -42,3 +42,20 @@ class BuildSeedTests(unittest.TestCase):
         with Database(config).session(write=True,library_write=True) as conn: conn.execute("UPDATE bank_resources SET question_path='bank-assets/missing.png' WHERE bank_id='q1'")
         with self.assertRaisesRegex(ValueError,'缺失或越界'): build(self.library,self.root/'missing','missing-release')
         self.assertFalse((self.root/'missing').exists())
+
+    def test_example_exclusion_removes_questions_dependencies_and_keeps_integrity(self):
+        (self.library/'bank-assets/example.png').write_bytes(b'example')
+        config=AppConfig(self.root,self.root/'workspace',self.root/'dist',self.root/'workspace/learning.db',library=self.library)
+        with Database(config).session(write=True,library_write=True) as conn:
+            conn.execute("INSERT INTO bank_questions(id,source,stem,answer,created_at,collection_id) VALUES('example-q','本地示例题库','demo','2','now','example')")
+            conn.execute("INSERT INTO bank_resources VALUES('example-q','{}','bank-assets/example.png',NULL,NULL)")
+        output=self.root/'excluded';report=build(self.library,output,'no-example',exclude_collections=('example',))
+        self.assertEqual(report['exclusion']['removed_questions'],1);self.assertTrue(report['output_published'])
+        value=manifest(output);validate_database(output,value);self.assertEqual(value['counts']['questions'],1)
+        with closing(sqlite3.connect(output/'library.db')) as conn:
+            self.assertIsNone(conn.execute("SELECT 1 FROM bank_questions WHERE id='example-q'").fetchone())
+            self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(),[])
+        self.assertTrue((self.library/'bank-assets/example.png').is_file())
+
+    def test_only_example_can_be_excluded(self):
+        with self.assertRaisesRegex(ValueError,'只允许排除题集 example'):build(self.library,self.root/'other','x',exclude_collections=('zhenti',))

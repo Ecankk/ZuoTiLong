@@ -29,6 +29,32 @@ class BuildSeedTests(unittest.TestCase):
         self.assertEqual(value['release_id'],'fixture-release'); self.assertEqual(value['counts'],{'questions':1,'ready':0})
         self.assertEqual(value['files']['library.db']['sha256'],hashlib.sha256((output/'library.db').read_bytes()).hexdigest())
 
+    def test_knowledge_source_directory_reference_is_expanded(self):
+        folder=self.library/'knowledge-sources/source-v2'; (folder/'references').mkdir(parents=True)
+        (folder/'index.json').write_text('{"format":"mathlens.knowledge-source/v1"}',encoding='utf8')
+        (folder/'references/readme.txt').write_text('archived',encoding='utf8')
+        config=AppConfig(self.root,self.root/'workspace',self.root/'dist',self.root/'workspace/learning.db',library=self.library)
+        with Database(config).session(write=True,library_write=True) as conn:
+            conn.execute("UPDATE knowledge_source_versions SET metadata_json=? WHERE id='v1'",(json.dumps({'evidence_root':'knowledge-sources/source-v2'}),))
+        output=self.root/'directory-seed'; report=build(self.library,output,'directory-release')
+        self.assertEqual(report['missing_references'],[])
+        self.assertEqual(report['referenced_file_count'],4)
+        self.assertTrue((output/'knowledge-sources/source-v2/index.json').is_file())
+        self.assertTrue((output/'knowledge-sources/source-v2/references/readme.txt').is_file())
+
+    def test_directory_reference_escape_is_rejected(self):
+        outside=self.root/'outside'; outside.mkdir(); (outside/'secret.txt').write_text('secret',encoding='utf8')
+        link=self.library/'knowledge-sources/escape'
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest('symlink creation unavailable')
+        config=AppConfig(self.root,self.root/'workspace',self.root/'dist',self.root/'workspace/learning.db',library=self.library)
+        with Database(config).session(write=True,library_write=True) as conn:
+            conn.execute("UPDATE knowledge_source_versions SET metadata_json=? WHERE id='v1'",(json.dumps({'evidence_root':'knowledge-sources/escape'}),))
+        with self.assertRaisesRegex(ValueError,'缺失或越界'):
+            build(self.library,self.root/'escape-seed','escape-release')
+
     def test_unlisted_table_and_wal_are_reported_and_never_deleted(self):
         with closing(sqlite3.connect(self.library/'library.db')) as conn, conn: conn.execute('CREATE TABLE maintenance_log(value TEXT)')
         with self.assertRaisesRegex(ValueError,'未列入发行白名单'): build(self.library,self.root/'bad','bad-release')

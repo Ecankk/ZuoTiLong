@@ -1,8 +1,10 @@
 """Build a clean, referenced-only mathlens.library-seed/v1 directory."""
 from contextlib import closing
-import argparse, hashlib, json, re, shutil, sqlite3, tempfile
+import argparse, hashlib, json, re, shutil, sqlite3, tempfile, sys
 from pathlib import Path
 
+ROOT=Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 SCHEMA = 'mathlens.library-seed/v1'
 
 def _sha(path):
@@ -26,6 +28,42 @@ def _path_candidates(value):
             candidate = re.split(r"[\s\"'<>)}\],;]", value[index:], 1)[0]
             yield candidate
             start = index + len(marker)
+
+def _collect_reference(source, rel, valid, missing):
+    """Add one referenced file, or expand a referenced source directory.
+
+    Knowledge-source versions use ``evidence_root`` to point at the whole
+    ``knowledge-sources/source-<sha>`` directory.  A seed must contain every
+    regular file below that root because the reader opens its index and then
+    follows the archived files.  Symlinks/reparse points are never copied.
+    """
+    if not re.fullmatch(r'(?:bank-assets|knowledge-sources)/[^/]+(?:/[^/]+)*', rel):
+        missing.append({'path': rel, 'reason': 'invalid_relative_reference'})
+        return
+    path = (source / rel).resolve()
+    if not path.is_relative_to(source):
+        missing.append({'path': rel, 'reason': 'missing_or_escape'})
+        return
+    original = source / rel
+    if original.is_symlink():
+        missing.append({'path': rel, 'reason': 'symlink_reference'})
+        return
+    if path.is_dir():
+        for child in sorted(path.rglob('*')):
+            child_rel = child.relative_to(source).as_posix()
+            if child.is_symlink():
+                missing.append({'path': child_rel, 'reason': 'symlink_reference'})
+                continue
+            resolved = child.resolve()
+            if not resolved.is_relative_to(source):
+                missing.append({'path': child_rel, 'reason': 'missing_or_escape'})
+            elif child.is_file():
+                valid.add(child_rel)
+        return
+    if not path.is_file():
+        missing.append({'path': rel, 'reason': 'missing_or_escape'})
+        return
+    valid.add(rel)
 
 def _sidecars(path):
     return [str(p) for p in (path.with_name(path.name+'-wal'), path.with_name(path.name+'-shm'), path.with_name(path.name+'-journal')) if p.exists()]
@@ -73,11 +111,7 @@ def _scan_source(source, db_path=None):
                         refs.add('knowledge-sources/'+version+'/'+ref['path'].replace('\\','/'))
         valid=set();missing=[]
         for rel in sorted(refs):
-            if not re.fullmatch(r'(?:bank-assets|knowledge-sources)/[^/]+(?:/[^/]+)*', rel):
-                missing.append({'path':rel,'reason':'invalid_relative_reference'}); continue
-            path=(source/rel).resolve()
-            if not path.is_relative_to(source) or not path.is_file(): missing.append({'path':rel,'reason':'missing_or_escape'}); continue
-            valid.add(rel)
+            _collect_reference(source, rel, valid, missing)
         identity=conn.execute('SELECT library_id,revision FROM library_state WHERE singleton=1').fetchone()
         if not identity: raise ValueError('library_state标识缺失')
         total=conn.execute('SELECT count(*) FROM bank_questions').fetchone()[0]

@@ -90,3 +90,13 @@ build/desktop-venv/Scripts/python.exe scripts/packaging/build_seed.py `
 命令以 SQLite `mode=ro` 读取并用 backup API 快照 `library.db`；存在 `library.db-wal/.shm/-journal` 时停止，避免封存半成品。它按 `bank_resources`、来源/目录 JSON 的实际相对引用复制 `bank-assets/**` 与 `knowledge-sources/**`，不复制整目录，并在报告中列出未引用文件数和字节数。源库存在不在 `LIBRARY_TABLES` 白名单内的表、缺失/越界引用时报告后停止，不静默删除或裁剪。构建到同卷 staging，写入真实 release/min-app/library identity/revision/题数/ready/题集及每个文件 hash/size；最后调用 A 的 manifest、文件 hash、SQLite、引用和 ready 计数校验器，成功后才原子发布输出目录。`library.db` 不带 sidecar。`--force` 只允许替换指定输出目录，绝不修改源库。
 
 工具不会扫描或复制个人工作区、题库备份、导航缓存或日志；源库表/行的发行取舍由报告交给协调会话。输出 manifest 和报告不含题目正文。
+
+只读核对真实库而不发布输出时：
+
+```powershell
+build/desktop-venv/Scripts/python.exe scripts/packaging/build_seed.py `
+  --library '<维护库目录>' --scan-only --exclude-collection example `
+  --report '<临时目录>/library-seed.scan.json'
+```
+
+排除在临时 SQLite backup 上模拟，报告含排除后的题数、ready、引用和未引用统计；源库不写入。

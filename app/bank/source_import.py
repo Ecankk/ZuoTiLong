@@ -318,7 +318,7 @@ def _apply_entity_action(conn, report, record, bank_id):
         stamp=now_iso()
         conn.execute('INSERT INTO question_entities VALUES(?,?,?,?,?)',(entity_id,display_bank_id,collection,1,stamp))
     entities.register_member(conn,bank_id,entity_id,signature,action.get('state','confirmed'))
-    stamp=now_iso();request_id='import-identity:'+report['source_id']+':'+record['source_uid']+':'+report['plan_sha256']
+    stamp=now_iso();request_id='import-identity:'+record['source_id']+':'+record['source_uid']+':'+report.get('plan_sha256','collection-pack')
     before=json.dumps({},ensure_ascii=False,sort_keys=True)
     after=json.dumps(dict(entity_id=entity_id,bank_id=bank_id,display_bank_id=display_bank_id,
                           collection_id=collection,state=action.get('state','confirmed')),

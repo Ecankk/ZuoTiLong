@@ -8,7 +8,8 @@ from app.knowledge import catalog,packages as catalogs
 from app.common import now_iso
 from app.storage.boundaries import LIBRARY_TABLES,material_path
 
-FORMAT='mathlens.collection-pack/v1'
+FORMAT='mathlens.collection-pack/v2'
+LEGACY_FORMAT='mathlens.collection-pack/v1'
 MAX_BYTES=2*1024**3
 class PackTooLarge(ValueError):pass
 
@@ -104,8 +105,14 @@ def export_collection(config,collection,output):
         index=annotation_packages.export_package(conn,config.data,collection,read_view=view) if counts['ready'] else None
         knowledge=catalogs.export_package(conn) if catalog.active_id(conn) else None
         if index and not knowledge:raise ValueError('就绪索引缺少可导出目录')
+        entity_rows=[]
+        from app.bank.entities import presentation
+        for item in items:
+            value=presentation(conn,item['bank_id'])
+            if value:entity_rows.append(value)
         files={'records.jsonl':('\n'.join(records.canonical(r) for r in items)+'\n').encode(),
                'errata.json':records.canonical([dict(bank_id=r['bank_id'],entries=r['errata']) for r in items if r['errata']]).encode()}
+        if entity_rows:files['entities.json']=records.canonical({'schema':'mathlens.question-entities/v1','entities':entity_rows}).encode()
         if index:files['annotations.json']=records.canonical(index).encode()
         if knowledge:files['catalog.json']=records.canonical(knowledge).encode()
         sources={}
@@ -115,7 +122,8 @@ def export_collection(config,collection,output):
         manifest=dict(schema=FORMAT,collection=dict(group),created_at=now_iso(),
             version=records.digest(hashes),sources=[dict(source_id=k[0],revision=k[1],input_sha256=records.digest(v)) for k,v in sorted(sources.items())],
             catalog=dict(release_id=catalog.active_id(conn),document_sha256=knowledge['document_sha256'],package_sha256=knowledge['sha256']) if knowledge else None,
-            counts=counts,files=hashes)
+            counts=counts,files=hashes,identity_format='mathlens.question-identity-signature/v1',
+            entity_count=len({e['entity_id'] for e in entity_rows}),source_record_count=len(items))
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=output.parent,suffix='.zip',delete=False) as stream:temporary=Path(stream.name)
     try:
@@ -136,15 +144,19 @@ def unpack(path):
         if 'manifest.json' not in names:raise ValueError('缺少manifest.json')
         if archive.getinfo('manifest.json').file_size>2*1024**2:raise PackTooLarge('manifest过大')
         manifest=json.loads(archive.read('manifest.json'))
-        if not isinstance(manifest,dict) or set(manifest)!={'schema','collection','version','created_at','sources','catalog','counts','files'}:raise ValueError('manifest字段不合法')
+        if not isinstance(manifest,dict):raise ValueError('manifest字段不合法')
+        required={'schema','collection','version','created_at','sources','catalog','counts','files'}
+        if manifest.get('schema')==FORMAT:
+            required |= {'identity_format','entity_count','source_record_count'}
+        if set(manifest) != required or manifest['schema'] not in (FORMAT,LEGACY_FORMAT):raise ValueError('manifest字段不合法')
         group=manifest['collection']
         if (not isinstance(group,dict) or set(group)!={'id','name','kind','sort_order'} or not re.fullmatch('[a-z][a-z0-9-]{0,63}',group['id'])
             or group['kind'] not in ('exam','book','other','example') or not isinstance(group['name'],str) or not group['name'].strip() or type(group['sort_order']) is not int):raise ValueError('题集登记字段不合法')
         if not isinstance(manifest['files'],dict) or manifest['version']!=records.digest(manifest['files']):raise ValueError('题集版本/文件摘要不合法')
-        if manifest.get('schema')!=FORMAT or set(names)!={'manifest.json',*manifest.get('files',{})}:raise ValueError('题集包版本/文件清单不匹配')
+        if set(names)!={'manifest.json',*manifest.get('files',{})}:raise ValueError('题集包版本/文件清单不匹配')
         for name in names:
             target=records.asset_path(root,name)
-            if name!='manifest.json' and not (name in ('records.jsonl','annotations.json','catalog.json','errata.json') or re.fullmatch(r'assets/[0-9a-f]{64}\.(png|jpg|webp)',name)):raise ValueError('题集包含非数据文件')
+            if name!='manifest.json' and not (name in ('records.jsonl','annotations.json','catalog.json','errata.json','entities.json') or re.fullmatch(r'assets/[0-9a-f]{64}\.(png|jpg|webp)',name)):raise ValueError('题集包含非数据文件')
             target.parent.mkdir(parents=True,exist_ok=True)
             with archive.open(name) as source,target.open('wb') as output:
                 sha=hashlib.sha256()
@@ -237,6 +249,7 @@ def preview(conn,config,manifest,items,index,knowledge):
 def import_collection(config,path,confirm=None):
     with Path(path).open('rb') as source:package_sha256=hashlib.file_digest(source,'sha256').hexdigest()
     with unpack(path) as (root,manifest,items,index,knowledge):
+        entity_package=json.loads((root/'entities.json').read_text(encoding='utf8')) if 'entities.json' in manifest.get('files',{}) else None
         with connection(config) as conn:
             conn.execute('BEGIN');report=preview(conn,config,manifest,items,index,knowledge)
         report['package_sha256']=package_sha256
@@ -256,8 +269,21 @@ def import_collection(config,path,confirm=None):
                 c=manifest['collection'];conn.execute('INSERT OR IGNORE INTO bank_collections VALUES(?,?,?,?)',(c['id'],c['name'],c['kind'],c['sort_order']))
                 if report['catalog']['status']=='upgrade':catalogs.import_package(conn,knowledge,trusted_sha256=knowledge['sha256'],expected_parent=catalog.active_id(conn),confirmed=True)
                 from app.bank.source_import import _apply
+                from app.bank import entities
+                entities.initialize(conn)
                 batch=[i['record'] for i in items];ids={(i['record']['source_id'],i['record']['source_uid']):i['bank_id'] for i in items}
-                _apply(conn,config,batch,dict(unchanged=report['unchanged'],excluded=[],overrides_applied=[],collection_id=c['id']),root,bank_ids=ids,initialize_schema=False)
+                _apply(conn,config,batch,dict(unchanged=report['unchanged'],excluded=[],overrides_applied=[],collection_id=c['id'],plan_sha256=report['plan_sha256']),root,bank_ids=ids,initialize_schema=False,entity_enabled=True)
+                if entity_package and entity_package.get('schema')=='mathlens.question-entities/v1':
+                    for entity in entity_package.get('entities',[]):
+                        eid=entity.get('entity_id');display=entity.get('display_bank_id');
+                        if not eid or not display:continue
+                        target=conn.execute('SELECT collection_id FROM bank_questions WHERE id=?',(display,)).fetchone()
+                        if not target:continue
+                        conn.execute('INSERT OR IGNORE INTO question_entities VALUES(?,?,?,?,?)',(eid,display,target[0],1,now_iso()))
+                        for source in entity.get('sources',[]):
+                            sbid=source.get('bank_id')
+                            if conn.execute('SELECT 1 FROM bank_questions WHERE id=?',(sbid,)).fetchone():
+                                conn.execute('UPDATE question_entity_members SET entity_id=?,state=\'confirmed\' WHERE bank_id=?',(eid,sbid))
                 for item in items:
                     if item['bank_id'] in report['unchanged']:continue
                     conn.execute('UPDATE bank_identity SET sha256=? WHERE bank_id=?',(item['identity']['sha256'],item['bank_id']))

@@ -14,6 +14,8 @@ class CollectionPackTests(unittest.TestCase):
     def test_export_import_empty_library_and_repeat_without_database_change(self):
         exported=packs.export_collection(self.f.config,'zhenti',self.zip)
         self.assertEqual(exported['manifest']['counts']['total'],1)
+        self.assertEqual(exported['manifest']['schema'],'mathlens.collection-pack/v2')
+        self.assertEqual(exported['manifest']['source_record_count'],1)
         preview=packs.import_collection(self.target,self.zip);self.assertEqual(len(preview['added']),1)
         self.assertFalse(self.target.library_dir.exists());self.assertFalse(self.target.data.exists())
         result=packs.import_collection(self.target,self.zip,preview['plan_sha256']);self.assertTrue(result['applied']);self.assertTrue(Path(result['backup']['path']).is_file())

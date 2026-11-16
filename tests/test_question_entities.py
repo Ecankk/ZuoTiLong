@@ -128,3 +128,26 @@ class QuestionEntityTests(unittest.TestCase):
         f.conn.execute('UPDATE bank_questions SET stem=? WHERE id=?',('changed question',f.ids[1]));f.conn.commit()
         report=preview(f.config.library_dir)
         self.assertFalse(any('confirmed_review' in g['reasons'] for g in report['automatic']))
+
+    def test_incremental_exact_match_is_pending_across_collections_until_explicit_decision(self):
+        self.f.apply(); Database(self.f.config).initialize()
+        first=r.bank_id(self.f.batch[0])
+        self.f.batch=[fixtures.question('second', source='S03')]; self.f.save()
+        plan=import_source(self.f.config,'S03',self.f.path,collection='other')
+        self.assertTrue(plan['identity_pending'])
+        self.assertTrue(any(item.get('kind')=='identity' for item in plan['collection_conflicts']))
+        import_source(self.f.config,'S03',self.f.path,collection='other',confirm=plan['plan_sha256'])
+        second=r.bank_id(self.f.batch[0])
+        with closing(sqlite3.connect(self.f.config.library_database)) as conn:
+            conn.row_factory=sqlite3.Row
+            before=conn.execute('SELECT * FROM question_entity_members WHERE bank_id=?',(second,)).fetchone()
+            self.assertEqual(before['state'],'pending')
+            self.assertEqual(before['entity_id'],conn.execute('SELECT entity_id FROM question_entity_members WHERE bank_id=?',(first,)).fetchone()[0])
+        decisions=self.root/'identities.json';decisions.write_text(json.dumps({'schema':'mathlens.bank-identities/v1','entries':[{
+            'source_uid':'second','bank_id':first,'decision':'same','entity_collection_id':'zhenti',
+            'reason':'full question checked','evidence':'fixture evidence'}]},ensure_ascii=False),encoding='utf8')
+        promoted=import_source(self.f.config,'S03',self.f.path,collection='other',identities=decisions)
+        self.assertTrue(promoted['identity_matches'])
+        import_source(self.f.config,'S03',self.f.path,collection='other',identities=decisions,confirm=promoted['plan_sha256'])
+        with closing(sqlite3.connect(self.f.config.library_database)) as conn:
+            self.assertEqual(conn.execute('SELECT state FROM question_entity_members WHERE bank_id=?',(second,)).fetchone()[0],'confirmed')

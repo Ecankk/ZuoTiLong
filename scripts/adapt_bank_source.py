@@ -18,10 +18,10 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--exam-year', type=int)
     parser.add_argument('--math-type', type=int, choices=(1, 2, 3))
-    parser.add_argument('--parts',nargs='+',choices=('strengthening','comprehensive','basic'),help='S03 only; default strengthening')
+    parser.add_argument('--parts',nargs='+',choices=('strengthening','comprehensive','basic','lilin-880','wuzhongxiang-yanxuan','cxy-1k'),help='S03/S02 source parts')
     args = parser.parse_args()
     adapter=importlib.import_module('scripts.bank_source_adapters.'+adapters[args.adapter])
-    if args.parts is not None and args.adapter!='zhangyu-html':parser.error('--parts is only supported by zhangyu-html')
+    if args.parts is not None and args.adapter not in ('zhangyu-html','cxy-daguan'):parser.error('--parts is only supported by zhangyu-html or cxy-daguan')
     batch = adapter.adapt(args.root, year=args.exam_year, math_type=args.math_type,**({'parts':args.parts} if args.parts is not None else {}))
     for record in batch:
         validate(record, args.root)

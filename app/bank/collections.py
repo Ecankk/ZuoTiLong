@@ -5,6 +5,8 @@ DEFAULTS=(('zhenti','真题','exam',10),('zhangyu-1000-basic','张宇1000题基�
           ('other','其他','other',30),('example','示例','example',40))
 LEGACY=('数学一真题图片库','数学二真题图片库','数学三真题图片库')
 
+DEFAULTS=DEFAULTS+(('lilin-880','\u674e\u6797 880\u9898','book',30),('wuzhongxiang-yanxuan','\u6b66\u5fe0\u7965\u4e25\u9009','book',31),('cxy-1k','1k\u9898\u6e90','book',32))
+
 def initial(row,standard=None):
     if row['source']=='本地示例题库':return 'example'
     if row['source'] in LEGACY:return 'zhenti'

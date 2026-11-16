@@ -200,6 +200,10 @@ def record_view(conn,bid,role):
 
 
 def public_bank(conn,bid,view='probe'):
+    from app.bank.entities import member as entity_member
+    entity_row=entity_member(conn,bid)
+    if entity_row is not None and entity_row['state']=='pending':
+        raise ValueError('题目身份待核，暂不公开')
     if view=='library':
         row=conn.execute("SELECT b.*,coalesce(i.math_type,0) math_type,coalesce(i.year,'') year,coalesce(i.number,0) number FROM bank_questions b LEFT JOIN bank_identity i ON i.bank_id=b.id WHERE b.id=?",(bid,)).fetchone()
         if not row:raise ValueError('题库题目不存在')

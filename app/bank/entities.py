@@ -27,6 +27,8 @@ def record_signature(record):
 
 
 def member(conn, bank_id):
+    tables={row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {'question_entities','question_entity_members'} <= tables:return None
     row=conn.execute('''SELECT m.bank_id,m.entity_id,m.identity_signature,m.signature_version,m.state,
                                   e.display_bank_id,e.collection_id,e.revision
                            FROM question_entity_members m JOIN question_entities e ON e.id=m.entity_id

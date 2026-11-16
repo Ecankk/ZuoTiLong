@@ -92,6 +92,17 @@ def _recall(conn,data,topic_ids,stages,methods,offset,limit,include_history,inte
             # resource paths or annotation reasoning, even for visible items.
             metadata['history']={k:history[k] for k in ('attempt_count','seen_question','seen_solution')}
         items.append(metadata)
+    from app.bank.entities import presentation
+    entity_tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")} >= {'question_entities','question_entity_members'}
+    if entity_tables:
+        projected=[];seen=set()
+        for item in items:
+            entity=presentation(conn,item['id'])
+            if entity is None or entity['display_bank_id'] != item['id']:
+                continue
+            if entity['entity_id'] in seen:continue
+            seen.add(entity['entity_id']);item.update(entity);projected.append(item)
+        items=projected
     key=lambda item:hashlib.sha256(item['entity_id'].encode()).digest()
     items.sort(key=key);existing.sort(key=lambda item:(key(item),item['probe_id']))
     return {'catalog_revision':revision,'topic_ids':list(topic_ids),'offset':offset,'limit':limit,

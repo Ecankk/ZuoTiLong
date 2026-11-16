@@ -151,3 +151,6 @@ class QuestionEntityTests(unittest.TestCase):
         import_source(self.f.config,'S03',self.f.path,collection='other',identities=decisions,confirm=promoted['plan_sha256'])
         with closing(sqlite3.connect(self.f.config.library_database)) as conn:
             self.assertEqual(conn.execute('SELECT state FROM question_entity_members WHERE bank_id=?',(second,)).fetchone()[0],'confirmed')
+            from app.bank.entities import visible_ids,presentation
+            self.assertEqual(visible_ids(conn,[first,second]),[first])
+            self.assertEqual({item['bank_id'] for item in presentation(conn,first)['sources']},{first,second})

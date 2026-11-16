@@ -27,10 +27,12 @@ def record_signature(record):
 
 
 def member(conn, bank_id):
-    return conn.execute('''SELECT m.bank_id,m.entity_id,m.identity_signature,m.signature_version,m.state,
+    row=conn.execute('''SELECT m.bank_id,m.entity_id,m.identity_signature,m.signature_version,m.state,
                                   e.display_bank_id,e.collection_id,e.revision
                            FROM question_entity_members m JOIN question_entities e ON e.id=m.entity_id
                            WHERE m.bank_id=?''', (bank_id,)).fetchone()
+    if row is None or hasattr(row,'keys'):return row
+    return dict(zip(('bank_id','entity_id','identity_signature','signature_version','state','display_bank_id','collection_id','revision'),row))
 
 
 def public_member(conn, bank_id):
@@ -46,6 +48,43 @@ def register_member(conn, bank_id, entity_id, signature, state='confirmed'):
                     ON CONFLICT(bank_id) DO UPDATE SET entity_id=excluded.entity_id,
                     identity_signature=excluded.identity_signature,signature_version=excluded.signature_version,
                     state=excluded.state''', (bank_id,entity_id,signature,'question_identity_signature/v1',state))
+
+
+def visible_ids(conn, bank_ids, collection=None):
+    """Collapse source rows to confirmed public entity display rows."""
+    tables={row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {'question_entities','question_entity_members'} <= tables:
+        return list(dict.fromkeys(bank_ids))
+    result=[]
+    for bank_id in bank_ids:
+        row=member(conn,bank_id)
+        if row is None or row['state'] != 'confirmed':
+            continue
+        if collection is not None and row['collection_id'] != collection:
+            continue
+        if row['display_bank_id'] not in result:
+            result.append(row['display_bank_id'])
+    return result
+
+
+def presentation(conn, bank_id):
+    """Public entity/source projection; source records remain addressable."""
+    row=member(conn,bank_id)
+    if row is None or row['state'] != 'confirmed':
+        return None
+    sources=[]
+    for item in conn.execute('''SELECT m.bank_id,b.source, b.collection_id, r.metadata_json
+                                FROM question_entity_members m JOIN bank_questions b ON b.id=m.bank_id
+                                LEFT JOIN bank_resources r ON r.bank_id=b.id
+                                WHERE m.entity_id=? AND m.state='confirmed' ORDER BY m.bank_id''',(row['entity_id'],)):
+        if not hasattr(item,'keys'):
+            item=dict(zip(('bank_id','source','collection_id','metadata_json'),item))
+        metadata=json.loads(item['metadata_json'] or '{}') if item['metadata_json'] else {}
+        sources.append(dict(bank_id=item['bank_id'],source=item['source'],source_collection_id=item['collection_id'],
+                            book=metadata.get('book'),locator=metadata.get('locator'),source_id=metadata.get('source_id'),
+                            source_uid=metadata.get('source_uid')))
+    return dict(entity_id=row['entity_id'],display_bank_id=row['display_bank_id'],
+                collection_id=row['collection_id'],sources=sources)
 
 
 def initialize(conn):

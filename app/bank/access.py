@@ -105,6 +105,11 @@ def _related(conn,bid,exam=False):
             group.update(r['bank_id'] for r in identities if exam_key(r) in exams)
         for left,right in links:
             if left in group or right in group:group.update((left,right))
+        table_names={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if {'question_entity_members','question_entities'} <= table_names and group:
+            entity_ids={r[0] for r in conn.execute('SELECT entity_id FROM question_entity_members WHERE bank_id IN ('+','.join('?' for _ in group)+')',tuple(group))}
+            if entity_ids:
+                group.update(r[0] for r in conn.execute('SELECT bank_id FROM question_entity_members WHERE entity_id IN ('+','.join('?' for _ in entity_ids)+')',tuple(entity_ids)))
         changed=len(group)!=old
     return group
 
@@ -198,6 +203,11 @@ def public_bank(conn,bid,view='probe'):
     if view=='library':
         row=conn.execute("SELECT b.*,coalesce(i.math_type,0) math_type,coalesce(i.year,'') year,coalesce(i.number,0) number FROM bank_questions b LEFT JOIN bank_identity i ON i.bank_id=b.id WHERE b.id=?",(bid,)).fetchone()
         if not row:raise ValueError('题库题目不存在')
+        from app.bank.entities import presentation
+        entity=presentation(conn,bid)
+        if entity is not None and entity['display_bank_id'] != bid:
+            return dict(entity_id=entity['entity_id'],display_bank_id=entity['display_bank_id'],sources=entity['sources'],
+                        collection_id=entity['collection_id'],id=bid,can_view=False,reserved=False,reason='该来源已归并到主展示题目')
         result={'id':bid,'collection_id':row['collection_id'],'math_type':row['math_type'],'year':row['year'],'number':row['number'],
                 'can_view':True,'reserved':{'math_type':row['math_type'],'year':row['year']} in preferences(conn)['reserved'],
                 'reason':'','analysis_allowed':True,'stem':row['stem'],'tags':json.loads(row['tags_json'] or '[]'),
@@ -206,6 +216,7 @@ def public_bank(conn,bid,view='probe'):
         # separate, recorded action even for text-only sources.
         from app.bank.applicability import math_types
         result['math_types']=math_types(row['math_types_json'],row['math_type'])
+        if entity is not None: result.update(entity)
         return text_resources(conn,bid,result)
     state=access(conn,bid)
     from app.bank.collections import membership

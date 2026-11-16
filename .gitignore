@@ -65,3 +65,6 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/node_modules/
 /build/
+
+# Manual test sessions (local launcher, tester feedback, screenshots)
+/manual-testing/

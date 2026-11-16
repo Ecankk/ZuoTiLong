@@ -52,7 +52,7 @@ def _identity_entries(document):
     return {entry['source_uid']: entry for entry in document.get('entries', [])}
 
 
-def _source_signatures(current):
+def _source_signatures(current, questions=None, resources=None):
     values={};stems={};images={}
     for bid,row in current.items():
         try:
@@ -64,6 +64,19 @@ def _source_signatures(current):
                 images.setdefault(image.get('sha256'),set()).add(bid)
         except (KeyError,TypeError,json.JSONDecodeError):
             continue
+    # Legacy S01 rows have no standard record_json, but their displayed stem
+    # and installed image hashes are still useful weak duplicate evidence.
+    for bid,row in (questions or {}).items():
+        if bid in current:continue
+        stem=(row.get('stem') or '').strip()
+        if stem:stems.setdefault(records.digest(stem),set()).add(bid)
+        resource=(resources or {}).get(bid)
+        if resource:
+            try:
+                metadata=json.loads(resource['metadata_json'] or '{}')
+                for image in metadata.get('resources',{}).get('question',{}).get('images',[]):
+                    images.setdefault(image.get('sha256'),set()).add(bid)
+            except (TypeError,ValueError,json.JSONDecodeError):pass
     return values,stems,images
 
 
@@ -81,6 +94,7 @@ def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids
     for bid,baseline in (baselines or {}).items():
         if bid not in current:current[bid]=dict(bank_id=bid,record_json=records.canonical(baseline),record_sha256=records.digest([baseline,[]]))
     questions = {r['id']: r for r in state.get('bank_questions', [])}
+    resources = {r['bank_id']: r for r in state.get('bank_resources', [])}
     figure_owners={}
     for row in current.values():
         prior=json.loads(row['record_json'])
@@ -98,7 +112,7 @@ def preview(conn, batch, corrections, applied, excluded, collection, *, bank_ids
     report.update(figures_applied=[],figure_conflicts=[])
     report['figures_sha256']=records.digest(corrections['figures']) if isinstance(corrections,dict) and 'figures' in corrections else None
     content_groups = {}
-    source_signatures,stem_signatures,image_signatures=_source_signatures(current)
+    source_signatures,stem_signatures,image_signatures=_source_signatures(current,questions,resources)
     decision_entries=_identity_entries(identities)
     has_entities=_entity_tables(conn)
     incoming_signatures={};incoming_bids={}

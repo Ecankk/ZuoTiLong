@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "../build/desktop-stage/backend/": "backend/",
+      "../build/desktop-stage/resources/": "resources/"
+    }
+  }
+}

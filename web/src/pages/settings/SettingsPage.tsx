@@ -15,6 +15,8 @@ import { friendlyError } from '../../lib/errors'
 import { SETUP_GUIDE_PATH } from '../../lib/setup'
 import { CollectionImportCard } from './CollectionImportCard'
 import { DataCard, DataPaths } from './DataCard'
+import { CodexPathCard, DesktopAbout, DesktopDataCard } from './DesktopCards'
+import { isDesktop } from '../../desktop/bridge'
 import { ModelSettings } from './ModelCard'
 import { ConventionCard, ConventionRaw, FreePracticeCard, MaskCard } from './PreferenceCards'
 import styles from './SettingsPage.module.css'
@@ -74,7 +76,8 @@ function Advanced() {
         <div className={styles.advancedBody}>
           <ModelSettings />
           <ConventionRaw />
-          <DataPaths />
+          {/* 桌面版在“数据保存位置”里显示同样的路径，这里不重复 */}
+          {!isDesktop() && <DataPaths />}
         </div>
       </details>
     </Card>
@@ -92,10 +95,14 @@ function About() {
     <Card padded className={styles.section} aria-label="关于">
       <h2>关于做题龙</h2>
       <p>做题龙帮你分析做过的试卷，找出薄弱考点，再挑题针对练习。所有数据只保存在这台电脑上。</p>
-      <dl className={styles.facts}>
-        <dt>版本</dt>
-        <dd>{data?.version ? `v${data.version}` : '读取中…'}</dd>
-      </dl>
+      {isDesktop() ? (
+        <DesktopAbout />
+      ) : (
+        <dl className={styles.facts}>
+          <dt>版本</dt>
+          <dd>{data?.version ? `v${data.version}` : '读取中…'}</dd>
+        </dl>
+      )}
     </Card>
   )
 }
@@ -132,7 +139,7 @@ export function SettingsPage() {
           <div id="settings-study" className={styles.anchor}>
             <StudyType />
           </div>
-          <div id="settings-guide" className={styles.anchor}>
+          <div id="settings-guide" className={isDesktop() ? styles.anchorGroup : styles.anchor}>
             <Card padded className={styles.section} aria-label="使用说明">
               <h2>使用说明</h2>
               <p>
@@ -147,6 +154,7 @@ export function SettingsPage() {
                 </Link>
               </ButtonRow>
             </Card>
+            {isDesktop() && <CodexPathCard />}
           </div>
           <div id="settings-practice" className={styles.anchorGroup}>
             <MaskCard />
@@ -158,7 +166,8 @@ export function SettingsPage() {
           <div id="settings-import" className={styles.anchor}>
             <CollectionImportCard />
           </div>
-          <div id="settings-data" className={styles.anchor}>
+          <div id="settings-data" className={isDesktop() ? styles.anchorGroup : styles.anchor}>
+            {isDesktop() && <DesktopDataCard />}
             <DataCard />
           </div>
           <div id="settings-advanced" className={styles.anchor}>

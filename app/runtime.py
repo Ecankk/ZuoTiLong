@@ -23,13 +23,14 @@ from app.storage.database import Database
 
 
 class AppRuntime:
-    def __init__(self, config: AppConfig, *, bridge=None, agent_factory=None, manage_agent=True):
+    def __init__(self, config: AppConfig, *, bridge=None, agent_factory=None, manage_agent=True,startup_progress=None,cancel_event=None,launch_nonce=None):
         self.config = config
         self.database = Database(config)
         self.bridge = bridge
         self.agent_factory = agent_factory
         self.manage_agent = manage_agent
         self.mobile = None
+        self.startup_progress,self.cancel_event,self.launch_nonce=startup_progress,cancel_event,launch_nonce
 
         self.papers = PaperService(config, self.database)
         self.practice = PracticeService(config, self.database)
@@ -53,8 +54,22 @@ class AppRuntime:
         self.events = EventStream(self)
 
     def start(self) -> None:
+        from app.desktop.control import CANCEL
+        token=CANCEL.set(self.cancel_event)
+        try:self._start()
+        finally:CANCEL.reset(token)
+
+    def _phase(self,name,message):
+        from app.desktop.control import checkpoint
+        checkpoint()
+        if self.startup_progress:self.startup_progress(name,message)
+
+    def _start(self):
+        self._phase('initialize_storage','正在打开本地数据')
         self.database.initialize()
+        self._phase('prepare_navigation','正在准备题库索引')
         self.knowledge_links.prepare_index()
+        self._phase('recover_tasks','正在核对已有任务状态')
         interrupt_old_progress(self.config.data)
         if self.bridge is None and self.agent_factory:
             self.bridge = self.agent_factory(self.config.root, self.config.data)
@@ -64,7 +79,10 @@ class AppRuntime:
             if isinstance(self.bridge,CodexBridge):
                 self.bridge.auto_connect = True
                 self.bridge.workflow_wakeup.set()
+        self._phase('start_services','正在启动本地服务')
         self.events.start()
+        from app.desktop.control import checkpoint
+        checkpoint()
 
     def close(self) -> None:
         self.events.close()

@@ -29,7 +29,7 @@ def packages(rt=Depends(runtime)):
 def export_package(rt=Depends(runtime)):
     from fastapi.responses import JSONResponse
     package = rt.knowledge_catalog.export_package()
-    return JSONResponse(package, headers={'Content-Disposition': 'attachment; filename="catalog-'+package['sha256'][:12]+'.json"'})
+    return JSONResponse(package, headers={'X-Content-Type-Options':'nosniff','Content-Disposition': 'attachment; filename="catalog-'+package['sha256'][:12]+'.json"'})
 
 
 @router.post('/packages/preview')

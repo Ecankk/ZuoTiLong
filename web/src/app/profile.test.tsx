@@ -75,7 +75,11 @@ it('leads the profile with the biggest weak spots and their checkable evidence',
     .getAllByRole('listitem')
     .filter((li) => li.querySelector('strong'))
   expect(items[0]).toHaveTextContent('随机变量的数字特征')
-  expect(items[0]).toHaveTextContent('近 28 天做了 6 道，错 4 道 · 3 个考点要补')
+  // 有依据句时不再重复“做了几道、错几道”，只补考点数；没有依据句时显示完整计数
+  expect(items[0]).toHaveTextContent('3 个考点要补')
+  expect(within(weak).getByText('重积分').closest('li')).toHaveTextContent(
+    '近 28 天做了 4 道，错 2 道 · 2 个考点要补',
+  )
   expect(items[0]).toHaveTextContent('例：《2021数学一》第9题')
   const evidence = within(weak).getByRole('list', { name: '随机变量的数字特征的错题' })
   expect(within(evidence).getByRole('link', { name: /《2021数学一》第9题/ })).toHaveAttribute(
@@ -164,7 +168,7 @@ it('confirms before queuing a profile batch, shows progress and jumps to the pra
   expect(await screen.findByText(/做题龙正在按画像挑题/)).toBeInTheDocument()
   expect(await screen.findByRole('link', { name: /开始做/ }, { timeout: 6000 })).toHaveAttribute(
     'href',
-    '/practice?source=profile&view=topic&item=profile-probe-1',
+    '/practice?source=profile&view=topic&item=profile-probe-1&batch=profile-batch-1',
   )
 }, 10000)
 

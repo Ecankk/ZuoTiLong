@@ -44,7 +44,7 @@ Access 沿用现有 access 对象（id、math_type、year、number、reserved、
 
 | 方法/路径 | 参数 | 响应 |
 | --- | --- | --- |
-| GET /api/practices | group_by:'topic'/'paper'='topic'，status:PracticeStatus?，paper_id:string?，topic_id:string?，include_inactive:boolean=false，分页参数（按组） | Page<PracticeGroup> + `{counts:PracticeCounts}`；groups 不截断既有布置；多考点练习可出现在不同组，总计按练习 ID 去重 |
+| GET /api/practices | group_by:'topic'/'paper'/'source'/'batch'='topic'，source:'paper'/'profile'?（省略时合并两种来源），batch_id:string?，status:PracticeStatus?，paper_id:string?，topic_id:string?，include_inactive:boolean=false，分页参数（按组，limit 最大100） | Page<PracticeGroup> + `{counts:PracticeCounts}`；groups 不截断既有布置；多考点练习可出现在不同组，总计按练习 ID 去重 |
 | GET /api/practices/{practice_id} | 无 | `{practice:PracticeCard,is_current:boolean,review_reason:string|null,question:object|null,goals:object[],selection_reason:string|null,latest_attempt:Attempt|null,actions:string[]}` |
 | GET /api/practices/{practice_id}/attempts | 分页参数 | Page<Attempt>；创建时间、ID 倒序；不带标准答案 |
 
@@ -76,7 +76,7 @@ reference 另含 `errata?:[{role,reason,evidence}]`（随该次快照捕获）�
 - 错误：400 参数/UUID/材料/角色；403 预留或未允许查看；404 题或作答不存在；409 request_id 冲突或活动执行写保护。
 - 画像：`preferences.include_free_practice` 默认 true，false 时只从画像和考点聚合中排除，历史不删。GET /api/profile 增加 `free_practice:{total,correct,wrong,pending,independent_correct,assisted_correct}`；考点详情 performance 增加 `source_counts:{exam,practice,free_practice:{同上}}`，free_practice 是绑定该节点的整题作答次数，不证明原子已掌握；successes/failures/state 只用批改明确指出的 topic_ids。
 
-## 画像与按画像选题（B26，已确认，实现中）
+## 画像与按画像选题（B26，已实现）
 
 只读规则：状态沿用考点 performance 聚合，映射 初步掌握→mastered、巩固中→learning、需要关注→weak、证据不足/未覆盖→no_record，原值和 state_reason 保留。无记录不算薄弱；独立做对只计明确独立的正确，受提示和独立性未知分开；没有足够证据时返回 null 加 unavailable_reasons，不补0、不算百分比或能力分。include_free_practice=false 时画像和趋势都不计自由练习。三个 GET 支持 ETag，空工作区返回 200 空结构加 limitations。
 
@@ -90,9 +90,36 @@ reference 另含 `errata?:[{role,reason,evidence}]`（随该次快照捕获）�
 
 ProfileNode：`{id,parent_id,name,kind,math_types,state,state_reason,display_state,distribution{mastered,learning,weak,no_record},successes,failures,assisted,pending,last_attempt_at,ready_question_count,study_ready_question_count,selectable_question_count}`。WeakSpot：`{node_id,name,kind,subject_id,weak_atom_count,observed_atom_count,total_atom_count,recent_failures,recent_judged,failure_ratio,window,basis,evidence[≤3]}`，后端按近28天失败数、失败占比、薄弱原子数、最近失败时间排序；basis只摘录已保存的题目和首错环节，取不到为 null。
 
-按画像选题：目标分 weak（最新有效表现失败）、review_due（只有受提示正确或距上次满14天）、uncovered（当前备考类别有可选 ready 题但无记录），名额按 5:3:2 最大余数分配（5→3/1/1，8→4/2/2，10→5/3/2），不足按 weak→review_due→uncovered 补，不强凑。候选复用原卷选题规则，并排除工作区所有已上传试卷的原题（含同题身份）。任务 kind 仍为 prepare_practice，paper_id=null；完成后前端跳 `/practice?source=profile&view=topic&item=<首个practice_id>`。
+按画像选题：目标分 weak（最新有效表现失败）、review_due（只有受提示正确或距上次满14天）、uncovered（当前备考类别有可选 ready 题但无记录），名额按 5:3:2 最大余数分配（5→3/1/1，8→4/2/2，10→5/3/2），不足按 weak→review_due→uncovered 补，不强凑。候选复用原卷选题规则，并排除工作区所有已上传试卷的原题（含同题身份）。任务 kind 仍为 prepare_practice，paper_id=null；完成后前端跳 `/practice?source=profile&view=topic&item=<首个practice_id>&batch=<batch_id>`；练习页带 batch 时只请求并显示这一组（source=profile&batch_id=…），并提供“看全部练习”。
 
-练习卡新增 `origin:'paper'|'profile'|'free_practice'`、`latest_correctness:'correct'|'wrong'|'partial'|'unknown'|null`（与 latest_attempt 的有效批改一致，无有效批改为 null）、`batch_id`、`batch_title`；画像练习的 paper_id/paper_title/question_id 为 null。GET /api/practices 新增 `source=paper|profile`、`batch_id`，group_by 新增 source/batch。access 增加 `collection_label` 与 `book{part,chapter,number}`；参考材料中的“见原图”类占位投影为 null；自由练习403返回 `{error,reason:'masked'|'reserved'}`。首页新反馈未读与待核对计数见 H2（随本批实现）。
+练习卡新增 `origin:'paper'|'profile'|'free_practice'`、`latest_correctness:'correct'|'wrong'|'partial'|'unknown'|null`（与 latest_attempt 的有效批改一致，无有效批改为 null）、`batch_id`、`batch_title`；画像练习的 paper_id/paper_title/question_id 为 null。GET /api/practices 新增 `source=paper|profile`、`batch_id`，group_by 新增 source/batch。access 增加 `collection_label` 与 `book{part,chapter,number}`；参考材料中的“见原图”类占位投影为 null；自由练习403返回 `{error,reason:'masked'|'reserved',message}`（message 可直接展示）。
+
+实现补充：
+- overview 的 `totals` 另含 `unread_feedback_count`、`needs_review_count`；另有 `feedback{unread_count,recent_items[≤3]}` 与 `review{total,counts{exam_questions,practice_attempts,free_practice_attempts},paper_issue_count,items[≤5]}`。三个 GET 在个人库、题库写入或日期变化时失效。
+- `weak_spots[].evidence[]` 与 `recent_mistakes[]` 带 `question_number:string|null`：原卷来源为保存的题号字符串，对应 `/papers/:paper_id/questions/:question_number`（两段分别 encodeURIComponent）；练习/自由练习为 null，走 practice_id/attempt_id/bank_id。`first_error_stage` 取 entry/modeling/formula/calculation/finalization/unknown（展示：切入/建模/公式/计算/最终处理/环节未知），null 表示没有首错记录，不当作 unknown。
+- 目录原子未注明 math_types 时视为对所有备考类别适用。
+- `POST /api/feedback/read` body `{request_id:uuid,source:'paper_practice'|'profile_practice'|'free_practice',attempt_id,feedback_revision}`：同请求幂等200，换内容或版本过期409，记录不存在404；只记已读，不改批改。
+- 画像练习沿用 GET /api/practices/{id}、/attempts、POST /api/probes/{id}/submit、/api/attempts/{id}/supplement；固定图片为 `GET /api/practices/{id}/materials/question|analysis|answer`（允许时返回，no-store）。GET /api/tasks 的画像任务项带 `source:'profile_practice'`、`batch_id`。
+- 题库补图（B27）：BankCard 与题面投影可带只读 `supplemental_figures`（重绘图的角色、说明“按题意重绘”与依据，不含本机路径）；题图 URL 返回的已是原图加重绘图的显示图，前端无需拼接。
+
+## 作答日期、重复上传与画像修正（B28，已实现）
+
+日期：PaperCard、GET /api/papers/{id}.paper、上传响应的 paper 增加 `exam_date:string|null`（YYYY-MM-DD 或 YYYY-MM）、`exam_date_precision:'day'|'month'|'unknown'`、`exam_date_unknown_reason:'not_provided'|'forgotten'|null`、`import_decision:'accepted'|'pending_duplicate'|'withdrawn'`。未填 → null/unknown/not_provided，“记不清” → null/unknown/forgotten，“约某月” → "YYYY-MM"/month；不再默认今天，拒绝未来日/月。旧数据里的完整日期按 day 保留，无法区分是否当年被自动填成上传日，靠用户批量修正。
+
+| 方法/路径 | 参数 | 响应 |
+| --- | --- | --- |
+| POST /api/papers/import | 原 multipart 加可选 `exam_date`、`exam_date_precision`、`exam_date_unknown_reason`；批量上传逐份传同一值，前端不得在未选择时传今天 | 原字段加 `duplicate_check{status:'clear'\|'same_pdf'\|'same_exam_identity'\|'unresolved',identity{exam_year,math_type}\|null,reason,matches[{paper_id,title,exam_date,exam_date_precision,archived,has_report}]}`、`import_decision`、`decision_revision`。相同PDF 200 复用且不改旧日期；不同PDF同年同卷别 201 保存为 pending_duplicate |
+| POST /api/papers/dates | `{confirmed:true,request_id:uuid,paper_ids[1–50],exam_date,exam_date_precision,exam_date_unknown_reason}` | 200 `{updated:[{paper_id,exam_date,exam_date_precision,exam_date_unknown_reason}],reused}`；整批原子写，相关卷有排队/运行中的任务时 409 |
+| POST /api/papers/{id}/import-decision | `{confirmed:true,request_id:uuid,decision:'retake'\|'withdraw',decision_revision}` | 200 `{paper_id,import_decision,reused}`；revision 过期、有学习历史时撤回均 409，刷新详情后重试 |
+
+- pending_duplicate 卷不给 analyze 动作，可只读核对切题；GET /api/papers/{id} 在顶层返回当前 duplicate_check 与 decision_revision，刷新后可继续决定。dates 与 import-decision 的 409 响应体带 `reason:'revision_stale'|'has_history'|'task_active'|'request_conflict'|'withdrawn'`。相同PDF复用响应带 `date_ignored:boolean`（本次填的日期与原卷不同而未采用时为 true）。duplicate_check.status='unresolved' 只提示“没能认出是哪一年哪一卷”，不阻止分析。withdraw 是逻辑撤回，只限无分析/批改/练习历史的新上传，默认列表与画像排除。
+- 试卷列表已知日期新到旧，未知日期排在后面并显示“日期未知/记不清”；YYYY-MM 不能交给只认完整日期的格式化器。
+- 考点详情的已做题列表 date 不再回退上传日期，可为 null，并带 exam_date_precision/exam_date_unknown_reason。
+- 考点节点加 `last_attempt_date:{value,precision,unknown_reason}|null`；同一天、同为未知或月份区间重叠时有对有错 → learning（巩固中），state_reason 说明“同一时间范围内有对有错”。
+- trends 加 `unplaced_by_precision{month,unknown}`（不能放进某周的作答）；overview 加 `history_counts{month_dated_attempts,unknown_dated_attempts}`。周数与四周对比只计精确到日的作答。
+- overview 加 `weak_spots_context{recent_window,recent_judged_count,recent_evidence_sufficient,uses_history_fallback,explanation}`；weak_spot 加 `evidence_period:'recent'|'historical'`、`period_explanation`、`recent_lost_points|null`、`historical_lost_points|null`、各期已知/未知分数题数、`recent_exam_failure_count`、`recent_practice_failure_count`、`historical_failures`、`historical_exam_failure_count`、`historical_practice_failure_count`、`loss_attribution:'related_question_loss'`、`loss_basis:'saved_estimate'|'mixed'|null`。排序：近期在前、历史补位在后；组内按原卷已知失分 → 原卷错题数 → 练习错题数 → 错误比例 → 薄弱原子数。失分为“涉及的原卷失分（按已保存估分）”，null 显示“分数未知”不填 0，各章失分不能相加。
+- evidence 与 recent_mistakes 加 `exam_date`、`exam_date_precision`、`exam_date_unknown_reason`、`score_earned`、`max_score`、`lost_points`、`loss_basis`、`loss_unavailable_reason:'missing_score'|'invalid_score'|'score_conflict'|'not_exam'|null`。
+- overview 加 `first_error_summary|null`：`{period:'recent',window,wrong_count,attributed_count,unattributed_count,stages[{stage,count}],dominant_stage,dominant_count,statement,evidence[≤3]}`（evidence 带与 weak_spots evidence 同写法的 label）；近期≥5道错题、≥3道有首错记录、唯一最多的环节≥3道且占错题≥50% 才返回，否则 null，前端不显示该卡、不自行拼结论。
 
 ## 考点与题库
 
@@ -157,6 +184,38 @@ GET `/api/events`：`Content-Type:text/event-stream`，no-store，禁代理缓�
 
 旧 bootstrap、loop、profile、agent/state、preparation 与所有写入口继续可用；新增读取不改变学习记录、不自动 reveal、不触发新学习任务。资源接口只读取已保存结果，后台自动连接独立于读取。
 本批不更新学习结果 schema/Skill，不回填旧报告，不做计时图表。客户端不应把缺失摘要、未知题型、未关联考点或未核定分数显示为 0/错误/已掌握。
+
+## 桌面外壳桥接（D，已确认；C按此实现）
+
+桌面版由Tauri外壳启动后端（127.0.0.1随机端口），React业务数据仍只走HTTP；后端版本与data_id取`GET /api/health`，Codex可用性取`GET /api/tasks`的availability与`POST /api/agent/connect`。只有原生动作走桥接：判断`'__TAURI_INTERNALS__' in window`，web精确依赖`@tauri-apps/api@2.12.4`且只用`invoke`；不在桌面里（浏览器开发、vitest）时隐藏这些入口。外壳只给当前后端确切origin授权下表六个命令，不授予任何插件权限。
+
+失败时reject `{code,message}`（message为中文可直接显示）；对话框被取消返回`null`，不是错误。
+
+| 命令 | 入参 | 成功返回 | 错误code |
+| --- | --- | --- | --- |
+| `desktop_info` | 无 | DesktopInfo | `io_error` |
+| `desktop_open_folder` | `{target:'data_root'\|'workspace'\|'library'\|'logs'\|'licenses'}` | `null` | `missing`、`io_error` |
+| `desktop_pick_codex` | 无 | CodexPick\|null | `dialog_failed` |
+| `desktop_save_codex` | `{pick_id}`或`{auto:true}` | `{status:'restarting'}` | `stale_pick`、`busy`、`io_error` |
+| `desktop_restart_backend` | 无 | `{status:'restarting'}` | `busy` |
+| `desktop_relocate` | 无 | `{status:'stopping'}` | `busy` |
+
+- 页面不能传任意路径：打开文件夹只收枚举；保存Codex只收外壳刚通过对话框选出且`probe='ok'`的`pick_id`（5分钟内、一次有效），`{auto:true}`清除自定义路径回到自动查找。首版只收`.exe`（批处理安装无法可靠启动）。
+- `busy`：外壳在重启/停止前查同源`GET /api/tasks`，`active!=null`即拒绝。C在界面上先查一次给提示，以外壳判断为准。
+- `restarting`/`stopping`：命令先返回，随后窗口切到外壳加载页、重启后端（新端口=新origin），核对后导航回原路由；React不轮询。
+
+```ts
+type DesktopInfo = {
+  schema: 'zuotilong.desktop-info/v1'
+  app: { name: '做题龙'; version: string; commit: string|null; tauri: string; webview2: string|null; os: string }
+  data: { root: string; workspace: string; library: string; is_default_root: boolean; logs: string; locator: string }
+  codex: { configured_path: string|null }   // null=自动查找（PATH→官方安装位置）
+}
+type CodexPick = { pick_id: string; path: string; version: string|null; probe: 'ok'|'failed'; message: string|null }
+```
+
+- 第三方声明与AGPL文本：`desktop_open_folder({target:'licenses'})`，安装目录`resources\licenses`。
+- origin每次启动都变，WebView2的localStorage每次为空：客户端偏好与进度（首次引导已看过、按画像一组的进度、自由练习计时显示）改存`GET/POST /api/drafts?key=`，浏览器开发模式同样适用。
 
 ## 数据状态与备份
 

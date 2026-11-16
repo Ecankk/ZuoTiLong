@@ -95,6 +95,8 @@ class NavigationIndex:
         return conn
 
     def bank(self,conn,nodes,build,bank_ids=None):
+        from app.desktop.control import checkpoint
+        checkpoint()
         from app.bank.annotation_view import AnnotationReadView
         from app.bank import annotations
         from app.knowledge import catalog
@@ -131,6 +133,7 @@ class NavigationIndex:
                     path=row[role+'_path']
                     if path:watched.setdefault(path,set()).add(bid)
             for path,bids in watched.items():
+                checkpoint()
                 absolute,owner=material_path(path);stamps[path]=file_stamp(absolute,owner)
                 if stamps[path]!=state.get('files',{}).get(path):file_changed.update(bids)
             for bid,row in old.items():
@@ -158,6 +161,7 @@ class NavigationIndex:
                 if bid not in file_changed and changes.get(bid)==previous.get(bid):view._materials[bid]=actual
             items=[]
             for bid,row in rows.items():
+                checkpoint()
                 if bid in dirty:
                     item,deps=build(conn,row,nodes,view)
                     try:actual=view.materials(bid)

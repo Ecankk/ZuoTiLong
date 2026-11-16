@@ -179,3 +179,13 @@
 .footer .skip {
   margin-right: auto;
 }
+
+.recheck {
+  margin-top: var(--space-3);
+}
+
+.hint {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}

@@ -52,10 +52,9 @@ export function BankPage() {
     refetch: refetchCollections,
   } = useBankCollections()
   const asked = params.get('collection')
-  // 没有题的题集不显示（除非地址里正好指定了它）；示例题集是开发用的种子数据，不给用户看；默认真题
-  const shown = (collections ?? []).filter(
-    (c) => c.id !== hiddenCollection && (c.total > 0 || c.id === asked),
-  )
+  // 0 题的题集（发行库默认的“其他”“示例”）在接口层已经去掉，地址里指定了也不显示；
+  // 示例题集是开发用的种子数据，即使有题也不给用户看；默认真题
+  const shown = (collections ?? []).filter((c) => c.id !== hiddenCollection)
   const collection =
     shown.find((c) => c.id === asked) ?? shown.find((c) => c.id === 'zhenti') ?? shown[0]
   // 题集列表还没回来时先按地址（默认真题）取题，两个请求并行，首屏更快

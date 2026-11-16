@@ -2,6 +2,15 @@
 
 本文件是用户和配置Agent共用的安装入口。使用Windows原生Python和Codex CLI运行本地应用；安装按本文执行，应用内学习任务使用独立的[Agent协议](agent-workflow.md)和项目Skill。需要修改项目代码时再查[项目架构](backend-architecture.md)与[开发验收](full-loop-test-checklist.md)。
 
+两种安装方式：
+
+| 方式 | 适用 | 入口 |
+| --- | --- | --- |
+| 桌面安装包（Windows 10/11 x64，试水版尚未发布） | 普通用户；不需要Python/Node | 运行安装包→首次打开选数据位置（默认`%LOCALAPPDATA%\ZuoTiLong`）→等待题库准备完成；Codex仍需本人安装官方原生`codex.exe`并`codex login`，应用的新手引导和设置页可重新检查、指定路径 |
+| 源码目录（下文） | 开发、题库维护 | 本文第1–6节 |
+
+桌面版的构建步骤见`scripts/packaging/README.md`（冻结后端与题库种子）和`src-tauri/`（外壳与NSIS安装包，`npm --prefix src-tauri run build:nsis`）；构建产物在被忽略的`build/`下，不进版本库。桌面版只支持官方原生安装的`codex.exe`，npm安装的`codex.cmd`无法可靠启动。
+
 ## 1. 检查环境
 
 在项目根目录打开PowerShell：

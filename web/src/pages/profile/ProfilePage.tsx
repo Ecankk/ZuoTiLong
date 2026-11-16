@@ -18,7 +18,16 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { cx } from '../../lib/cx'
 import { ProfileBatchPanel } from './ProfileBatch'
-import { evidenceLink, stageLabel, weakSpotFacts } from '../../lib/profile'
+import {
+  evidenceDate,
+  evidenceLink,
+  isHistorical,
+  stageLabel,
+  weakSpotCounts,
+  weakSpotLoss,
+  weakSpotsNote,
+} from '../../lib/profile'
+import { FirstErrorCard } from './FirstErrorCard'
 import styles from './ProfilePage.module.css'
 
 /* ---------- 共用：状态、阶段、出处链接 ---------- */
@@ -89,6 +98,8 @@ function WeakSpotItem({
   subjectName?: string
   onPractice: () => void
 }) {
+  const loss = weakSpotLoss(spot)
+  const counts = weakSpotCounts(spot)
   return (
     <li className={styles.spot}>
       <span className={styles.rank}>{index + 1}</span>
@@ -96,17 +107,24 @@ function WeakSpotItem({
         <div className={styles.spotHead}>
           <strong>{spot.name}</strong>
           {subjectName && <small>{subjectName}</small>}
+          {isHistorical(spot) && <span className={styles.olderTag}>更早的试卷</span>}
         </div>
-        <p className={styles.spotFacts}>{weakSpotFacts(spot)}</p>
+        {loss && <p className={styles.spotLoss}>{loss}</p>}
+        {counts && <p className={styles.spotFacts}>{counts}</p>}
         {spot.basis && <p className={styles.basis}>{spot.basis}</p>}
+        {isHistorical(spot) && spot.period_explanation && (
+          <p className={styles.periodNote}>{spot.period_explanation}</p>
+        )}
         {spot.evidence.length > 0 && (
           <ul className={styles.evidence} aria-label={`${spot.name}的错题`}>
             {spot.evidence.map((e, i) => {
               const to = evidenceLink(e)
               const stage = stageLabel(e.first_error_stage)
+              const date = evidenceDate(e)
               const body = (
                 <>
                   <span>{e.label}</span>
+                  {date && <small>{date}</small>}
                   {stage && <em>首错：{stage}</em>}
                 </>
               )
@@ -136,14 +154,16 @@ function WeakSpots({
   const subjectName = (id: string) => overview.subjects.find((s) => s.id === id)?.name
   const d = overview.distribution
   const hasRecords = d.mastered + d.learning + d.weak > 0
+  const note = weakSpotsNote(overview)
   return (
     <Card padded className={styles.primary} aria-label="最该补的地方">
       <div className={styles.cardHead}>
         <h2>最该补的地方</h2>
-        {overview.weak_spots.length > 0 && (
+        {overview.weak_spots.length > 0 && !note && (
           <span className={styles.faint}>按近 28 天的错题排序</span>
         )}
       </div>
+      {note && <p className={styles.fallback}>{note}</p>}
       {overview.weak_spots.length > 0 ? (
         <ol className={styles.spots}>
           {overview.weak_spots.map((spot, i) => (
@@ -364,7 +384,8 @@ function SubjectTree({
 
 /* ---------- 趋势：折叠，展开才请求 ---------- */
 
-function TrendChart() {
+/** shown：页面底部已经显示的说明，趋势里不再重复 */
+function TrendChart({ shown = [] }: { shown?: string[] }) {
   const { data, error, isPending, refetch } = useTrends(true, 12)
   if (isPending) return <p className={styles.faint}>正在读取…</p>
   if (error) return <ErrorState inline error={error} onRetry={() => void refetch()} />
@@ -382,6 +403,9 @@ function TrendChart() {
   })
   const max = Math.max(1, ...weeks.map((w) => w.independent + w.other + w.wrong))
   const t = data.totals
+  const unplaced =
+    (data.unplaced_by_precision?.month.attempts ?? 0) +
+    (data.unplaced_by_precision?.unknown.attempts ?? 0)
   return (
     <div>
       <div
@@ -423,11 +447,18 @@ function TrendChart() {
         {t.independence_unknown_correct > 0 && `，独立性未知 ${t.independence_unknown_correct}`}
         ，做错 {t.wrong}。最后一周还没过完。
       </p>
-      {data.limitations.map((l, i) => (
-        <p key={i} className={styles.faint}>
-          {l}
+      {unplaced > 0 && (
+        <p className={styles.faint}>
+          另有 {unplaced} 次作答的日期只到月份或记不清，没算进每周统计。
         </p>
-      ))}
+      )}
+      {data.limitations
+        .filter((l) => !shown.includes(l))
+        .map((l, i) => (
+          <p key={i} className={styles.faint}>
+            {l}
+          </p>
+        ))}
     </div>
   )
 }
@@ -465,6 +496,8 @@ export function ProfilePage() {
       {header}
       <div className={styles.stack}>
         <WeakSpots overview={overview} onPractice={(id) => setBatchChapter(id)} />
+
+        <FirstErrorCard summary={overview.first_error_summary} />
 
         {batchChapter && (
           <Card padded aria-label="按画像来一组">
@@ -519,7 +552,7 @@ export function ProfilePage() {
               {overview.home_stats.independent_correct_this_week} 道
             </span>
           </button>
-          {trendOpen && <TrendChart />}
+          {trendOpen && <TrendChart shown={overview.limitations} />}
         </Card>
 
         {overview.limitations.length > 0 && (

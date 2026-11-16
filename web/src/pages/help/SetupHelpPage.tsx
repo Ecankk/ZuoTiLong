@@ -1,6 +1,7 @@
 import { useTasks } from '../../api/queries'
 import { Card } from '../../components/ui/Card'
 import { PageHeader } from '../../components/ui/PageHeader'
+import { isDesktop } from '../../desktop/bridge'
 import { setupMessage } from '../../lib/setup'
 import styles from './SetupHelpPage.module.css'
 
@@ -27,10 +28,11 @@ export function SetupHelpPage() {
           <h2>准备步骤</h2>
           <ol className={styles.steps}>
             <li>
-              <strong>安装 Codex 命令行工具</strong>
+              <strong>安装官方的 Windows 版 Codex</strong>
               <p>
-                做题龙借助本机的 Codex 分析试卷、批改作答。按 OpenAI 官方说明安装 Codex
-                命令行工具（不是只装桌面版）。安装后，在“开始”菜单打开 PowerShell，输入
+                做题龙借助本机的 Codex 分析试卷、批改作答。请按 OpenAI 官方说明安装 Windows 版
+                Codex，它会在电脑上装好 <code>codex.exe</code>。不建议用 npm
+                安装：那种安装方式做题龙不能可靠地启动。装好后，在“开始”菜单打开 PowerShell，输入
                 <code>codex --version</code>，能看到版本号就说明装好了。
               </p>
             </li>
@@ -51,7 +53,15 @@ export function SetupHelpPage() {
           <h2>常见问题</h2>
           <dl className={styles.faq}>
             <dt>已经装了 Codex，还是提示没有安装？</dt>
-            <dd>装好后需要重新打开做题龙的启动器，让它找到新装的程序。</dd>
+            <dd>
+              {isDesktop()
+                ? '在新手引导或“设置 → 使用说明”里点“重启后台”，做题龙会重新查找新装的程序；也可以在“设置 → AI 服务位置”里直接选择 codex.exe。'
+                : '装好后需要重新打开做题龙的启动器，让它找到新装的程序。'}
+            </dd>
+            <dt>提示“已找到，但不能启动”？</dt>
+            <dd>
+              多半是用 npm 装的版本。请改装官方的 Windows 版 Codex（codex.exe），再点“重新检查”。
+            </dd>
             <dt>没准备好时还能用吗？</dt>
             <dd>
               可以。已上传的试卷、已有的分析和练习都能查看；只是新的分析和批改要等准备好后才会进行。

@@ -1,9 +1,8 @@
 from fastapi import APIRouter,Depends,Body,Query,Request
-from fastapi.responses import FileResponse
 from app.api.conditional import conditional
 from app.api.dependencies import runtime
 from app.api.schemas import FreeAttempt,Reveal,BankNavigationCorrection,BankIdentityPreview,BankIdentityReview
-from app.api.responses import resource_response
+from app.api.responses import resource_response,file_response
 router=APIRouter(prefix='/api/bank',tags=['library'])
 @router.get('')
 def browse(request:Request,math_type:str='',year:str='',topic_id:str|None=None,collection:str|None=None,q:str='',offset:int|None=Query(None,ge=0),limit:int|None=Query(None,ge=1,le=100),rt=Depends(runtime)):
@@ -47,7 +46,7 @@ def free_submit(bank_id:str,body:FreeAttempt,rt=Depends(runtime)):
     return rt.mutate(rt.free_practice.submit,bank_id,body.model_dump())
 @router.get('/{bank_id}/practice/attempts/{attempt_id}/materials/{role}')
 def free_image(bank_id:str,attempt_id:str,role:str,rt=Depends(runtime)):
-    return FileResponse(rt.free_practice.image(bank_id,attempt_id,role))
+    return file_response(rt.free_practice.image(bank_id,attempt_id,role))
 @router.get('/{bank_id}/{role}')
 def bank_resource(bank_id:str,role:str,view:str='probe',probe_id:str|None=None,rt=Depends(runtime)):
     return resource_response(rt.resources.bank(bank_id,role,view=='library',probe_id))

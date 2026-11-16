@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-boot-use-default"
+description = "Enables the boot_use_default command without any pre-configured scope."
+commands.allow = ["boot_use_default"]
+
+[[permission]]
+identifier = "deny-boot-use-default"
+description = "Denies the boot_use_default command without any pre-configured scope."
+commands.deny = ["boot_use_default"]

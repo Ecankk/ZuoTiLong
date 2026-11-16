@@ -3,33 +3,13 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { usePapers, usePreferences, useSavePreferences } from '../../api/queries'
 import type { MathType } from '../../api/types'
+import { clientStateKeys, useClientState } from '../../lib/clientState'
 import { cx } from '../../lib/cx'
 import { friendlyError } from '../../lib/errors'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/Segmented'
 import { AiServiceStatus } from './AiServiceStatus'
 import styles from './Onboarding.module.css'
-
-/**
- * “已看过引导”存在本机浏览器存储：偏好接口只接受固定字段，无法保存这一项。
- */
-const seenKey = 'zuotilong:onboarding-seen'
-
-function readSeen() {
-  try {
-    return localStorage.getItem(seenKey) === '1'
-  } catch {
-    return false
-  }
-}
-
-function markSeen() {
-  try {
-    localStorage.setItem(seenKey, '1')
-  } catch {
-    // 存储不可用时下次仍会显示引导，不影响使用
-  }
-}
 
 const OnboardingContext = createContext<() => void>(() => {})
 
@@ -126,15 +106,25 @@ const steps: Step[] = [
   },
 ]
 
+/**
+ * “已看过引导”存在后端草稿里（桌面版每次启动 origin 都变，浏览器存储留不住）。
+ * 读到之前不弹出；读取失败时也不弹，免得每次打开都被打扰（设置页可以重新打开）。
+ */
 export function OnboardingProvider({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(() => !readSeen())
+  const seen = useClientState<boolean>(clientStateKeys.onboardingSeen, {
+    fallback: false,
+    fromLegacy: (raw) => (raw === '1' ? true : undefined),
+  })
+  const [manual, setManual] = useState<boolean | null>(null)
+  const open = manual ?? (seen.ready && !seen.failed && !seen.value)
+  const setOpen = (next: boolean) => setManual(next)
   const [step, setStep] = useState(0)
   const navigate = useNavigate()
   // 第 5 步按有没有试卷给不同的下一步；只在引导打开时读取
   const { data: papers } = usePapers('0')
   const hasPapers = (papers?.items.length ?? 0) > 0
   const close = () => {
-    markSeen()
+    if (!seen.value) seen.set(true)
     setOpen(false)
   }
   const reopen = () => {

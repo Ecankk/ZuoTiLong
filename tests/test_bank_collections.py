@@ -105,7 +105,7 @@ class S03AdapterTests(unittest.TestCase):
             item['upstream']['question_type']=upstream;record=convert(item)
             source_records.validate(record,'.')
             self.assertEqual(record['question_type'],kind);self.assertEqual(record['answer']['text'],'')
-            self.assertEqual(record['revision'],REVISION);self.assertIsNone(record['book']['number'])
+            self.assertEqual(record['revision'],REVISION);self.assertEqual(record['book']['number'],'1')
             self.assertIsNone(record['exam_year']);self.assertEqual(record['book']['part'],'强化篇')
         with self.assertRaisesRegex(ValueError,'not exam identities'):adapt('.',year=2026)
         with self.assertRaises(FileNotFoundError):adapt('nonexistent-source')

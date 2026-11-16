@@ -42,6 +42,7 @@ class LocalBoundary:
                 outgoing=list(message.get('headers',[]))
                 if dev:outgoing.extend([(b'access-control-allow-origin',origin.encode()),(b'vary',b'Origin'),(b'access-control-expose-headers',b'ETag, Cache-Control')])
                 if not any(k.lower()==b'cache-control' for k,v in outgoing):outgoing.append((b'cache-control',b'no-store'))
-                message={**message,'headers':outgoing+[(b'x-content-type-options',b'nosniff')]}
+                if not any(k.lower()==b'x-content-type-options' for k,v in outgoing):outgoing.append((b'x-content-type-options',b'nosniff'))
+                message={**message,'headers':outgoing}
             await send(message)
         await self.app(scope,bounded_receive,private_send)

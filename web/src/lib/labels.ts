@@ -50,14 +50,17 @@ const shortChapter = (chapter: string) =>
 /** 题集题出处：“张宇1000题 · 强化篇 第1章 · 第 3 题”；没有任何来源字段时为空字符串 */
 function collectionSource(access: Access & CollectionSource) {
   const chapter = access.book?.chapter?.trim() || access.chapter?.trim() || ''
-  const section = [access.book?.part?.trim(), chapter && shortChapter(chapter)]
+  const label = access.collection_label?.trim() ?? ''
+  // 题集名已含篇名（“张宇1000题基础篇”“……测试卷”）时不再重复显示篇名
+  const part = access.book?.part?.trim() ?? ''
+  const section = [part && !label.includes(part) ? part : '', chapter && shortChapter(chapter)]
     .filter(Boolean)
     .join(' ')
   const raw =
     String(access.book?.number ?? '').trim() || (access.number ? String(access.number) : '')
   const number = raw ? (/^\d+$/.test(raw) ? `第 ${raw} 题` : raw) : ''
-  if (!access.collection_label?.trim() && !section) return ''
-  return [access.collection_label?.trim(), section, number].filter(Boolean).join(' · ')
+  if (!label && !section) return ''
+  return [label, section, number].filter(Boolean).join(' · ')
 }
 
 /**

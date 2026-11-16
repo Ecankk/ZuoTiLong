@@ -1,0 +1,40 @@
+[package]
+name = "desktop-core"
+version = "0.10.0"
+description = "做题龙桌面外壳的平台无关部分：定位、协议、子进程、Job Object、日志与核对"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+name = "desktop_core"
+
+[[bin]]
+name = "fake-sidecar"
+path = "src/bin/fake-sidecar.rs"
+test = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+getrandom = "0.3"
+sha2 = "0.10"
+url = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Registry",
+  "Win32_System_Environment",
+  "Win32_System_Com",
+  "Win32_UI_Shell",
+  "Wdk_System_SystemServices",
+  "Win32_System_SystemInformation",
+] }
+
+[dev-dependencies]
+tempfile = "3"

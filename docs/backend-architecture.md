@@ -73,6 +73,8 @@ Agent参与过程：
 | app/bank/ | 题目材料、身份、标注、访问/曝光与程序召回 |
 | app/documents/ | PDF/OCR、切题与识别进度 |
 | app/storage/ | 数据库、文件材料、共享资料、备份恢复及只读快照 |
+| app/desktop/ | 桌面模式（`--desktop`/`--prepare-desktop`）：只用CLI给定的资源/数据/题库路径并覆盖本进程环境；题库种子（mathlens.library-seed/v1）校验、同卷staging后原子发布；stdout `mathlens.desktop/v1` JSONL进度、stdin shutdown/EOF关闭、server.json与health附nonce |
+| scripts/packaging/、src-tauri/ | 发行构建：Windows wheel哈希锁、PyInstaller onedir冻结后端、题库种子构建（只收实际引用的资源）；Tauri外壳（单实例、prepare/serve生命周期、Job Object、固定桥接命令、NSIS）。产物在被忽略的build/ |
 
 默认入口是`python -m app`，BAT也走这一入口。main.py只组装服务生命周期、HTTP边界和路由；路由调用services，服务组织领域操作和存储。配置由AppConfig传入，AppRuntime持有每个应用实例的数据库与服务；请求经依赖注入取用。
 
@@ -102,9 +104,10 @@ ZuoTiLong/
 | 通用目录 | knowledge_catalog_*、knowledge_source_*、knowledge_nodes及目录包/来源表 |
 | 通用题目 | bank_collections（题集）、bank_questions（每题一个collection_id）、bank_resources、bank_identity、bank_links、同题审核、导航校正及navigation_changes变更计数 |
 | 通用标注 | question_annotations、question_annotation_links、question_annotation_topics、annotation_provenance及共享索引表 |
-| 个人原卷 | papers、questions、agent_reports、question_diagnoses、paper_question_bindings |
+| 个人原卷 | papers、questions、agent_reports、question_diagnoses、paper_question_bindings。papers的作答日期为exam_date＋exam_date_precision（day/month/unknown）＋exam_date_unknown_reason，重复上传裁定为import_decision（accepted/pending_duplicate/withdrawn）；已有库启动时在initialize_split中补列 |
 | 个人练习 | diagnostic_probes、practice_goals、计划成员/关联表、probe_attempts、固定材料绑定、批改与解答修订历史 |
 | 个人自由练习 | free_practice_attempts（题库单题作答，request_id唯一，每次作答冻结题面/参考/标注/定义快照于practice-materials，个人备份包含、闲置上传清理保留其照片）；聚合为独立来源free_practice，同步整题判定不扩散为各考点证据，只有AI批改明确指出且属于冻结标注的topic_ids影响原子状态，可由preferences.include_free_practice排除 |
+| 个人画像练习与已读 | profile_practice_batches、profile_practice_exercises、profile_practice_attempts（按画像选题，不挂靠虚构试卷，材料与来源/定义固定在practice-materials）；feedback_read_receipts（批改已读，只记已读不改批改）。画像批改只按实际报告topic_ids与固定范围的交集进入source=profile_practice证据，不衔接新选题或整卷整理 |
 | 个人证据与设置 | learning_events、knowledge_mappings、knowledge_mapping_versions、preferences、bank_views、bank_exposures、bank_cross_reviews；画像为只读聚合 |
 | 本机执行 | learning_tasks、learning_results、task_reads、workflow_jobs、knowledge_preparation_*、tool_audit、record_versions；包含通用维护任务的执行日志，也只保存在工作区 |
 

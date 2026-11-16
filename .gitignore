@@ -59,3 +59,12 @@ docs/local/
 
 # Local review launcher (points at private data)
 /start-review.bat
+
+# Desktop shell (Tauri): build output, generated schemas, CLI install, B→D stage dir
+src-tauri/target/
+src-tauri/gen/
+src-tauri/node_modules/
+/build/
+
+# Manual test sessions (local launcher, tester feedback, screenshots)
+/manual-testing/

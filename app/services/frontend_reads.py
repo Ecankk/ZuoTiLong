@@ -331,6 +331,9 @@ class FrontendReads:
             groups=[]
             for row in conn.execute('SELECT * FROM bank_collections ORDER BY sort_order,id'):
                 questions=list(conn.execute("SELECT b.id,b.math_types_json,i.math_type FROM bank_questions b LEFT JOIN bank_identity i ON i.bank_id=b.id WHERE collection_id=?",(row['id'],)))
+                from app.bank.entities import visible_ids
+                display=set(visible_ids(conn,[q['id'] for q in questions],collection=row['id']))
+                questions=[q for q in questions if q['id'] in display]
                 counts={}
                 for q in questions:
                     for typ in math_types(q['math_types_json'],q['math_type']):
@@ -366,6 +369,8 @@ class FrontendReads:
                 matched={r['id'] for r in conn.execute('SELECT id,stem FROM bank_questions') if query in r['stem'].casefold()}
                 visible=viewable_ids(conn)
                 ids=[bid for bid in ids if bid in matched and bid in visible]
+            from app.bank.entities import visible_ids
+            ids=visible_ids(conn,ids,collection=collection)
             result = page(ids, offset, limit)
             result['items'] = [{**public_bank(conn, bid, view='library'), **metadata(conn, bid)} for bid in result['items']]
             from app.bank.access import text_resources

@@ -64,6 +64,8 @@ def initialize_split(config):
                     collections(conn)
                     from app.bank.applicability import initialize as applicability
                     applicability(conn)
+                    from app.bank.entities import initialize as entities
+                    entities(conn)
                     from app.storage.navigation_index import initialize as navigation
                     navigation(conn)
                     from app.storage.library_identity import initialize

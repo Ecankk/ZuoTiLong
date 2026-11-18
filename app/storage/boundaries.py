@@ -17,6 +17,7 @@ knowledge_source_entries knowledge_catalog_releases knowledge_catalog_state
 knowledge_catalog_nodes knowledge_catalog_redirects knowledge_catalog_packages
 knowledge_package_sources knowledge_package_entries knowledge_package_activations
 annotation_provenance bank_source_records bank_source_versions library_state bank_collections navigation_changes
+question_entities question_entity_members question_entity_events
 '''.split())
 
 

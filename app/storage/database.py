@@ -143,4 +143,6 @@ def _initialize_connection(database,conn):
     initialize_navigation(conn)
     if database.config.demo and conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0:
         seed(conn)
+    from app.bank.entities import initialize as initialize_entities
+    initialize_entities(conn)
     conn.commit()

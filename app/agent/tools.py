@@ -472,6 +472,9 @@ def _execute(root,data,action,payload,*,lease=None):
                     'resource_sha256':{key:hashlib.sha256(material_path(data,row[key+'_path']).read_bytes()).hexdigest()
                                        for key in ('question','analysis','answer') if row[key+'_path'] and material_path(data,row[key+'_path']).is_file()},
                     'instruction':('该检验题干可直接展示，不需要跨类别核准；解析另行由用户选择查看。' if visible and role=='question' else '当前资源仅内部阅读；仍隐藏的题干只给年份题号，未展示的解析不提前公布。' if not visible else '用户已选择查看解析，可结合实际作答讲解。')}
+            from app.bank.entities import presentation
+            entity=presentation(conn,bid)
+            if entity is not None: result.update(entity)
             if material['text']:
                 result['text']=material['text']
                 result['resource_sha256'][role]=material['sha256'] if not row[role+'_path'] else result['resource_sha256'].get(role)

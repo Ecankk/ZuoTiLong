@@ -15,17 +15,23 @@ ANNOTATIONS={'question_annotations':'id','annotation_provenance':'annotation_id'
 PAIRS={'bank_links','bank_identity_reviews'}
 PACKAGES={'annotation_cache_state':'package_sha256','annotation_cache_packages':'sha256'}
 CATALOG={'knowledge_catalog_state','knowledge_catalog_releases','knowledge_catalog_nodes','knowledge_catalog_redirects','knowledge_nodes'}
+ENTITY_MEMBERS={'question_entity_members'}
+ENTITY_EVENTS={'question_entity_events'}
 
 def initialize(conn):
     conn.execute('CREATE TABLE IF NOT EXISTS navigation_changes(key TEXT PRIMARY KEY,version INTEGER NOT NULL)')
     tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    for table in sorted((DIRECT.keys()|ANNOTATIONS.keys()|PAIRS|PACKAGES.keys()|CATALOG)&tables):
+    for table in sorted((DIRECT.keys()|ANNOTATIONS.keys()|PAIRS|PACKAGES.keys()|CATALOG|ENTITY_MEMBERS|ENTITY_EVENTS)&tables):
         columns=[r[1] for r in conn.execute('PRAGMA table_info('+table+')')]
         for action in ('INSERT','UPDATE','DELETE'):
             sides=('NEW',) if action=='INSERT' else ('OLD',) if action=='DELETE' else ('OLD','NEW')
             statements=[]
             for side in sides:
                 if table in DIRECT:select='SELECT '+side+'.'+DIRECT[table]+',1'
+                elif table in ENTITY_MEMBERS:
+                    select='SELECT '+side+'.bank_id,1 UNION SELECT e.display_bank_id,1 FROM question_entities e WHERE e.id='+side+'.entity_id'
+                elif table in ENTITY_EVENTS:
+                    select="SELECT json_extract("+side+".after_json,'$.bank_id'),1 UNION SELECT e.display_bank_id,1 FROM question_entities e WHERE e.id=json_extract("+side+".after_json,'$.entity_id')"
                 elif table in ANNOTATIONS:
                     select='SELECT bank_id,1 FROM question_annotation_links WHERE annotation_id='+side+'.'+ANNOTATIONS[table]+' AND true'
                 elif table in PACKAGES:

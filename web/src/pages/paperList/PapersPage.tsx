@@ -184,10 +184,12 @@ function UploadCard() {
     void client.invalidateQueries({ queryKey: queryKeys.tasks })
     const duplicate = results.find(({ result }) => isDuplicate(result))
     if (duplicate) setDeciding(duplicate.key)
-    // 有话要说（日期没写入、认不出卷别）时留在上传结果里，不直接跳走
+    // 有话要说（同一个文件之前传过、日期没写入、认不出卷别）时留在上传结果里，不直接跳走；
+    // 否则直接跳到原卷，学生会以为“传上去的卷子不见了”（W-6）
     else if (
       items.length === 1 &&
       results.length === 1 &&
+      !results[0].result.reused &&
       !results[0].result.date_ignored &&
       results[0].result.duplicate_check?.status !== 'unresolved'
     )

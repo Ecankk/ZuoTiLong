@@ -354,3 +354,19 @@ it('counts the existing papers when more than one matches', async () => {
   const dialog = await screen.findByRole('dialog', { name: '这份卷之前传过' })
   expect(dialog).toHaveTextContent('你已经有 2 份 2023 年数学一：')
 })
+
+it('stays on the upload result when the very same PDF was uploaded before (W-6)', async () => {
+  const state = server({
+    importReply: () => ({ ...clearImport('p-day'), reused: true, date_ignored: false }),
+  })
+  const router = renderAt('/papers')
+  const upload = await screen.findByRole('region', { name: '上传试卷' })
+  await userEvent.upload(within(upload).getByLabelText('选择试卷 PDF'), pdf('2023数一.pdf'))
+  await userEvent.click(within(upload).getByRole('button', { name: '上传' }))
+  await vi.waitFor(() => expect(state.imports).toHaveLength(1))
+  const link = await within(upload).findByRole('link', { name: '这个文件之前传过，打开原来那份' })
+  expect(link).toHaveAttribute('href', '/papers/p-day')
+  // 不自动跳走：学生能看到“之前传过”的说明，再自己决定打开
+  await new Promise((r) => setTimeout(r, 50))
+  expect(router.state.location.pathname).toBe('/papers')
+})

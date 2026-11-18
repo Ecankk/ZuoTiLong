@@ -637,7 +637,7 @@ export function PracticePage() {
         </div>
       )}
       {data.items.length === 0 ? (
-        <Card padded className={styles.notice}>
+        <Card padded className={styles.emptyPage}>
           {includeInactive
             ? '还没有练习。完成一份试卷的逐题分析后，做题龙会为薄弱考点挑选练习。'
             : '现在没有可做的练习。完成一份试卷的逐题分析后，做题龙会为薄弱考点挑选练习；以前停用的练习可以勾选右上角查看。'}

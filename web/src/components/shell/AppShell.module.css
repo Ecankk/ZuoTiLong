@@ -18,6 +18,25 @@
   padding: var(--space-8) var(--page-pad) var(--space-12);
 }
 
+/* 换页时页面淡入上移；同一路由内换题等不重新挂载，不会重播。
+ * 骨架换成内容时，新挂载的区块也走这一段，替代硬切。 */
+.content > * {
+  animation: page-in var(--duration-base) var(--ease-out) backwards;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--motion-shift);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content > * {
+    animation: none;
+  }
+}
+
 /* 连接中断时贴在内容区顶部 */
 .banner {
   position: sticky;

@@ -1,5 +1,6 @@
 /* 看图层：深色底，图片尽量大；文字用浅色 */
 .overlay {
+  composes: fullscreen from '../../components/ui/Motion.module.css';
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -7,6 +8,7 @@
 }
 
 .viewer {
+  composes: fullscreen from '../../components/ui/Motion.module.css';
   position: fixed;
   inset: 0;
   z-index: 101;

@@ -67,8 +67,16 @@ textarea {
   color: inherit;
 }
 
-button {
+button,
+select {
   cursor: pointer;
+}
+
+/* 键盘聚焦输入框时描边也变主色，和各页面已有的聚焦样式一致 */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--color-primary);
 }
 
 a {

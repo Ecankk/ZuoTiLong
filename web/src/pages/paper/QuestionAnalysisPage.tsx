@@ -17,6 +17,7 @@ import { cx } from '../../lib/cx'
 import { QuestionStrip } from './QuestionStrip'
 import { ReviewCard } from './ReviewCard'
 import styles from './QuestionAnalysisPage.module.css'
+import { LoadingImage } from '../../components/ui/LoadingImage'
 
 type Step = { text: string; mark?: 'error' | 'fix' | 'affected' }
 
@@ -77,7 +78,12 @@ function CropImage({ url, alt, onOpen }: { url: string; alt: string; onOpen: () 
     )
   return (
     <button type="button" className={styles.cropButton} onClick={onOpen} title="点击放大查看">
-      <img className={styles.cropImage} src={url} alt={alt} onError={() => setFailed(true)} />
+      <LoadingImage
+        className={styles.cropImage}
+        src={url}
+        alt={alt}
+        onError={() => setFailed(true)}
+      />
     </button>
   )
 }
@@ -358,7 +364,7 @@ function Analysis({ detail }: { detail: QuestionResponse }) {
     <>
       <Card padded aria-label="结论">
         <Layer index={layer++} title="结论" />
-        <div className={styles.verdict}>
+        <div key={question.number} className={styles.verdict}>
           <CorrectnessChip value={question.correctness} />
           <span className={styles.meta}>
             第 {question.number} 题{question.question_type && ` · ${question.question_type}`}

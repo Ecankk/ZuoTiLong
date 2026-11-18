@@ -62,6 +62,24 @@
   color: var(--text-regular);
 }
 
+/* 筛选/搜索没有结果：与整页空状态同一套样子，换成放大镜图标，并给出“清除筛选” */
+.noResult {
+  composes: page from '../../components/ui/EmptyState.module.css';
+}
+
+.noResult::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");
+}
+
+.results {
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.results.updating {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
@@ -69,7 +87,38 @@
   transition: opacity var(--duration-base) var(--ease-out);
 }
 
+/* 列表前 8 张错开 N×--motion-stagger 出现，之后的不再延迟 */
+
+.grid > .card:nth-child(2) {
+  animation-delay: calc(1 * var(--motion-stagger));
+}
+
+.grid > .card:nth-child(3) {
+  animation-delay: calc(2 * var(--motion-stagger));
+}
+
+.grid > .card:nth-child(4) {
+  animation-delay: calc(3 * var(--motion-stagger));
+}
+
+.grid > .card:nth-child(5) {
+  animation-delay: calc(4 * var(--motion-stagger));
+}
+
+.grid > .card:nth-child(6) {
+  animation-delay: calc(5 * var(--motion-stagger));
+}
+
+.grid > .card:nth-child(7) {
+  animation-delay: calc(6 * var(--motion-stagger));
+}
+
+.grid > .card:nth-child(8) {
+  animation-delay: calc(7 * var(--motion-stagger));
+}
+
 .card {
+  composes: enter from '../../components/ui/Motion.module.css';
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -187,6 +236,7 @@
 }
 
 .overlay {
+  composes: overlay from '../../components/ui/Motion.module.css';
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -195,6 +245,7 @@
 }
 
 .dialog {
+  composes: dialog from '../../components/ui/Motion.module.css';
   position: fixed;
   top: 50%;
   left: 50%;

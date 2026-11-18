@@ -63,6 +63,9 @@
   color: var(--text-regular);
   font-size: var(--font-size-sm);
   cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .collapseToggle:hover {
@@ -70,19 +73,25 @@
   color: var(--color-primary);
 }
 
+/* 与旁边的小号文字按钮同高（32px），悬停时显出描边，成组对齐 */
 .iconButton {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .iconButton:hover {
+  border-color: var(--border-default);
   background: var(--surface-sunken);
   color: var(--text-strong);
 }
@@ -201,7 +210,10 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* 正误结论出现时轻微放大淡入（换题时按题号重新挂载，会重播） */
 .verdict {
+  composes: result from '../../components/ui/Motion.module.css';
+  transform-origin: left center;
   display: flex;
   align-items: center;
   gap: var(--space-3);

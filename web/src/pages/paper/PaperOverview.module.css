@@ -209,6 +209,7 @@
 
 /* 归档后的撤销提示 */
 .toast {
+  composes: toast from '../../components/ui/Motion.module.css';
   position: fixed;
   bottom: var(--space-6);
   left: 50%;

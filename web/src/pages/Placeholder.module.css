@@ -9,6 +9,10 @@
   line-height: 1.9;
 }
 
+.links {
+  margin-top: var(--space-4);
+}
+
 .muted {
   margin-top: var(--space-2);
   color: var(--text-muted);

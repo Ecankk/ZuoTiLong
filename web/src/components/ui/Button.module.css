@@ -16,6 +16,9 @@
   transition:
     background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    filter var(--duration-fast) var(--ease-out),
     transform var(--duration-fast) var(--ease-out);
 }
 
@@ -30,8 +33,19 @@
 
 .button:disabled {
   opacity: 0.5;
-  cursor: default;
+  cursor: not-allowed;
   transform: none;
+}
+
+/* 禁用时不给悬停反馈，免得看起来能点 */
+.button:disabled:hover {
+  background: var(--surface-card);
+  filter: none;
+}
+
+/* 自带阴影的按钮：焦点环与自身阴影叠加，否则全局焦点环会被盖掉 */
+.primary:focus-visible {
+  box-shadow: var(--shadow-button), var(--focus-ring);
 }
 
 .primary {
@@ -43,6 +57,12 @@
 
 .primary:hover {
   background: var(--color-primary-hover);
+}
+
+/* 按下：再深一档并收起外阴影，有“压下去”的感觉 */
+.primary:active:not(:disabled) {
+  background: var(--color-primary-hover);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 
 .primary:disabled:hover {
@@ -59,6 +79,10 @@
   background: var(--color-primary-faint);
 }
 
+.ghost:disabled:hover {
+  background: transparent;
+}
+
 .soft {
   border-color: transparent;
   background: var(--color-primary-soft);
@@ -68,6 +92,10 @@
 .soft:hover {
   background: var(--color-primary-soft);
   filter: brightness(0.97);
+}
+
+.soft:disabled:hover {
+  background: var(--color-primary-soft);
 }
 
 .sm {

@@ -74,6 +74,7 @@
 }
 
 .uploadRow {
+  composes: enter from '../../components/ui/Motion.module.css';
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -81,7 +82,7 @@
 }
 
 .fileName {
-  max-width: 220px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -139,12 +140,16 @@
 .field {
   display: flex;
   flex-direction: column;
+  /* 多份时每行的名称框同宽，后面的日期列才能对齐 */
+  width: 220px;
+  max-width: 100%;
   gap: var(--space-1);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
 }
 
 .field input {
+  width: 100%;
   min-width: 160px;
   height: 36px;
   padding: 0 var(--space-3);
@@ -282,6 +287,7 @@
 }
 
 .paper {
+  composes: enter from '../../components/ui/Motion.module.css';
   position: relative;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -324,6 +330,41 @@
 .cardLink:focus-visible {
   text-decoration: none;
   outline: none;
+}
+
+/* 整张卡片已经画了焦点环，标题自己不再套一层框 */
+.cardLink:focus-visible {
+  box-shadow: none;
+}
+
+/* 列表前 8 张错开 N×--motion-stagger 出现，之后的不再延迟 */
+
+.grid > .paper:nth-child(2) {
+  animation-delay: calc(1 * var(--motion-stagger));
+}
+
+.grid > .paper:nth-child(3) {
+  animation-delay: calc(2 * var(--motion-stagger));
+}
+
+.grid > .paper:nth-child(4) {
+  animation-delay: calc(3 * var(--motion-stagger));
+}
+
+.grid > .paper:nth-child(5) {
+  animation-delay: calc(4 * var(--motion-stagger));
+}
+
+.grid > .paper:nth-child(6) {
+  animation-delay: calc(5 * var(--motion-stagger));
+}
+
+.grid > .paper:nth-child(7) {
+  animation-delay: calc(6 * var(--motion-stagger));
+}
+
+.grid > .paper:nth-child(8) {
+  animation-delay: calc(7 * var(--motion-stagger));
 }
 
 /* 叠在铺满的链接之上，单独可点 */
@@ -389,8 +430,7 @@
 }
 
 .empty {
-  max-width: var(--read-max);
-  color: var(--text-regular);
+  composes: page from '../../components/ui/EmptyState.module.css';
 }
 
 .doneCol {

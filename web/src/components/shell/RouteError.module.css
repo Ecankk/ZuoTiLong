@@ -2,6 +2,12 @@
   max-width: var(--read-max);
 }
 
+/* 外壳本身出错时（顶层错误边界）没有侧栏和内容区边距：居中并留出页面边距 */
+:global(#root) > .card {
+  margin: var(--space-12) auto;
+  width: calc(100% - 2 * var(--page-pad));
+}
+
 .card strong {
   display: block;
   color: var(--text-strong);

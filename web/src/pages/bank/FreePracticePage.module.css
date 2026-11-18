@@ -32,6 +32,11 @@
   margin-bottom: var(--space-3);
 }
 
+.metaFresh {
+  composes: result from '../../components/ui/Motion.module.css';
+  transform-origin: left center;
+}
+
 .answerHead {
   display: flex;
   align-items: baseline;
@@ -134,10 +139,18 @@
 }
 
 .grading {
+  composes: fadeIn from '../../components/ui/Motion.module.css';
   display: flex;
   align-items: center;
   gap: var(--space-2);
   color: var(--text-regular);
+  line-height: 1.7;
+}
+
+.gradingWarn {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--status-partial-soft);
 }
 
 .spinner {

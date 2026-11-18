@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { friendlyError } from '../../lib/errors'
 import { CorrectNumbersButton } from './CorrectNumbers'
 import styles from './ConfirmSplit.module.css'
+import { LoadingImage } from '../../components/ui/LoadingImage'
 
 /**
  * 已切题、还没开始分析：可以分析、还没有分析结果、也没有该卷的排队或运行任务。
@@ -53,7 +54,7 @@ function CropDialog({ question, onClose }: { question: QuestionSummary; onClose:
             </Dialog.Close>
           </header>
           {urls.map((url, index) => (
-            <img
+            <LoadingImage
               key={url}
               className={styles.crop}
               src={url}

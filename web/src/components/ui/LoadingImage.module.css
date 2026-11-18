@@ -1,0 +1,32 @@
+/* 下载中：占位高度 + 骨架屏微光；文字色透明，避免 alt 文字闪现 */
+.pending {
+  min-height: 160px;
+  color: transparent;
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 0%,
+    var(--surface-placeholder) 50%,
+    var(--surface-sunken) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.loaded {
+  composes: fadeIn from './Motion.module.css';
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pending {
+    animation: none;
+  }
+}

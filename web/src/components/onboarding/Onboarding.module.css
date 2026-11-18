@@ -1,13 +1,14 @@
 .overlay {
+  composes: overlay from '../ui/Motion.module.css';
   position: fixed;
   inset: 0;
   z-index: 100;
   background: var(--overlay-scrim);
   backdrop-filter: blur(4px);
-  animation: fade var(--duration-base) var(--ease-out);
 }
 
 .dialog {
+  composes: dialog from '../ui/Motion.module.css';
   position: fixed;
   top: 50%;
   left: 50%;
@@ -22,20 +23,6 @@
   background: var(--surface-card);
   box-shadow: var(--shadow-raised);
   transform: translate(-50%, -50%);
-  animation: rise var(--duration-slow) var(--ease-out);
-}
-
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% + 8px));
-  }
 }
 
 .top {
@@ -63,6 +50,7 @@
   height: 4px;
   border-radius: 2px;
   background: var(--border-default);
+  transition: background var(--duration-slow) var(--ease-out);
 }
 
 .progress i.done {
@@ -74,11 +62,21 @@
   font-size: var(--font-size-xs);
 }
 
+.dialog:focus-visible {
+  /* 打开时焦点在弹窗本身，不需要再画一圈焦点环 */
+  box-shadow: var(--shadow-raised);
+}
+
 .dialog h2 {
   margin-bottom: var(--space-3);
 }
 
+.stepTitle {
+  composes: enter from '../ui/Motion.module.css';
+}
+
 .body {
+  composes: enter from '../ui/Motion.module.css';
   min-height: 200px;
   color: var(--text-regular);
   line-height: 1.8;
@@ -181,7 +179,7 @@
 }
 
 .recheck {
-  margin-top: var(--space-3);
+  margin: var(--space-3) 0;
 }
 
 .hint {

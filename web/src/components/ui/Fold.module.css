@@ -11,6 +11,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-4) 0;
+  border-radius: var(--radius-xs);
   list-style: none;
   cursor: pointer;
   color: var(--text-strong);
@@ -40,4 +41,22 @@
 
 .body {
   padding: 0 0 var(--space-5) 26px;
+}
+
+/* 展开时内容淡入下移；只动透明度和位移，不做高度动画，下方内容不会被拉扯抖动 */
+.fold[open] > .body {
+  animation: fold-in var(--duration-base) var(--ease-out);
+}
+
+@keyframes fold-in {
+  from {
+    opacity: 0;
+    translate: 0 calc(-1 * var(--motion-shift));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fold[open] > .body {
+    animation: none;
+  }
 }

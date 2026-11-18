@@ -224,23 +224,45 @@ function Conclusions({ overview }: { overview: Overview }) {
   const sameAsTop = raw.weakest_chapter?.node_id === overview.weak_spots[0]?.node_id
   const c = sameAsTop ? { ...raw, weakest_chapter: null } : raw
   const comparison = c.independent_correct_comparison
-  // 都没有结论时只留一句，不摆空卡
+  // 都没有结论时只留一句，不摆空卡。接口给的原因本身常以“记录还不够”开头，
+  // 所以引导句只说“暂时不下哪些结论”，原因原样跟在后面，不再自己加“记录还不够”。
   if (!c.weakest_chapter && !c.strongest_chapter && !comparison) {
-    const reasons = [
-      ...new Set(
-        [
-          sameAsTop ? null : c.unavailable_reasons.weakest_chapter,
-          c.unavailable_reasons.strongest_chapter,
-          c.unavailable_reasons.independent_correct_comparison,
-        ].filter((r): r is string => Boolean(r)),
-      ),
+    const pending = [
+      { label: '哪一章强', reason: c.unavailable_reasons.strongest_chapter },
+      // 排行第一项已经回答了“哪一章弱”时不再提它
+      ...(sameAsTop && raw.weakest_chapter
+        ? []
+        : [
+            { label: '哪一章弱', reason: sameAsTop ? null : c.unavailable_reasons.weakest_chapter },
+          ]),
+      { label: '有没有进步', reason: c.unavailable_reasons.independent_correct_comparison },
     ]
+    const lead = `暂时不下“${pending.map((p) => p.label).join('、')}”的结论`
+    const withReason = pending.filter((p): p is { label: string; reason: string } =>
+      Boolean(p.reason),
+    )
+    const distinct = [...new Set(withReason.map((p) => p.reason))]
     return (
       <Card padded aria-label="结论">
-        <p className={styles.noConclusion}>
-          记录还不够，暂时不下“哪一章强、哪一章弱、有没有进步”的结论。
-          {reasons.length > 0 && ` ${reasons.join(' ')}`}
-        </p>
+        {distinct.length === 0 ? (
+          <p className={styles.noConclusion}>记录还不够，{lead}。</p>
+        ) : distinct.length === 1 ? (
+          <p className={styles.noConclusion}>
+            {lead}：{distinct[0]}
+          </p>
+        ) : (
+          <>
+            <p className={styles.noConclusion}>{lead}：</p>
+            <ul className={styles.noConclusionReasons}>
+              {withReason.map((p) => (
+                <li key={p.label}>
+                  <span>{p.label}</span>
+                  {p.reason}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </Card>
     )
   }
@@ -485,6 +507,7 @@ export function ProfilePage() {
         {header}
         <ErrorState
           error={error}
+          title="画像没能读取"
           onRetry={() => void refetch()}
           back={{ to: '/', label: '回到首页' }}
         />

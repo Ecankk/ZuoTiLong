@@ -1,7 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
-import { request } from '../../api/client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { ApiError, request } from '../../api/client'
 import { endpoints } from '../../api/endpoints'
-import { useAction, useDataStatus } from '../../api/queries'
+import { useAction, useDataStatus, useTasks } from '../../api/queries'
+import type { DataStatus } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { ErrorState } from '../../components/ui/ErrorState'
@@ -32,12 +34,33 @@ const useBackups = () =>
       request<{ backups: { name: string; bytes: number }[] }>('/api/maintenance/backups'),
   })
 
+/** 任务进行中时后台拒绝写入（409）：说清楚原因，不转述“停止后重试”（运行中的任务用户停不了） */
+const BUSY_TEXT = '做题龙正在处理任务（例如分析试卷），这时不能备份。等任务完成后再点“立即备份”。'
+
+function backupError(error: unknown) {
+  return error instanceof ApiError && error.status === 409 ? BUSY_TEXT : friendlyError(error)
+}
+
 /** 数据与备份：备份时间、数据大小、“立即备份”，以及恢复说明。原始路径在高级设置里。 */
 export function DataCard() {
+  const client = useQueryClient()
   const { data, error, isPending, refetch } = useDataStatus()
   const { data: backups } = useBackups()
-  const backup = useAction(() => endpoints.backup(), [['data-status']])
+  const { data: tasks } = useTasks()
+  const [doneAt, setDoneAt] = useState<string | null>(null)
+  // 成功后同时刷新“最近备份”和备份份数（两者都在 data-status 下）
+  const backup = useAction(async () => {
+    const result = await endpoints.backup()
+    const at = new Date().toISOString()
+    setDoneAt(at)
+    // 先把“最近备份”改成刚才的时间，接口刷新回来后以接口为准
+    client.setQueryData<DataStatus>(['data-status'], (old) =>
+      old ? { ...old, last_backup_at: at } : old,
+    )
+    return result
+  }, [['data-status']])
   const count = backups?.backups.length ?? 0
+  const busy = Boolean(tasks?.active)
   return (
     <Card padded className={styles.section} aria-label="数据与备份">
       <h2>数据与备份</h2>
@@ -87,16 +110,31 @@ export function DataCard() {
         </>
       )}
       <div className={styles.row}>
-        <Button disabled={backup.isPending} onClick={() => backup.mutate(undefined)}>
+        <Button
+          disabled={backup.isPending || busy}
+          onClick={() => {
+            setDoneAt(null)
+            backup.mutate(undefined)
+          }}
+        >
           {backup.isPending ? '正在备份…' : '立即备份'}
         </Button>
-        {backup.data && (
-          <span className={styles.saved} role="status">
-            已备份 {backup.data.files} 个文件
-          </span>
-        )}
+        <span role="status" aria-live="polite" className={styles.backupStatus}>
+          {backup.isPending ? (
+            <span className={styles.note}>正在备份，请稍等…</span>
+          ) : backup.isSuccess && backup.data && doneAt ? (
+            <span className={styles.saved}>
+              备份好了：{when(doneAt)}，共 {backup.data.files} 个文件
+            </span>
+          ) : null}
+        </span>
       </div>
-      {backup.error && <p className={styles.error}>{friendlyError(backup.error)}</p>}
+      {busy && !backup.isPending && <p className={styles.note}>{BUSY_TEXT}</p>}
+      {backup.error && !busy && (
+        <p className={styles.error} role="alert">
+          没能备份：{backupError(backup.error)}
+        </p>
+      )}
       <p className={styles.note}>
         备份包含原卷、照片、分析和练习记录，保存在数据文件夹的“备份”里。
       </p>

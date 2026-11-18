@@ -357,7 +357,10 @@
   border-radius: var(--radius-md);
 }
 
+/* 批改结果出现时轻微放大淡入 */
 .feedbackTop {
+  composes: result from '../../components/ui/Motion.module.css';
+  transform-origin: left center;
   display: flex;
   align-items: center;
   gap: var(--space-3);

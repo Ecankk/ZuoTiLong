@@ -70,6 +70,7 @@
 }
 
 .overlay {
+  composes: overlay from '../../components/ui/Motion.module.css';
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -78,6 +79,7 @@
 }
 
 .dialog {
+  composes: dialog from '../../components/ui/Motion.module.css';
   position: fixed;
   top: 50%;
   left: 50%;

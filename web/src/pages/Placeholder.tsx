@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
+import { ButtonLink } from '../components/ui/Button'
+import { ButtonRow } from '../components/ui/ButtonRow'
 import { Card } from '../components/ui/Card'
 import { PageHeader } from '../components/ui/PageHeader'
 import styles from './Placeholder.module.css'
@@ -36,17 +37,13 @@ export const NotFoundPage = () => (
     <PageHeader title="没有找到这个页面" />
     <Card padded className={styles.card}>
       <p>这个地址没有对应的页面，可能链接已经过期。可以回到：</p>
-      <ul>
-        <li>
-          <Link to="/">首页</Link>
-        </li>
-        <li>
-          <Link to="/papers">试卷</Link>
-        </li>
-        <li>
-          <Link to="/practice">练习</Link>
-        </li>
-      </ul>
+      <ButtonRow className={styles.links}>
+        <ButtonLink variant="primary" to="/">
+          首页
+        </ButtonLink>
+        <ButtonLink to="/papers">试卷</ButtonLink>
+        <ButtonLink to="/practice">练习</ButtonLink>
+      </ButtonRow>
     </Card>
   </>
 )

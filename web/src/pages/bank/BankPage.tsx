@@ -11,6 +11,7 @@ import { Chip } from '../../components/ui/Chip'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
 import { Skeleton } from '../../components/ui/Skeleton'
+import { cx } from '../../lib/cx'
 import {
   BankQuestionCard,
   BankQuestionDialog,
@@ -112,6 +113,7 @@ export function BankPage() {
     setParams(next)
   }
   const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1
+  const filtered = Boolean(filter.q || filter.topic || filter.year || filter.mathType)
   const opened = items.find((item) => item.id === openId)
 
   return (
@@ -191,7 +193,11 @@ export function BankPage() {
             </button>
           </span>
         )}
-        {data && <span className={styles.count}>共 {data.total} 题</span>}
+        {data && (
+          <span className={styles.count} aria-live="polite">
+            {isPlaceholderData ? '正在筛选…' : `共 ${data.total} 题`}
+          </span>
+        )}
       </Card>
 
       {(isError || collectionsError) && (
@@ -217,16 +223,27 @@ export function BankPage() {
           <Skeleton />
         </div>
       )}
-      {data && data.total === 0 && (
-        <Card padded className={styles.notice}>
-          {filter.q
-            ? `没有找到题面含“${filter.q}”的题目，可以换个说法，或清除其他筛选。`
-            : isExam
-              ? '没有符合条件的题目，换个类别或年份试试。'
-              : '没有符合条件的题目，换个类别试试。'}
+      {data && data.total === 0 && !isPlaceholderData && (
+        <Card padded className={styles.noResult}>
+          <p>
+            {filter.q
+              ? `没有找到题面含“${filter.q}”的题目，可以换个说法，或清除其他筛选。`
+              : isExam
+                ? '没有符合条件的题目，换个类别或年份试试。'
+                : '没有符合条件的题目，换个类别试试。'}
+          </p>
+          {filtered && (
+            <Button size="sm" onClick={() => update({ q: '', topic: '', year: '', math_type: '' })}>
+              清除筛选
+            </Button>
+          )}
         </Card>
       )}
-      <div style={{ opacity: isPlaceholderData ? 0.6 : 1 }}>
+      {/* 换筛选时先保留旧结果并调淡，新结果到了再恢复 */}
+      <div
+        className={cx(styles.results, isPlaceholderData && styles.updating)}
+        aria-busy={isPlaceholderData || undefined}
+      >
         {(isExam ? [{ section: '', cards: items }] : bySection(items)).map((group, index) => (
           <section key={`${index}-${group.section}`} className={styles.group}>
             {group.section && <h2 className={styles.section}>{group.section}</h2>}

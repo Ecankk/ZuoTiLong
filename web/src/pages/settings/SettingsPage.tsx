@@ -13,6 +13,7 @@ import { PageHeader } from '../../components/ui/PageHeader'
 import { Segmented } from '../../components/ui/Segmented'
 import { friendlyError } from '../../lib/errors'
 import { SETUP_GUIDE_PATH } from '../../lib/setup'
+import { scrollBehavior } from '../../lib/motion'
 import { CollectionImportCard } from './CollectionImportCard'
 import { DataCard, DataPaths } from './DataCard'
 import { CodexPathCard, DesktopAbout, DesktopDataCard } from './DesktopCards'
@@ -118,7 +119,7 @@ function Anchors() {
             event.preventDefault()
             document
               .getElementById(section.id)
-              ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              ?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
           }}
         >
           {section.label}

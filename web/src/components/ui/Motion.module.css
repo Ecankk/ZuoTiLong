@@ -1,0 +1,145 @@
+/*
+ * 共享进出场动效。其他模块用 composes 复用，不再各写各的 @keyframes：
+ *   .overlay { composes: overlay from '../ui/Motion.module.css'; }
+ * 时长与曲线全部来自 tokens.css；只动 opacity / transform 系属性，不引起布局变化。
+ * 弹窗位移用独立的 translate / scale 属性，与居中用的 transform: translate(-50%, -50%) 叠加而不冲突。
+ * Radix 的 Presence 会在 data-state='closed' 时等退场动画结束再卸载。
+ */
+
+/* 弹窗遮罩 */
+.overlay {
+  animation: fade-in var(--duration-base) var(--ease-out);
+}
+
+.overlay[data-state='closed'] {
+  animation: fade-out var(--duration-exit) var(--ease-in) forwards;
+}
+
+/* 居中弹窗 */
+.dialog {
+  animation: dialog-in var(--duration-slow) var(--ease-out);
+}
+
+.dialog[data-state='closed'] {
+  animation: dialog-out var(--duration-exit) var(--ease-in) forwards;
+}
+
+/* 全屏看图层：只淡入淡出 */
+.fullscreen {
+  animation: fade-in var(--duration-base) var(--ease-out);
+}
+
+.fullscreen[data-state='closed'] {
+  animation: fade-out var(--duration-exit) var(--ease-in) forwards;
+}
+
+/* 浮层（Popover）：从触发方向滑入 */
+.popover {
+  transform-origin: var(--radix-popover-content-transform-origin);
+  animation: popover-in var(--duration-base) var(--ease-out);
+}
+
+.popover[data-side='right'] {
+  --motion-from-x: calc(-1 * var(--motion-shift));
+}
+
+.popover[data-side='left'] {
+  --motion-from-x: var(--motion-shift);
+}
+
+.popover[data-side='top'] {
+  --motion-from-y: var(--motion-shift);
+}
+
+.popover[data-side='bottom'] {
+  --motion-from-y: calc(-1 * var(--motion-shift));
+}
+
+.popover[data-state='closed'] {
+  animation: fade-out var(--duration-exit) var(--ease-in) forwards;
+}
+
+/* 底部提示条（toast） */
+.toast {
+  animation: toast-in var(--duration-slow) var(--ease-out);
+}
+
+/* 页面、卡片、折叠内容等挂载时的进场 */
+.enter {
+  animation: rise-in var(--duration-base) var(--ease-out) backwards;
+}
+
+.fadeIn {
+  animation: fade-in var(--duration-base) var(--ease-out) backwards;
+}
+
+/* 对错结果出现：轻微放大 */
+.result {
+  animation: result-in var(--duration-result) var(--ease-out) backwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--motion-shift);
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--motion-rise);
+    scale: 0.98;
+  }
+}
+
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    translate: var(--motion-from-x, 0) var(--motion-from-y, 0);
+    scale: 0.98;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--motion-rise);
+  }
+}
+
+@keyframes result-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+
+/* 减少动效：进场类直接不播（避免闪一帧透明）；带退场的弹窗与浮层交给全局 1ms 规则，保证 Radix 能收到 animationend */
+@media (prefers-reduced-motion: reduce) {
+  .enter,
+  .fadeIn,
+  .result,
+  .toast {
+    animation: none;
+  }
+}

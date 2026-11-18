@@ -461,6 +461,24 @@
   font-size: var(--font-size-sm);
 }
 
+.noConclusionReasons {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.noConclusionReasons span {
+  display: inline-block;
+  min-width: 6em;
+  margin-right: var(--space-2);
+  color: var(--text-regular);
+  font-weight: var(--font-weight-medium);
+}
+
 .conclusions.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

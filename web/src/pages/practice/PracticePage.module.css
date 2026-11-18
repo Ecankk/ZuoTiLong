@@ -388,7 +388,8 @@
   flex-direction: column;
   gap: var(--space-5);
   min-width: 0;
-  scroll-margin-top: var(--space-4);
+  /* 换题时右栏 scrollIntoView 回到顶部；留出页头高度，首次打开不会把标题卷走 */
+  scroll-margin-top: 124px;
   container-type: inline-size;
 }
 
@@ -398,6 +399,11 @@
 
 .notice {
   color: var(--text-regular);
+}
+
+/* 没有任何练习时的整页空状态 */
+.emptyPage {
+  composes: page from '../../components/ui/EmptyState.module.css';
 }
 
 .headerActions {
@@ -530,6 +536,11 @@
     position: relative;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
+  }
+
+  /* 窄窗口右栏上方还有“当前题 · 切换”条，一起留在视野里 */
+  .work {
+    scroll-margin-top: 212px;
   }
 
   .switcher {

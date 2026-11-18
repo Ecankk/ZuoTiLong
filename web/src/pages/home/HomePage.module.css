@@ -83,10 +83,16 @@
   gap: var(--space-3);
 }
 
-.more,
 .faint {
   color: var(--text-faint);
   font-size: var(--font-size-sm);
+}
+
+/* 可点的“看完整画像 →”：最浅文字色对比度不够，像说明文字；用次要色，悬停主色 */
+.more {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 .more:hover {
@@ -114,8 +120,10 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-1);
+  border-radius: var(--radius-sm);
   color: var(--text-regular);
   text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .row:hover {
@@ -126,6 +134,15 @@
 .row > svg {
   flex: none;
   color: var(--text-faint);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+/* 悬停时右侧箭头往前挪一点，提示“点进去” */
+.row:hover > svg:last-child {
+  color: var(--text-muted);
+  transform: translateX(2px);
 }
 
 .rowText {
@@ -259,7 +276,8 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--status-wrong);
+  /* 未读标记用主色：正误色只表示结果，红点挨着“做对了”会误读 */
+  background: var(--color-primary);
 }
 
 .note {

@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { usePapers, usePreferences, useSavePreferences } from '../../api/queries'
 import type { MathType } from '../../api/types'
@@ -119,6 +119,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const open = manual ?? (seen.ready && !seen.failed && !seen.value)
   const setOpen = (next: boolean) => setManual(next)
   const [step, setStep] = useState(0)
+  const contentRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   // 第 5 步按有没有试卷给不同的下一步；只在引导打开时读取
   const { data: papers } = usePapers('0')
@@ -138,7 +139,16 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       <Dialog.Root open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
         <Dialog.Portal>
           <Dialog.Overlay className={styles.overlay} />
-          <Dialog.Content className={styles.dialog} aria-describedby={undefined}>
+          <Dialog.Content
+            ref={contentRef}
+            className={styles.dialog}
+            aria-describedby={undefined}
+            onOpenAutoFocus={(event) => {
+              // 焦点放在弹窗本身：默认会落到“跳过引导”上，按回车就直接跳过了
+              event.preventDefault()
+              contentRef.current?.focus()
+            }}
+          >
             <div className={styles.top}>
               <img src="/brand/logo-icon.png" alt="" />
               <span className={styles.stepLabel}>
@@ -150,8 +160,13 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
                 ))}
               </span>
             </div>
-            <Dialog.Title>{steps[step].title}</Dialog.Title>
-            <div className={styles.body}>{steps[step].body({ close, hasPapers })}</div>
+            {/* key 按步骤：换步时正文重新挂载，播放淡入 */}
+            <Dialog.Title key={`title-${step}`} className={styles.stepTitle}>
+              {steps[step].title}
+            </Dialog.Title>
+            <div key={`body-${step}`} className={styles.body}>
+              {steps[step].body({ close, hasPapers })}
+            </div>
             <div className={styles.footer}>
               <Button variant="ghost" className={styles.skip} onClick={close}>
                 跳过引导

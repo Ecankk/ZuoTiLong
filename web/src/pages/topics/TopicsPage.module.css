@@ -231,16 +231,21 @@
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
   margin: var(--space-4) 0;
 }
 
+/*
+ * 与首页“本周”统计块同一种样子：数字在上、说明在下、靠左。
+ * 只用 column-reverse 调换视觉顺序，DOM 仍是 dt → dd，读屏照旧读“做对 3”。
+ */
 .stats div {
-  padding: var(--space-2);
+  display: flex;
+  flex-direction: column-reverse;
+  padding: var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
-  text-align: center;
 }
 
 .stats dt {
@@ -251,7 +256,7 @@
 .stats dd {
   margin: 0;
   color: var(--text-strong);
-  font-size: var(--font-size-h3);
+  font-size: 22px;
   font-variant-numeric: tabular-nums;
   font-weight: var(--font-weight-semibold);
 }
@@ -271,10 +276,13 @@
   flex: 1;
   display: flex;
   justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
+  /* 题型不再和“第 N 题”粘在一起；间距从左右内边距里让出来，窄栏里不多折行 */
+  gap: 6px;
+  padding: var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--text-strong);
   font-size: var(--font-size-sm);
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .related a:hover {
@@ -283,7 +291,9 @@
 }
 
 .related small {
+  flex: none;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .kids {

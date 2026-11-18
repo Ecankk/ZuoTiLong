@@ -1,4 +1,5 @@
 .overlay {
+  composes: overlay from '../../components/ui/Motion.module.css';
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -7,6 +8,7 @@
 }
 
 .dialog {
+  composes: dialog from '../../components/ui/Motion.module.css';
   position: fixed;
   top: 50%;
   left: 50%;
@@ -66,6 +68,11 @@
   padding: var(--space-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
+  /* 改成“并入上一题/删除”时缩进、变淡有过渡，看得出是哪一行变了 */
+  transition:
+    margin-left var(--duration-base) var(--ease-out),
+    opacity var(--duration-base) var(--ease-out),
+    background var(--duration-base) var(--ease-out);
 }
 
 .row.merge {

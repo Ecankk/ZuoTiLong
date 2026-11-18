@@ -9,6 +9,7 @@ import { PracticeHeading } from './PracticeHeading'
 import { RevealButton } from './RevealButton'
 import { splitQuestionText } from './selection'
 import styles from './PracticeCard.module.css'
+import { LoadingImage } from '../../components/ui/LoadingImage'
 
 /**
  * 练习题面：图片题显示原题图，纯文字题按公式排版。
@@ -24,7 +25,11 @@ export function QuestionContent({
   return (
     <>
       {question.question_image && (
-        <img className={styles.questionImage} src={question.question_image} alt="练习原题" />
+        <LoadingImage
+          className={styles.questionImage}
+          src={question.question_image}
+          alt="练习原题"
+        />
       )}
       {text && (
         <div className={cx('read', styles.question)}>

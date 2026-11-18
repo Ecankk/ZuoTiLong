@@ -136,7 +136,43 @@ it('shows grading in progress when a blank answer goes to AI', async () => {
   await userEvent.type(await screen.findByRole('textbox', { name: '填空答案' }), '1/2')
   await userEvent.click(screen.getByRole('button', { name: '提交' }))
   const latest = await screen.findByRole('region', { name: '最近一次作答' })
-  expect(await within(latest).findByText(/正在批改/)).toBeInTheDocument()
+  // 写法没对上时交给做题龙判断等价，界面说清楚“不会直接算错”（第二轮 C6 有意改的文案）
+  expect(await within(latest).findByText(/判断是否等价/)).toBeInTheDocument()
+  expect(within(latest).getByRole('status')).toHaveTextContent('不会直接算错')
+})
+
+it('does not spin forever when the AI service is not ready', async () => {
+  const pendingAttempt = attempt({
+    question_type: '解答题',
+    response: '略',
+    choice: null,
+    assessment: null,
+    job: { id: 'job-free', status: 'queued' },
+    materials: { question: {}, reference: null },
+  })
+  mockServer({
+    tasks: {
+      items: [],
+      total: 0,
+      offset: 0,
+      limit: 20,
+      next_offset: null,
+      status: 'agent_unavailable',
+      availability: { status: 'unavailable', reason: 'not_installed', message: '' },
+      active: null,
+      queued_count: 1,
+      failed_count: 0,
+    },
+    routes: (path) =>
+      path === '/api/bank/q1/practice'
+        ? json(
+            practice({ question_type: '解答题', latest_attempt: pendingAttempt, attempt_count: 1 }),
+          )
+        : undefined,
+  })
+  renderAt('/bank/q1/practice')
+  const latest = await screen.findByRole('region', { name: '最近一次作答' })
+  expect(await within(latest).findByRole('status')).toHaveTextContent('准备好 AI 服务后会自动批改')
 })
 
 it('marks the attempt as assisted after revealing the answer', async () => {
@@ -198,6 +234,21 @@ it('searches question text within the current collection and category, and clear
   await userEvent.click(screen.getByRole('button', { name: '清除题面搜索' }))
   expect(router.state.location.search).not.toContain('q=')
   expect(router.state.location.search).toContain('math_type=1')
+})
+
+it('offers one clear way out when a search finds nothing', async () => {
+  mockServer({
+    routes: (path, _init, url) =>
+      path === '/api/bank' && url.searchParams.get('q')
+        ? json({ items: [], total: 0, offset: 0, limit: 24, next_offset: null })
+        : undefined,
+  })
+  const router = renderAt('/bank?math_type=1&q=nothing')
+  expect(await screen.findByText(/没有找到题面含“nothing”的题目/)).toBeInTheDocument()
+  expect(screen.getByText('共 0 题')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: '清除筛选' }))
+  expect(router.state.location.search).not.toContain('q=')
+  expect(router.state.location.search).not.toContain('math_type=')
 })
 
 it('saves the free practice switch in settings', async () => {

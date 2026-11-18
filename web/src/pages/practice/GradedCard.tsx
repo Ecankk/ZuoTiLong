@@ -15,6 +15,7 @@ import { PracticeHeading } from './PracticeHeading'
 import { RevealButton } from './RevealButton'
 import { usefulAnalysis } from './selection'
 import styles from './PracticeCard.module.css'
+import { LoadingImage } from '../../components/ui/LoadingImage'
 
 /** 作答照片沿用旧的图片入口 */
 export const answerImageUrl = (id: string) => `/api/answer-images/${encodeURIComponent(id)}`
@@ -110,7 +111,9 @@ export function ReferenceAnalysis({
           <MathText text={parts.expected} />
         </p>
       )}
-      {parts.image && <img className={styles.questionImage} src={parts.image} alt="参考解析" />}
+      {parts.image && (
+        <LoadingImage className={styles.questionImage} src={parts.image} alt="参考解析" />
+      )}
       {parts.text && <MathText text={parts.text} />}
       {parts.note && (
         <p>

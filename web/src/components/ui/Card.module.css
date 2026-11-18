@@ -1,4 +1,6 @@
+/* 卡片挂载时淡入（只动透明度），骨架换成内容时不再硬切 */
 .card {
+  composes: fadeIn from './Motion.module.css';
   min-width: 0;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);

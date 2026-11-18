@@ -106,12 +106,21 @@
   --shadow-button: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(43, 76, 155, 0.25);
   --focus-ring: 0 0 0 3px rgba(43, 76, 155, 0.22);
 
-  /* 动效 */
+  /* 动效：进场用 ease-out，退场用 ease-in 且更快；弹性只用于导航选中项。
+   * 共享关键帧见 components/ui/Motion.module.css */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
   --duration-fast: 120ms;
   --duration-base: 180ms;
   --duration-slow: 240ms;
+  --duration-exit: 120ms;
+  --duration-result: 200ms;
+  /* 进场位移：页面/卡片/折叠内容 4px，弹窗/提示条 8px */
+  --motion-shift: 4px;
+  --motion-rise: 8px;
+  /* 列表错开出现的间隔 */
+  --motion-stagger: 30ms;
 
   /* 布局 */
   --sidebar-width: 224px;

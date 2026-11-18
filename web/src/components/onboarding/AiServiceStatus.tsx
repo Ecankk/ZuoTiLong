@@ -1,8 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { endpoints } from '../../api/endpoints'
-import { queryKeys, useTasks } from '../../api/queries'
+import { queryKeys } from '../../api/queries'
 import type { TasksResponse } from '../../api/types'
 import { desktop, isDesktop } from '../../desktop/bridge'
 import { useDesktopRestart } from '../../desktop/useDesktop'
@@ -13,6 +14,19 @@ import { ButtonRow } from '../ui/ButtonRow'
 import styles from './Onboarding.module.css'
 
 type Availability = TasksResponse['availability']
+
+/** 一直“检测中”超过这个时间就给出结果和“重新检查” */
+export const CHECK_TIMEOUT_MS = 20_000
+/** “检测中”时的刷新间隔（不依赖后台推送） */
+const CHECK_POLL_MS = 2_000
+/** 自动触发检查的最短间隔：引导和设置页同时挂载时不会重复发起 */
+const AUTO_CONNECT_GAP_MS = 30_000
+let lastAutoConnect = 0
+
+/** 测试用：清掉自动检查的节流记录 */
+export function resetAutoConnectForTests() {
+  lastAutoConnect = 0
+}
 
 /** “已找到，但不能启动”：程序在，但打不开（例如批处理安装方式）。后端用 reason=other 并给中文说明。 */
 export const foundButCannotStart = (a: Availability) =>
@@ -76,6 +90,14 @@ function describe(a: Availability | undefined): View {
   return { icon: 'warn', title: '暂不可用', detail: setupMessage(a), steps: [] }
 }
 
+/** 检测超时时的说明（不是失败结论，只是告诉用户可以再查一次） */
+const slowCheck: View = {
+  icon: 'warn',
+  title: '检测时间比较长',
+  detail: '还没有查到这台电脑上的 Codex 是否已安装、已登录。可以点“重新检查”，或先跳过，之后再看。',
+  steps: [],
+}
+
 const icons = {
   checking: <LoaderCircle size={22} color="var(--color-primary)" aria-hidden />,
   ok: <CircleCheck size={22} color="var(--status-correct)" aria-hidden />,
@@ -94,15 +116,54 @@ export function AiServiceStatus({
   onGuide?: () => void
 }) {
   const client = useQueryClient()
-  const { data } = useTasks()
+  // 与设置页、侧栏同一个查询；“检测中”时每 2 秒刷新一次，不只等后台推送
+  const { data } = useQuery({
+    queryKey: queryKeys.tasks,
+    queryFn: endpoints.tasks,
+    refetchInterval: (query) =>
+      query.state.data?.availability.status === 'checking' ? CHECK_POLL_MS : false,
+    // 窗口被遮住或在后台时也继续刷新（否则回到窗口前结果一直停在“检测中”）
+    refetchIntervalInBackground: true,
+  })
   const availability = data?.availability
-  const view = describe(availability)
   const recheck = useMutation({
     mutationFn: endpoints.connectAgent,
     onSettled: () => client.invalidateQueries({ queryKey: queryKeys.tasks }),
   })
   const restart = useDesktopRestart(desktop.restartBackend)
-  const notReady = availability?.status === 'unavailable' && availability.reason !== 'disabled'
+  const checking = !availability || availability.status === 'checking'
+
+  // 后台在“还没检查过”时也报 checking（它只在有任务排队时才自动连接），所以停在这里不会自己变。
+  // 看到 checking 就触发一次现有的检查（只探测是否安装、登录，不创建任务）。
+  const triggered = useRef(false)
+  const status = availability?.status
+  useEffect(() => {
+    if (status !== 'checking' || triggered.current) return
+    triggered.current = true
+    if (Date.now() - lastAutoConnect < AUTO_CONNECT_GAP_MS) return
+    lastAutoConnect = Date.now()
+    recheck.mutate()
+    // recheck 每次渲染都是新对象，只按状态触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
+
+  // 检测超时：超过 20 秒仍没有结果，给出说明和“重新检查”；点“重新检查”重新计时
+  const [timedOut, setTimedOut] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    if (!checking) return
+    const timer = window.setTimeout(() => setTimedOut(true), CHECK_TIMEOUT_MS)
+    return () => {
+      window.clearTimeout(timer)
+      setTimedOut(false)
+    }
+  }, [checking, attempt])
+
+  const view = checking && timedOut ? slowCheck : describe(availability)
+  const notReady =
+    (availability?.status === 'unavailable' && availability.reason !== 'disabled') ||
+    (checking && timedOut) ||
+    recheck.isError
   return (
     <>
       <div className={styles.status} role="status" aria-label="AI 服务状态">
@@ -121,7 +182,14 @@ export function AiServiceStatus({
       )}
       {notReady && (
         <ButtonRow className={styles.recheck}>
-          <Button size="sm" disabled={recheck.isPending} onClick={() => recheck.mutate()}>
+          <Button
+            size="sm"
+            disabled={recheck.isPending}
+            onClick={() => {
+              setAttempt((n) => n + 1)
+              recheck.mutate()
+            }}
+          >
             {recheck.isPending ? '正在检查…' : '重新检查'}
           </Button>
           {isDesktop() && (

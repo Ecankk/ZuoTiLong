@@ -352,6 +352,27 @@ function Blocked({
   )
 }
 
+/**
+ * 等待批改。填空题和参考答案写法一致时提交当下就判对了，还在批改说明写法没能直接对上，
+ * 正在请做题龙判断是否等价（不先判错）。AI 服务没准备好时如实说明，不让转圈一直转下去。
+ */
+function GradingNote({ blank, unavailable }: { blank: boolean; unavailable: boolean }) {
+  if (unavailable)
+    return (
+      <p className={cx(styles.grading, styles.gradingWarn)} role="status">
+        作答已保存。做题龙还不能开始工作，准备好 AI 服务后会自动批改。
+      </p>
+    )
+  return (
+    <p className={styles.grading} role="status">
+      <span className={styles.spinner} aria-hidden />
+      {blank
+        ? '写法没能直接对上参考答案，正在请做题龙判断是否等价，不会直接算错。完成后这里会自动更新，可以先离开这个页面。'
+        : '正在批改，完成后这里会自动更新。可以先离开这个页面。'}
+    </p>
+  )
+}
+
 /** 题库题目的独立做题页：/bank/:bankId/practice */
 export function FreePracticePage() {
   const { bankId = '' } = useParams()
@@ -406,12 +427,12 @@ export function FreePracticePage() {
             <Card padded className={styles.card} aria-label="最近一次作答">
               <h2>最近一次作答</h2>
               {grading ? (
-                <p className={styles.grading} role="status">
-                  <span className={styles.spinner} aria-hidden />
-                  正在批改，完成后这里会自动更新。可以先离开这个页面。
-                </p>
+                <GradingNote
+                  blank={(latest.question_type ?? type) === '填空题'}
+                  unavailable={tasks?.availability.status === 'unavailable'}
+                />
               ) : (
-                <FreeAttemptView attempt={latest} referenceOpen />
+                <FreeAttemptView attempt={latest} referenceOpen fresh />
               )}
             </Card>
           )}

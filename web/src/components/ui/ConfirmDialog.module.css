@@ -1,4 +1,5 @@
 .overlay {
+  composes: overlay from './Motion.module.css';
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -7,6 +8,7 @@
 }
 
 .dialog {
+  composes: dialog from './Motion.module.css';
   position: fixed;
   top: 50%;
   left: 50%;
@@ -17,14 +19,6 @@
   background: var(--surface-card);
   box-shadow: var(--shadow-raised);
   transform: translate(-50%, -50%);
-  animation: rise var(--duration-slow) var(--ease-out);
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% + 8px));
-  }
 }
 
 .title {

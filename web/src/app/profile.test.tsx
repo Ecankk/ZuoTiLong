@@ -129,6 +129,37 @@ it('shows short empty states when evidence is not enough to conclude', async () 
   expect(conclusions).toHaveTextContent('没有可比较')
 })
 
+it('does not repeat “记录还不够” when the backend reason already says it (A31)', async () => {
+  // 后端真实文案：原因本身就以“记录还不够”开头
+  profileServer({
+    ...insufficientOverview,
+    conclusions: {
+      ...insufficientOverview.conclusions,
+      unavailable_reasons: {
+        strongest_chapter: '记录还不够，再做几道才能判断。',
+        weakest_chapter: '最近的错题还不够，暂时不能判断哪章最弱。',
+        independent_correct_comparison: '记录还不够，再做几道才能判断。',
+      },
+    },
+  })
+  renderAt('/profile')
+  const conclusions = await screen.findByRole('region', { name: '结论' })
+  const text = conclusions.textContent ?? ''
+  expect(text).toContain('暂时不下')
+  expect(text.split('记录还不够').length - 1).toBe(1)
+})
+
+it('labels each reason when the backend gives different reasons', async () => {
+  profileServer(insufficientOverview)
+  renderAt('/profile')
+  const conclusions = await screen.findByRole('region', { name: '结论' })
+  const items = within(conclusions).getAllByRole('listitem')
+  expect(items.map((li) => li.textContent)).toEqual([
+    '哪一章强还没有哪一章在 2 天以上做过至少 5 道题。',
+    '有没有进步最近 8 周里有一段时间没有可比较的独立作答记录。',
+  ])
+})
+
 it('explains a brand-new workspace without inventing weak spots', async () => {
   profileServer(emptyOverview)
   renderAt('/profile')

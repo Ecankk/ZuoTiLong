@@ -87,6 +87,11 @@
   animation: pill-in var(--duration-slow) var(--ease-spring);
 }
 
+/* 胶囊自带阴影，焦点环叠加在外面 */
+.item[aria-current='page']:focus-visible {
+  box-shadow: var(--shadow-pill), var(--focus-ring);
+}
+
 .item[aria-current='page'] svg {
   color: var(--color-primary);
 }

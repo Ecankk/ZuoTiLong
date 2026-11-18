@@ -1,4 +1,5 @@
 .card {
+  composes: fadeIn from '../ui/Motion.module.css';
   display: block;
   width: 100%;
   margin-top: var(--space-3);
@@ -30,6 +31,7 @@ button.card:hover {
   border-radius: 50%;
   background: var(--color-primary);
   animation: pulse 1.8s var(--ease-out) infinite;
+  transition: background var(--duration-slow) var(--ease-out);
 }
 
 .dot.problem {
@@ -97,6 +99,53 @@ button.card:hover {
   color: var(--text-faint);
 }
 
+/* 刚完成：短暂显示后自己收起（最后 0.4 秒淡出，组件 5 秒时卸载） */
+.done {
+  animation:
+    fade-in var(--duration-base) var(--ease-out),
+    done-out var(--duration-slow) var(--ease-in) 4.6s forwards;
+}
+
+.doneIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: var(--status-correct-soft);
+  color: var(--status-correct);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes done-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * 减少动效：进度条不能动，停在某个位置会被误读成“完成了三分之一”，所以干脆不显示；
+ * 卡片底部的“已过 X 分钟”照样说明还在进行。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    display: none;
+  }
+
+  .done {
+    animation: none;
+  }
+}
+
 .guideText {
   margin: var(--space-1) 0 var(--space-2) 16px;
   color: var(--text-regular);
@@ -112,6 +161,7 @@ button.card:hover {
 
 /* 浮层：玻璃效果允许用于浮层 */
 .popover {
+  composes: popover from '../ui/Motion.module.css';
   z-index: 50;
   width: 300px;
   padding: var(--space-4);
@@ -119,6 +169,12 @@ button.card:hover {
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-raised);
+}
+
+/* 打开时焦点在浮层本身（读屏从这里开始读），浮层自己不画焦点环 */
+.popover:focus-visible {
+  outline: none;
   box-shadow: var(--shadow-raised);
 }
 

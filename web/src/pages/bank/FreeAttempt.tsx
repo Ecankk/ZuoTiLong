@@ -7,10 +7,12 @@ import { Chip, CorrectnessChip } from '../../components/ui/Chip'
 import { ErrorState } from '../../components/ui/ErrorState'
 import { Fold } from '../../components/ui/Fold'
 import { Skeleton } from '../../components/ui/Skeleton'
+import { cx } from '../../lib/cx'
 import { assessmentCorrectness } from '../../lib/labels'
 import { QuestionContent } from '../practice/AnswerCard'
 import { ErrataNote } from './Errata'
 import styles from './FreePracticePage.module.css'
+import { LoadingImage } from '../../components/ui/LoadingImage'
 
 const pageSize = 10
 
@@ -53,7 +55,7 @@ export function ReferenceBlock({
         text || image ? (
           <div key={label} className={styles.reference}>
             <h4>{label}</h4>
-            {image && <img src={image} alt={label} className={styles.referenceImage} />}
+            {image && <LoadingImage src={image} alt={label} className={styles.referenceImage} />}
             {text && (
               <div className="read">
                 <MathText text={text} />
@@ -70,15 +72,18 @@ export function ReferenceBlock({
 export function FreeAttemptView({
   attempt,
   referenceOpen = false,
+  fresh = false,
 }: {
   attempt: FreeAttempt
   referenceOpen?: boolean
+  /** 刚出结果的“最近一次作答”：对错标签轻轻放大出现（历史列表里不播） */
+  fresh?: boolean
 }) {
   const assessment = attempt.assessment
   const answer = attempt.choice || attempt.response
   return (
     <div className={styles.attempt}>
-      <div className={styles.meta}>
+      <div className={cx(styles.meta, fresh && assessment && styles.metaFresh)}>
         {assessment ? (
           <CorrectnessChip value={assessmentCorrectness(assessment)} />
         ) : (

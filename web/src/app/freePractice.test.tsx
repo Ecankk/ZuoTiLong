@@ -4,9 +4,12 @@ import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { FreeAttempt, FreePractice } from '../api/types'
+import { tasks } from '../mocks/data'
 import { json, mockServer } from '../test/server'
 import { createQueryClient } from './queryClient'
 import { routes } from './routes'
+
+const idleTasks = { ...tasks, active: null }
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] })
@@ -66,6 +69,8 @@ function practiceServer(options: {
   let view = options.view ?? practice()
   const posts: Record<string, unknown>[] = []
   const fetch = mockServer({
+    // 提交的前提：做题龙没有在处理别的任务（否则提交按钮会先禁用）
+    tasks: idleTasks,
     routes: (path, init) => {
       if (path === '/api/bank/q1/practice') return json(view)
       if (path === '/api/bank/q1/practice/attempts' && init?.method === 'POST') {
@@ -217,7 +222,7 @@ it('explains why a reserved question cannot be practised', async () => {
 })
 
 it('searches question text within the current collection and category, and clears back', async () => {
-  const fetch = mockServer()
+  const fetch = mockServer({ tasks: idleTasks })
   const router = renderAt('/bank?math_type=1')
   const input = await screen.findByRole('searchbox', { name: '搜索考点或题面' })
   await userEvent.type(input, 'f(x){enter}')
@@ -252,7 +257,7 @@ it('offers one clear way out when a search finds nothing', async () => {
 })
 
 it('saves the free practice switch in settings', async () => {
-  const fetch = mockServer()
+  const fetch = mockServer({ tasks: idleTasks })
   renderAt('/settings')
   const card = await screen.findByRole('region', { name: '自由练习' })
   const box = within(card).getByRole('checkbox', { name: '画像计入自由练习' })
@@ -313,6 +318,7 @@ it('lets a blank question be answered with a handwritten photo only', async () =
   const drafts: unknown[] = []
   const posts: Record<string, unknown>[] = []
   mockServer({
+    tasks: idleTasks,
     routes: (path, init) => {
       if (path === '/api/bank/q1/practice')
         return json(
@@ -356,4 +362,51 @@ it('lets a blank question be answered with a handwritten photo only', async () =
     image_ids: ['img-1'],
     image_roles: { 'img-1': 'own_work' },
   })
+})
+
+it('keeps 重新提交 disabled while the last blank answer is still being judged', async () => {
+  const judging = attempt({
+    question_type: '填空题',
+    response: '1/2',
+    choice: null,
+    assessment: null,
+    job: { id: 'job-eq', status: 'running' },
+    materials: { question: {}, reference: null },
+  })
+  practiceServer({
+    view: practice({
+      question_type: '填空题',
+      question: { question_text: '求极限 ____' },
+      latest_attempt: judging,
+      attempt_count: 1,
+    }),
+  })
+  renderAt('/bank/q1/practice')
+  const card = await screen.findByRole('region', { name: '作答' })
+  await userEvent.type(within(card).getByLabelText('填空答案'), '0.5')
+  expect(within(card).getByRole('button', { name: '提交' })).toBeDisabled()
+  expect(card).toHaveTextContent('做题龙正在判断上一次的答案是否等价，判断完成后再提交。')
+})
+
+it('waits while another task is running, with the reason', async () => {
+  mockServer({
+    tasks, // 默认 mock：有正在分析的试卷
+    routes: (path) => (path === '/api/bank/q1/practice' ? json(practice()) : undefined),
+  })
+  renderAt('/bank/q1/practice')
+  await userEvent.click(await screen.findByRole('radio', { name: 'B' }))
+  const card = screen.getByRole('region', { name: '作答' })
+  expect(within(card).getByRole('button', { name: '提交' })).toBeDisabled()
+  expect(card).toHaveTextContent('做题龙正在处理另一项任务')
+})
+
+it('never shows the raw “stop and retry” text when the backend is busy', async () => {
+  practiceServer({
+    reply: () => json({ error: '请等待当前任务交付或停止后重试' }, 409),
+  })
+  renderAt('/bank/q1/practice')
+  await userEvent.click(await screen.findByRole('radio', { name: 'B' }))
+  await userEvent.click(screen.getByRole('button', { name: '提交' }))
+  expect(await screen.findByText('做题龙正在处理另一项任务，完成后再试。')).toBeInTheDocument()
+  expect(document.body.textContent).not.toMatch(/停止后重试|交付/)
 })

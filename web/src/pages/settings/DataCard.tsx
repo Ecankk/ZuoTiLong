@@ -7,7 +7,7 @@ import type { DataStatus } from '../../api/types'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { ErrorState } from '../../components/ui/ErrorState'
-import { friendlyError } from '../../lib/errors'
+import { friendlyError, isBridgeBusy } from '../../lib/errors'
 import styles from './SettingsPage.module.css'
 
 const size = (bytes: number) =>
@@ -38,7 +38,10 @@ const useBackups = () =>
 const BUSY_TEXT = '做题龙正在处理任务（例如分析试卷），这时不能备份。等任务完成后再点“立即备份”。'
 
 function backupError(error: unknown) {
-  return error instanceof ApiError && error.status === 409 ? BUSY_TEXT : friendlyError(error)
+  // 公共映射已把“停止后重试”换成白话；备份这里说得更具体
+  return isBridgeBusy(error) || (error instanceof ApiError && error.status === 409)
+    ? BUSY_TEXT
+    : friendlyError(error)
 }
 
 /** 数据与备份：备份时间、数据大小、“立即备份”，以及恢复说明。原始路径在高级设置里。 */

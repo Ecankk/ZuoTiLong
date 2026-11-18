@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { queryKeys } from '../../api/queries'
 import type { Task, TasksResponse } from '../../api/types'
 import { tasks } from '../../mocks/data'
-import { BackgroundIndicator, elapsedText } from './BackgroundIndicator'
+import { BackgroundIndicator, elapsedText, taskErrorText } from './BackgroundIndicator'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -96,4 +96,8 @@ it('says the failed count once, explains an interrupted run, and does not focus 
   expect(dialog).toHaveTextContent('上次处理被打断了')
   expect(dialog).not.toHaveTextContent('会话')
   expect(within(dialog).getByRole('button', { name: '再试一次' })).not.toHaveFocus()
+})
+
+it('does not show the backend “stop and retry” sentence as a task failure reason', () => {
+  expect(taskErrorText('请等待当前任务交付或停止后重试')).not.toMatch(/停止|交付/)
 })

@@ -7,7 +7,7 @@ import { queryKeys, useTasks } from '../../api/queries'
 import type { Task, TasksResponse } from '../../api/types'
 import { Link } from 'react-router'
 import { useConnection } from '../../api/connection'
-import { friendlyError } from '../../lib/errors'
+import { friendlyError, plainTaskError } from '../../lib/errors'
 import { SETUP_GUIDE_PATH, setupMessage } from '../../lib/setup'
 import { Button } from '../ui/Button'
 import styles from './BackgroundIndicator.module.css'
@@ -51,7 +51,7 @@ export function taskErrorText(error: string | null) {
   if (!error) return null
   if (error.startsWith('执行已中断'))
     return '上次处理被打断了（比如做题龙中途关闭）。可以再试一次，会从头重新处理。'
-  return /[一-鿿]/.test(error) ? error : '这一项没有完成，可以再试一次。'
+  return /[一-鿿]/.test(error) ? plainTaskError(error) : '这一项没有完成，可以再试一次。'
 }
 
 /** 每隔一段时间刷新一次“现在”，只在有进行中的任务时走 */

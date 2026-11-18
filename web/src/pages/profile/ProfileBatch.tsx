@@ -10,7 +10,7 @@ import { ButtonRow } from '../../components/ui/ButtonRow'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Segmented } from '../../components/ui/Segmented'
 import { clientStateKeys, useClientState } from '../../lib/clientState'
-import { friendlyError } from '../../lib/errors'
+import { friendlyError, plainTaskError } from '../../lib/errors'
 import styles from './ProfileBatch.module.css'
 
 const sizes: ProfileBatchSize[] = [5, 8, 10]
@@ -117,7 +117,7 @@ function BatchProgress({ batchId, onDone }: { batchId: string; onDone: () => voi
     <div className={styles.progress} role="status">
       <div>
         <strong>{batch.status === 'cancelled' ? '这次选题已取消' : '这次选题没有完成'}</strong>
-        {batch.error && <p>{batch.error}</p>}
+        {batch.error && <p>{plainTaskError(batch.error)}</p>}
         <p className={styles.note}>
           {batch.status === 'failed' ? '可以在左下角的后台进度里重试，或重新选择。' : ''}
         </p>

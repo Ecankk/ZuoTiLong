@@ -62,7 +62,16 @@ function useShowTimer() {
 }
 
 /** 作答区：选择题字母按钮，填空题一个输入框，解答题文字加照片。草稿用独立 key 自动保存。 */
-function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft }) {
+function AnswerForm({
+  detail,
+  initial,
+  busyReason,
+}: {
+  detail: FreePractice
+  initial: Draft
+  /** 上一次作答还在判断、或做题龙在处理别的任务时，先不能提交（后台此时会拒绝写入） */
+  busyReason: string | null
+}) {
   const client = useQueryClient()
   const { bank_id: bankId } = detail
   const type = detail.question_type ?? detail.source.question_type ?? ''
@@ -195,6 +204,11 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
       )}
       {exposed && detail.reference && <ReferenceBlock reference={detail.reference} open />}
       {error && <p className={practiceStyles.formError}>{error}</p>}
+      {busyReason && (
+        <p className={styles.busyNote} role="status">
+          {busyReason}
+        </p>
+      )}
 
       <div className={styles.submitRow}>
         {!exposed && detail.actions.includes('reveal_analysis') && (
@@ -213,7 +227,7 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
         <Button
           variant="primary"
           size="lg"
-          disabled={empty || submit.isPending || uploading}
+          disabled={empty || submit.isPending || uploading || Boolean(busyReason)}
           onClick={send}
         >
           {submit.isPending ? '正在提交…' : pending && submit.isError ? '重新提交' : '提交'}
@@ -243,14 +257,21 @@ function AnswerForm({ detail, initial }: { detail: FreePractice; initial: Draft 
 }
 
 /** 草稿读回来后再显示作答区，保证初始内容一次到位 */
-function AnswerArea({ detail }: { detail: FreePractice }) {
+function AnswerArea({ detail, busyReason }: { detail: FreePractice; busyReason: string | null }) {
   const { data, isPending } = useQuery({
     queryKey: ['draft', detail.bank_id],
     queryFn: () => endpoints.draft<Draft>(draftKey(detail.bank_id)).catch(() => null),
     staleTime: Infinity,
   })
   if (isPending) return <Skeleton rows={4} />
-  return <AnswerForm key={detail.bank_id} detail={detail} initial={{ ...emptyDraft, ...data }} />
+  return (
+    <AnswerForm
+      key={detail.bank_id}
+      detail={detail}
+      initial={{ ...emptyDraft, ...data }}
+      busyReason={busyReason}
+    />
+  )
 }
 
 type BlockReason = 'masked' | 'reserved' | 'unknown'
@@ -438,7 +459,18 @@ export function FreePracticePage() {
           )}
 
           {data.actions.includes('submit') ? (
-            <AnswerArea detail={data} />
+            <AnswerArea
+              detail={data}
+              busyReason={
+                grading
+                  ? (latest?.question_type ?? type) === '填空题'
+                    ? '做题龙正在判断上一次的答案是否等价，判断完成后再提交。'
+                    : '做题龙正在批改上一次的作答，批改完成后再提交。'
+                  : tasks?.active
+                    ? '做题龙正在处理另一项任务（比如分析试卷），完成后再提交。'
+                    : null
+              }
+            />
           ) : (
             <Card padded className={styles.muted}>
               这道题现在不能提交新的作答，可以查看以前的记录。

@@ -129,7 +129,8 @@ class AnnotationRevisionTests(unittest.TestCase):
 
     def needs_review_base(self):
         self.start(); self.read(); value = self.payload()
-        value['result']['questions'][0].update(status='needs_review', limitations=['The reference step needs verification.'])
+        value['result']['questions'][0].update(status='needs_review', limitations=['The reference step needs verification.'],
+                                               unmatched_topics=['旧版本留下的待核考点'])
         value['result']['questions'][0]['answer_check'] = {'status':'conflict','note':'Unresolved reference step.'}
         self.save(value)
         return annotations.current(self.conn,self.data,self.ids[0])
@@ -139,10 +140,10 @@ class AnnotationRevisionTests(unittest.TestCase):
         scope = self.scope(['reference_reasoning','answer_check.note','limitations'])
         with self.assertRaisesRegex(ValueError,'修订基线'):
             annotations.capture(self.conn,self.data,scope)
-        scope['revision'].update(resolve_review=True,allowed_fields=['reference_reasoning','answer_check.note','answer_check.status','limitations'])
+        scope['revision'].update(resolve_review=True,allowed_fields=['reference_reasoning','answer_check.note','answer_check.status','limitations','unmatched_topics'])
         self.f.start('annotate_questions',scope); self.inputs=json.loads(self.f.task['input_json'])
         value=self.payload(); item=value['result']['questions'][0]
-        item.update(status='ready',limitations=[],reference_reasoning=item['reference_reasoning']+' 已独立复核原有疑点。')
+        item.update(status='ready',limitations=[],unmatched_topics=[],reference_reasoning=item['reference_reasoning']+' 已独立复核原有疑点。')
         item['answer_check']={'status':'consistent','note':'独立推导排除了原有疑点。'}
         with self.assertRaisesRegex(ValueError,'尚未读取'):self.f.tool('apply_report',{'result':value})
         self.read()

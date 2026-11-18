@@ -24,7 +24,11 @@ def normalize(value, bank_ids):
     if (not isinstance(expected, dict) or set(expected) != set(bank_ids)
             or any(not isinstance(nid, str) or not catalog.ID.fullmatch(nid) for nid in expected.values())):
         raise ValueError('窄修订须逐题指定有效的原标注ID，范围须与bank_ids一致')
-    allowed = EDITABLE_FIELDS + (('answer_check.status',) if value.get('resolve_review') else ())
+    # Resolving a previously missing topic is part of the controlled
+    # needs_review -> ready transition.  It is never granted to ordinary
+    # revisions, and a needs_review item may still only change its note and
+    # limitations.
+    allowed = EDITABLE_FIELDS + (('answer_check.status', 'unmatched_topics') if value.get('resolve_review') else ())
     if (not isinstance(fields, list) or not 1 <= len(fields) <= len(allowed)
             or any(not isinstance(field, str) for field in fields)
             or len(set(fields)) != len(fields) or not set(fields).issubset(allowed)):
@@ -87,7 +91,7 @@ def validate(source, incoming):
         if incoming['status']=='needs_review':
             if not incoming['limitations']:raise ValueError('仍待核题须保持 needs_review 并填写非空 limitations，复制 revision_base.analysis 的其他字段')
             fields={'answer_check.note','limitations'}
-        else:fields.add('status')
+        else:fields.update({'status', 'unmatched_topics'})
     # A newly discovered uncertainty must be able to remove this question from
     # the ready pool. It cannot be turned into an unauthorized promotion.
     downgrade = incoming['status'] in ('needs_review', 'needs_catalog')

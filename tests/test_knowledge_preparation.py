@@ -82,6 +82,18 @@ class PreparationRunTests(unittest.TestCase):
         self.assertEqual(resumed['runs'][0]['status'],'running')
         self.assertEqual(self.conn.execute('SELECT status FROM workflow_jobs WHERE id=?',(job,)).fetchone()[0],'abandoned')
 
+    def test_reconcile_requeues_items_left_running_by_abandoned_job(self):
+        run=preparation.start(self.conn,self.root,self.data,kind='catalog',request_id=str(uuid.uuid4()),source_version_id=self.f.f.sid)
+        rid=run['runs'][0]['id']; job=self.dispatch()
+        preparation.action(self.conn,self.root,self.data,rid,'pause')
+        mark(self.conn,job['id'],'abandoned','用户取消')
+        self.assertEqual(self.conn.execute(
+            'SELECT status FROM knowledge_preparation_items WHERE run_id=?',(rid,)).fetchone()[0],'running')
+        reconcile(self.conn,self.root,self.data)
+        item=self.conn.execute('SELECT status,job_id,note FROM knowledge_preparation_items WHERE run_id=?',(rid,)).fetchone()
+        self.assertEqual(tuple(item),('queued',None,'阶段已取消；继续资料准备时会重新排入'))
+        self.assertEqual(preparation.snapshot(self.conn,rid)['runs'][0]['status'],'paused')
+
     def test_resume_uses_later_reviewed_source_instead_of_keeping_stale_pending_count(self):
         run=preparation.start(self.conn,self.root,self.data,kind='catalog',request_id=str(uuid.uuid4()),source_version_id=self.f.f.sid)
         rid=run['runs'][0]['id'];job=self.dispatch()

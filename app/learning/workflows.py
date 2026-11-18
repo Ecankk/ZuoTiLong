@@ -248,6 +248,31 @@ def reconcile(conn, root, data):
                 mark(conn, job['id'], task['status'], task['error'], task['id'])
             else:
                 mark(conn, job['id'], 'running', task_id=task['id'])
+        # A preparation item is marked running when its workflow job is
+        # dispatched.  Cancelling that job later changes only workflow_jobs;
+        # leaving the item running makes a pausing run wait forever.  Return
+        # cancelled work to the queued pool (resume can schedule it again),
+        # and make real terminal failures visible as review issues.
+        stale_items = conn.execute('''
+            SELECT i.run_id,i.item_id,j.status,j.error
+            FROM knowledge_preparation_items i
+            JOIN workflow_jobs j ON j.id=i.job_id
+            WHERE i.status='running' AND j.status IN ('abandoned','failed','interrupted')
+        ''').fetchall()
+        for item in stale_items:
+            if item['status'] == 'abandoned':
+                status, note = 'queued', '阶段已取消；继续资料准备时会重新排入'
+            else:
+                status, note = 'needs_review', '阶段执行失败：' + str(item['error'] or '请重新核对')[:500]
+            conn.execute('''UPDATE knowledge_preparation_items
+                SET status=?,job_id=NULL,note=?
+                WHERE run_id=? AND item_id=? AND status='running' ''',
+                         (status, note, item['run_id'], item['item_id']))
+        conn.execute('''UPDATE knowledge_preparation_runs SET status='paused',updated_at=?
+            WHERE status='pausing' AND NOT EXISTS(
+                SELECT 1 FROM knowledge_preparation_items i
+                WHERE i.run_id=knowledge_preparation_runs.id AND i.status='running')''',
+                     (stamp(),))
 
 
 def next_job(conn):
